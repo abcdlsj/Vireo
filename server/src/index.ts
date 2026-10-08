@@ -3,6 +3,21 @@ import { createApp } from "./app.js";
 import { loadConfig } from "./config.js";
 import { createHttp } from "./http.js";
 
+if (process.env.VIREO_LOG_FILE) {
+  // Mirror console output to a file (used by the test suite to inspect logs).
+  const { appendFileSync, mkdirSync } = await import("node:fs");
+  const { dirname } = await import("node:path");
+  const file = process.env.VIREO_LOG_FILE;
+  mkdirSync(dirname(file), { recursive: true });
+  for (const level of ["log", "warn", "error"] as const) {
+    const orig = console[level].bind(console);
+    console[level] = (...args: unknown[]) => {
+      orig(...args);
+      appendFileSync(file, `${args.map((a) => (typeof a === "string" ? a : a instanceof Error ? a.stack : JSON.stringify(a))).join(" ")}\n`);
+    };
+  }
+}
+
 const config = loadConfig();
 const app = createApp(config);
 const http = createHttp(app);

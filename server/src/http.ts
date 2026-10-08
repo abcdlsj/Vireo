@@ -6,6 +6,7 @@ import type { IncomingMessage } from "node:http";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { extname, join, normalize } from "node:path";
 import type { App } from "./app.js";
+import { seenContexts } from "./fake-model.js";
 import { bus, type BusEvent } from "./bus.js";
 import { OVERVIEW_ID, type StoredMessage } from "./threads.js";
 import { errorMessage, newId, now, truncate } from "./util.js";
@@ -512,6 +513,10 @@ function mountTestRoutes(api: Hono<Env>, app: App): void {
       await app.memoryWorker.flush();
     }
     return c.json({ ok: true });
+  });
+  api.get("/api/test/model-contexts", (c) => {
+    const needle = c.req.query("contains") ?? "";
+    return c.json({ total: seenContexts.length, matching: needle ? seenContexts.filter((x) => x.includes(needle)).length : 0 });
   });
   api.get("/api/test/notifications", (c) => c.json({ notifications: app.push.recent }));
   api.get("/api/test/llm-log", (c) => c.json({ calls: app.db.all("SELECT * FROM llm_calls ORDER BY id") }));

@@ -21,6 +21,7 @@ interface ElementInfo {
   type: string;
   text: string;
   inForm: boolean;
+  formHasPassword: boolean;
   formAction?: string;
 }
 
@@ -177,6 +178,7 @@ export class BrowserService {
         type: (el.getAttribute("type") ?? "").toLowerCase(),
         text: ((el as HTMLElement).innerText || (el as HTMLInputElement).value || el.getAttribute("aria-label") || "").trim().slice(0, 80),
         inForm: Boolean(form),
+        formHasPassword: Boolean(form?.querySelector("input[type=password]")),
         formAction: form?.getAttribute("action") ?? undefined,
       };
     });
@@ -185,6 +187,8 @@ export class BrowserService {
   /** Whether clicking this element would submit, buy or otherwise act outward. */
   async isConsequentialClick(threadId: string, ref: string): Promise<boolean> {
     const info = await this.describe(threadId, ref);
+    // Signing in with stored credentials is part of getting the task done, not an outward action.
+    if (info.formHasPassword && /^(sign ?in|log ?in|continue|next|登录|登入)$/i.test(info.text)) return false;
     if (info.tag === "input" && ["submit", "image"].includes(info.type)) return true;
     if (info.tag === "button" && info.inForm && (info.type === "" || info.type === "submit")) return true;
     return RISKY_TEXT.test(info.text);

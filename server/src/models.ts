@@ -137,9 +137,9 @@ export class ModelService {
   mainModel(): Model<Api> | undefined {
     const models = this.available();
     if (models.length === 0) return undefined;
-    if (this.fakeRegistration) return this.fakeRegistration.getModel("fake-main");
     const chosen = this.findRef(this.getChoice().main, models);
     if (chosen) return chosen;
+    if (this.fakeRegistration) return this.fakeRegistration.getModel("fake-main");
     try {
       const settings = SettingsManager.create(process.cwd(), this.config.piAgentDir);
       const provider = settings.getDefaultProvider();
@@ -165,9 +165,9 @@ export class ModelService {
   /** A cheaper model for routine work (titles, memory upkeep, summaries). */
   fastModel(): Model<Api> | undefined {
     const models = this.available();
-    if (this.fakeRegistration) return this.fakeRegistration.getModel("fake-fast");
     const chosen = this.findRef(this.getChoice().fast, models);
     if (chosen) return chosen;
+    if (this.fakeRegistration) return this.fakeRegistration.getModel("fake-fast");
     const main = this.mainModel();
     if (!main) return undefined;
     const sameProvider = models

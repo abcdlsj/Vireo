@@ -35,7 +35,14 @@ function call(name: string, args: Record<string, unknown>): AssistantMessage {
 
 const isCjk = (s: string) => /[\u3400-\u9fff]/.test(s);
 
+/** Everything the scripted model was shown (test mode only), so tests can assert what never reaches a model. */
+export const seenContexts: string[] = [];
+
 export function fakeResponse(context: Context): AssistantMessage {
+  if (process.env.VIREO_TEST_MODE) {
+    seenContexts.push(JSON.stringify({ system: context.systemPrompt, messages: context.messages }));
+    if (seenContexts.length > 5000) seenContexts.splice(0, 1000);
+  }
   const system = context.systemPrompt ?? "";
   const task = system.match(/^Task: (\w+)/)?.[1];
   if (task) return reply(routine(task, system, text(context.messages.at(-1)!)));
@@ -93,10 +100,10 @@ function extractFacts(prompt: string): Extracted[] {
   for (const raw of section.split("\n")) {
     const line = raw.replace(/^Owner:\s*/, "").trim();
     let m: RegExpMatchArray | null;
-    if ((m = line.match(/\bI (?:always )?prefer (?:an? |the )?(.+?)(?:\s+(?:when|on|for)\s+(.+?))?[.!]?$/i))) {
+    if ((m = line.match(/\bI (?:always )?prefer (?:an? |the )?(.+?)(?:\s+(when|on|for)\s+(.+?))?[.!]?$/i))) {
       const what = m[1]!.trim();
-      const topic = /seat/i.test(what) ? "seat" : /airline|air|flight/i.test(`${what} ${m[2] ?? ""}`) ? "airline" : (what.split(/\s+/).pop() ?? "general").toLowerCase();
-      add(`preference.${topic}`, `Owner prefers ${what}${m[2] ? ` ${/when|on|for/.exec(line)?.[0]} ${m[2]}` : ""}`);
+      const topic = /seat/i.test(what) ? "seat" : /airline|air|flight/i.test(`${what} ${m[3] ?? ""}`) ? "airline" : (what.split(/\s+/).pop() ?? "general").toLowerCase();
+      add(`preference.${topic}`, `Owner prefers ${what}${m[3] ? ` ${m[2]} ${m[3]}` : ""}`);
     }
     if ((m = line.match(/\bmy (?:home )?address is (.+?)[.!]?$/i)) || (m = line.match(/\bI (?:have )?moved to (.+?)[.!]?$/i))) {
       add("home_address", `Owner's home address is ${m[1]!.trim()}`);
@@ -177,7 +184,7 @@ function noticeTurn(t: Turn): AssistantMessage {
   if (/owner (edited and )?confirmed/i.test(n)) {
     const result = n.match(/Result: ([\s\S]*?)\. Continue the task/)?.[1] ?? "";
     if (/Failed/i.test(result)) return reply(`That didn't go through: ${result}`);
-    if (/Booking confirmed/i.test(result)) return reply(`Done — ${result.match(/Booking confirmed[^\n]*/)?.[0] ?? "the booking is confirmed"}.`);
+    if (/Booking confirmed/i.test(result)) return reply(`Done — ${(result.match(/Booking confirmed for[^\n]*/) ?? result.match(/Booking confirmed[^\n]*/))?.[0] ?? "the booking is confirmed"}.`);
     if (/sent/i.test(result)) return reply("Sent. ✅");
     if (/Created event/i.test(result)) return reply("Done — the event is on your calendar and the invitations have gone out.");
     return reply(`Done. ${result.split("\n")[0]}`);
@@ -414,13 +421,15 @@ function browser(t: Turn): AssistantMessage {
     const signIn = el(/(button|input\(submit\)).*(sign in|log ?in)/i);
     if (signIn) return call("browser_click", { ref: signIn, description: "Sign in" });
   }
-  if (/Booking confirmed/i.test(snap)) return reply(`Done — ${snap.match(/Booking confirmed[^\n]*/)?.[0]}.`);
+  if (/Booking confirmed/i.test(snap)) return reply(`Done — ${(snap.match(/Booking confirmed for[^\n]*/) ?? snap.match(/Booking confirmed[^\n]*/))?.[0]}.`);
   const name = el(/"Name"/i);
   const guests = el(/"Guests"/i);
   const date = el(/"Date"/i);
   const guestCount = t.owner.match(/(\d+)\s*(?:people|guests|persons|人)/)?.[1] ?? "2";
   const ownerName = t.owner.match(/under (?:the name )?(\w+)/i)?.[1] ?? "Owner";
-  const typedNow = snaps.filter((s) => s.name === "browser_type" || s.name === "browser_select").map((s) => s.args.ref);
+  // Element refs restart on each page, so only count what was filled since the last navigation.
+  const lastNav = snaps.findLastIndex((s) => s.name === "browser_click" || s.name === "browser_open");
+  const typedNow = snaps.slice(lastNav + 1).filter((s) => s.name === "browser_type" || s.name === "browser_select").map((s) => s.args.ref);
   if (name && !typedNow.includes(name)) return call("browser_type", { ref: name, text: ownerName });
   if (guests && !typedNow.includes(guests)) return call(/select/.test(snap.split("\n").find((l) => l.startsWith(`[${guests}]`)) ?? "") ? "browser_select" : "browser_type", { ref: guests, ...(/select/.test(snap.split("\n").find((l) => l.startsWith(`[${guests}]`)) ?? "") ? { value: guestCount } : { text: guestCount }) });
   if (date && !typedNow.includes(date)) return call("browser_type", { ref: date, text: "2026-10-15" });
