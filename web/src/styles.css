@@ -346,6 +346,8 @@ button.link.danger {
 
 .login-card img {
   margin-bottom: 6px;
+  border-radius: 13px;
+  box-shadow: 0 0 0 1px var(--line), var(--shadow-soft);
 }
 
 .login-card h1 {
@@ -407,6 +409,7 @@ button.link.danger {
 
 .brand img {
   border-radius: 6px;
+  box-shadow: 0 0 0 1px var(--line);
 }
 
 .thread-list {
