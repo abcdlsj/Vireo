@@ -119,7 +119,6 @@ export function HostsSettings() {
   return (
     <>
       <section className="card">
-        <h3>Hosts</h3>
         <p className="muted small">
           Each host runs its own Vireo, with its own threads, memory and plugins: this machine, a VPS, a home server. This app talks to one at a time.
         </p>

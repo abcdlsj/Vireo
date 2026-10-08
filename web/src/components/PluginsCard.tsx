@@ -28,7 +28,7 @@ export function PluginsCard({ reload }: { reload: () => Promise<void> }) {
   return (
     <section className="card" data-testid="plugins-card">
       <div className="card-head">
-        <h3>Plugins</h3>
+        <p className="muted small">{browsing ? "Plugins that ship with Vireo. Each stays off until you add it." : `${installed.length} added on this host.`}</p>
         <button className="btn small" onClick={() => setBrowsing((b) => !b)} aria-expanded={browsing} data-testid="community-plugins">
           {browsing ? "Done" : "Community plugins"}
         </button>

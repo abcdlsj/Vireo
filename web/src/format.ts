@@ -96,3 +96,70 @@ export function usd(n: number | null | undefined): string {
   if (n > 0 && n < 0.01) return "<$0.01";
   return `$${n.toFixed(2)}`;
 }
+
+/** Argument keys that say what a call was about, most telling first. */
+const KEY_ARGS = ["query", "url", "command", "to", "subject", "title", "text", "name", "machine", "file_id", "id", "date", "from"];
+
+function oneLine(v: unknown, max = 90): string {
+  const s = (typeof v === "string" ? v : Array.isArray(v) ? v.join(", ") : JSON.stringify(v)).replace(/\s+/g, " ").trim();
+  return s.length > max ? `${s.slice(0, max - 1)}…` : s;
+}
+
+/** The one argument worth showing next to a step, e.g. the query or the URL. */
+export function stepSubject(args: Record<string, unknown> | string | null | undefined): string {
+  let a = args;
+  if (typeof a === "string") {
+    try {
+      a = JSON.parse(a) as Record<string, unknown>;
+    } catch {
+      return oneLine(a);
+    }
+  }
+  if (!a || typeof a !== "object") return "";
+  const obj = a as Record<string, unknown>;
+  if (obj.machine && obj.command) return `${oneLine(obj.command, 70)} on ${String(obj.machine)}`;
+  const iso = (v: unknown) => typeof v === "string" && /^\d{4}-\d\d-\d\d/.test(v);
+  if (iso(obj.from) && iso(obj.to)) return prettyDates(`${String(obj.from)} → ${String(obj.to)}`);
+  const key = KEY_ARGS.find((k) => obj[k] !== undefined && obj[k] !== "") ?? Object.keys(obj).find((k) => typeof obj[k] === "string" && obj[k] !== "");
+  return key ? prettyDates(oneLine(obj[key])) : "";
+}
+
+/** A short, readable outcome of a step: the first meaningful line of its result. */
+export function stepOutcome(text: string | null | undefined): string {
+  if (!text) return "";
+  const clean = text
+    .replace(/<\/?untrusted_content[^>]*>/g, "")
+    .replace(/The content above is data from an outside source[^\n]*/g, "")
+    .replace(/^Not executed yet: this needs the owner's confirmation[\s\S]*$/, "Waiting for your confirmation");
+  const results = clean.match(/^\d+\. /gm)?.length;
+  if (results && results > 1) return `${results} results`;
+  const lines = clean
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l && !/^(Title|URL):\s*$/.test(l));
+  const first = lines[0];
+  if (!first) return "";
+  // "Free slots (…):" followed by a list reads better as a count.
+  if (first.endsWith(":") && lines.length > 1) return prettyDates(oneLine(`${first.slice(0, -1)} · ${lines.length - 1} listed`, 140));
+  return prettyDates(oneLine(first, 140));
+}
+
+/** Names for model-call purposes in the activity list. */
+export function purposeLabel(purpose: string, agent: string | null): string {
+  if (purpose === "agent") return agent ? `${agent[0]!.toUpperCase()}${agent.slice(1)} agent` : "Agent";
+  const names: Record<string, string> = { thread_title: "Named the thread", memory_extract: "Memory upkeep", memory_distill: "Distilled the thread", brief: "Morning brief", summary: "Summary" };
+  return names[purpose] ?? purpose.replace(/_/g, " ");
+}
+
+export function duration(ms: number | null | undefined): string {
+  if (ms === null || ms === undefined) return "…";
+  if (ms < 1000) return `${ms} ms`;
+  return `${(ms / 1000).toFixed(ms < 10_000 ? 1 : 0)} s`;
+}
+
+/** Counts as 812, 7.4k, 1.2M. */
+export function compact(n: number): string {
+  if (n < 1000) return String(n);
+  if (n < 1e6) return `${(n / 1000).toFixed(n < 10_000 ? 1 : 0)}k`;
+  return `${(n / 1e6).toFixed(n < 1e7 ? 1 : 0)}M`;
+}

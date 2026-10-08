@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api, fileUrl, type ThreadDetail } from "../api";
 import { authedUrl } from "../hosts";
-import { bytes, dateTime, tokens, toolLabel, usd } from "../format";
+import { bytes, compact, dateTime, duration, purposeLabel, shortTime, stepOutcome, stepSubject, tokens, toolLabel, usd } from "../format";
 import { CloseIcon } from "../icons";
 
 interface ToolCallRow {
@@ -112,40 +112,67 @@ export function SidePanel({ detail, running, browsing, onClose }: { detail: Thre
             <p className="muted">Loading…</p>
           ) : (
             <>
-              <p className="muted">
-                {audit.toolCalls.length} actions · {audit.llmCalls.length} model calls · {tokens(totalTokens)} tokens · {usd(totalCost)}
-              </p>
+              <div className="audit-stats">
+                <div>
+                  <b>{audit.toolCalls.length}</b>
+                  <span>actions</span>
+                </div>
+                <div>
+                  <b>{audit.llmCalls.length}</b>
+                  <span>model calls</span>
+                </div>
+                <div>
+                  <b>{compact(totalTokens)}</b>
+                  <span>tokens</span>
+                </div>
+                <div>
+                  <b>{usd(totalCost)}</b>
+                  <span>cost</span>
+                </div>
+              </div>
               <h4>
                 Actions <span className="count">{audit.toolCalls.length}</span>
               </h4>
               <div className="audit-list">
-                {[...audit.toolCalls].reverse().map((c) => (
-                  <details key={c.id} className={`audit-row ${c.status}`} data-testid="audit-row">
-                    <summary>
-                      <span>{c.tool.startsWith("transfer_to_") ? `Handed to ${c.tool.slice(12)}` : toolLabel(c.tool)}</span>
-                      <small className="muted">
-                        {c.status.replace(/_/g, " ")} · {c.agent} · {c.duration_ms ?? "…"} ms · {dateTime(c.started_at)}
-                      </small>
-                    </summary>
-                    <pre>{c.args}</pre>
-                    {c.result ? <pre>{c.result}</pre> : null}
-                  </details>
-                ))}
+                {[...audit.toolCalls].reverse().map((c) => {
+                  const handoff = c.tool.startsWith("transfer_to_");
+                  const subject = handoff ? "" : stepSubject(c.args);
+                  const outcome = handoff ? "" : stepOutcome(c.result);
+                  return (
+                    <details key={c.id} className={`audit-row ${c.status}`} data-testid="audit-row">
+                      <summary>
+                        <span className="step-mark">{c.status === "running" ? "◌" : c.status === "error" ? "✕" : c.status === "awaiting_confirmation" ? "•" : handoff ? "→" : "✓"}</span>
+                        <span className="audit-main">
+                          <span className="audit-title">{handoff ? `Handed to ${c.tool.slice(12)}` : toolLabel(c.tool)}</span>
+                          {subject ? <span className="audit-subject">{subject}</span> : null}
+                          {outcome ? <span className="audit-outcome">{outcome}</span> : null}
+                          <span className="audit-meta">
+                            {c.status === "ok" ? "" : `${c.status.replace(/_/g, " ")} · `}
+                            {c.agent} · {duration(c.duration_ms)} · {shortTime(c.started_at)}
+                          </span>
+                        </span>
+                      </summary>
+                      <pre>{c.args}</pre>
+                      {c.result ? <pre>{c.result}</pre> : null}
+                    </details>
+                  );
+                })}
               </div>
               <h4>
                 Model calls <span className="count">{audit.llmCalls.length}</span>
               </h4>
               <div className="audit-list">
                 {[...audit.llmCalls].reverse().map((c) => (
-                  <div key={c.id} className="audit-llm">
-                    <span>
-                      {c.purpose}
-                      {c.agent ? ` · ${c.agent}` : ""}
+                  <div key={c.id} className={`audit-llm ${c.error ? "error" : ""}`}>
+                    <span className="audit-title">{purposeLabel(c.purpose, c.agent)}</span>
+                    <span className="num">
+                      {compact(c.input_tokens)} → {compact(c.output_tokens)}
                     </span>
-                    <small className="muted">
-                      {c.model} · {c.input_tokens.toLocaleString()}→{c.output_tokens.toLocaleString()} tok · {c.cost === null ? "no price" : `$${c.cost.toFixed(4)}`} · {c.duration_ms ?? "?"} ms
+                    <span className="audit-meta">
+                      {c.model} · {duration(c.duration_ms)} · {c.cost === null ? "no price" : usd(c.cost)}
+                      {c.cached_tokens ? ` · ${compact(c.cached_tokens)} cached` : ""} · {shortTime(c.created_at)}
                       {c.error ? ` · ${c.error}` : ""}
-                    </small>
+                    </span>
                   </div>
                 ))}
               </div>

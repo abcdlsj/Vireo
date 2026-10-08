@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { api, ApiError, onEvent, type Action, type Message, type ThreadDetail } from "../api";
-import { dateTime, prettyDates, shortTime, toolLabel } from "../format";
+import { dateTime, prettyDates, shortTime, stepOutcome, stepSubject, toolLabel } from "../format";
 import { Markdown } from "../markdown";
 import { go } from "../route";
 import { ActionCard } from "./ActionCard";
 import { Composer } from "./Composer";
 import { ProcedureCard } from "./ProcedureCard";
 import { SidePanel } from "./SidePanel";
-import { AlertIcon, ArrowUpRightIcon, BellIcon, CheckIcon, ChevronLeft, ChevronRight, ClockIcon, PanelIcon, StatusIcon, BriefIcon } from "../icons";
+import { AlertIcon, ArrowUpRightIcon, BellIcon, CheckIcon, ChevronLeft, ClockIcon, PanelIcon, StatusIcon, BriefIcon } from "../icons";
 
 type Item =
   | { kind: "user"; m: Extract<Message, { role: "user" }> }
@@ -348,43 +348,63 @@ function ItemView({ item, actions, onChange }: { item: Item; actions: Map<string
   }
 }
 
+/**
+ * What the agent did between messages, one line per step: what it did, on
+ * what (the query, the page, the command) and how it went. A step opens to
+ * its full arguments and result.
+ */
 function Steps({ steps }: { steps: { name: string; args: Record<string, unknown>; result?: Extract<Message, { role: "tool" }> }[] }) {
-  const [open, setOpen] = useState(false);
+  const [all, setAll] = useState(false);
   const visible = steps.filter((s) => !s.name.startsWith("transfer_to_"));
   if (visible.length === 0) return null;
-  const labels = [...new Set(visible.map((s) => toolLabel(s.name)))];
+  const LIMIT = 4;
+  const shown = all || visible.length <= LIMIT + 1 ? visible : visible.slice(-LIMIT);
   return (
     <div className="steps" data-testid="steps">
-      <button className="steps-toggle" onClick={() => setOpen(!open)} aria-expanded={open}>
-        <span className={`chev ${open ? "open" : ""}`}>
-          <ChevronRight />
+      {shown.length < visible.length ? (
+        <button className="steps-more" onClick={() => setAll(true)}>
+          {visible.length - shown.length} earlier steps
+        </button>
+      ) : null}
+      <ol className="step-list">
+        {shown.map((s, i) => (
+          <Step key={i} step={s} />
+        ))}
+      </ol>
+    </div>
+  );
+}
+
+function Step({ step: s }: { step: { name: string; args: Record<string, unknown>; result?: Extract<Message, { role: "tool" }> } }) {
+  const [open, setOpen] = useState(false);
+  const state = !s.result ? "running" : s.result.isError ? "error" : s.result.awaitingConfirmation ? "pending" : "ok";
+  const subject = stepSubject(s.args);
+  const outcome = s.result ? stepOutcome(s.result.text) : "Running…";
+  return (
+    <li className={`step ${state}`}>
+      <button className="step-line" onClick={() => setOpen(!open)} aria-expanded={open}>
+        <span className="step-mark" aria-label={state}>
+          {state === "running" ? "◌" : state === "error" ? "✕" : state === "pending" ? "•" : "✓"}
         </span>
-        {labels.slice(0, 3).join(" · ")}
-        {labels.length > 3 ? ` · +${labels.length - 3}` : ""}
-        <span className="count">{visible.length}</span>
+        <span className="step-text">
+          <span className="step-name">{toolLabel(s.name)}</span>
+          {subject ? <span className="step-subject">{subject}</span> : null}
+          {outcome ? <span className="step-outcome">{outcome}</span> : null}
+        </span>
       </button>
       {open ? (
-        <ol className="step-list">
-          {visible.map((s, i) => (
-            <li key={i} className={s.result?.isError ? "error" : s.result?.awaitingConfirmation ? "pending" : ""}>
-              <div className="step-name">
-                {toolLabel(s.name)} <code>{s.name}</code>
-              </div>
-              <div className="step-args">
-                <Fields value={s.args} />
-              </div>
-              {s.result ? (
-                <div className="step-result">
-                  <Fields value={parseJson(s.result.text)} />
-                </div>
-              ) : (
-                <div className="muted">Running…</div>
-              )}
-            </li>
-          ))}
-        </ol>
+        <div className="step-detail">
+          <div className="step-args">
+            <Fields value={s.args} />
+          </div>
+          {s.result ? (
+            <div className="step-result">
+              <Fields value={parseJson(s.result.text)} />
+            </div>
+          ) : null}
+        </div>
       ) : null}
-    </div>
+    </li>
   );
 }
 

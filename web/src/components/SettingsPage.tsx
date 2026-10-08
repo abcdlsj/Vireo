@@ -153,7 +153,6 @@ function Models({ reload }: { reload: () => Promise<void> }) {
   };
   return (
     <section className="card" data-testid="models-card">
-      <h3>Model</h3>
       {st.fake ? <p className="tag">Demo mode: a scripted model is answering.</p> : null}
       {st.ready ? (
         <p>
@@ -261,7 +260,6 @@ function Notifications({ me, reload }: { me: Me; reload: () => Promise<void> }) 
   };
   return (
     <section className="card">
-      <h3>Notifications</h3>
       <p className="muted small">Vireo notifies you when something needs you: confirmations, emails that need a reply, reminders and the morning brief.</p>
       {supported ? (
         <div className="row-buttons">
@@ -379,7 +377,6 @@ function SignIns() {
   }, []);
   return (
     <section className="card">
-      <h3>Sign-ins for websites</h3>
       <p className="muted small">
         Stored encrypted on your server. Vireo's browser fills them in itself; passwords are never shown to the model or written to logs.
       </p>
@@ -423,7 +420,6 @@ function Usage() {
   if (u.byPurpose.length === 0) return <p className="muted">No model calls yet.</p>;
   return (
     <section className="card">
-      <h3>Usage</h3>
       <table className="usage">
         <thead>
           <tr>
