@@ -1,4 +1,5 @@
 import type { Db } from "./db.js";
+import { applyProxy } from "./net.js";
 
 /** Owner preferences that change Vireo's behaviour. */
 export interface OwnerSettings {
@@ -17,6 +18,8 @@ export interface OwnerSettings {
   watchCalendar: boolean;
   /** Days without activity before a thread is mentioned as quiet in the brief. */
   staleDays: number;
+  /** HTTP proxy for web search, page fetches and the browser, e.g. "http://127.0.0.1:7890". Empty connects directly. */
+  proxyUrl: string;
 }
 
 const DEFAULTS: OwnerSettings = {
@@ -28,10 +31,13 @@ const DEFAULTS: OwnerSettings = {
   inboxQuery: "in:inbox is:unread category:primary",
   watchCalendar: true,
   staleDays: 7,
+  proxyUrl: "",
 };
 
 export class Settings {
-  constructor(private readonly db: Db) {}
+  constructor(private readonly db: Db) {
+    applyProxy(this.get().proxyUrl);
+  }
 
   get(): OwnerSettings {
     return { ...DEFAULTS, ...(this.db.getKv<Partial<OwnerSettings>>("settings") ?? {}) };
@@ -40,6 +46,7 @@ export class Settings {
   update(patch: Partial<OwnerSettings>): OwnerSettings {
     const next = { ...this.get(), ...patch };
     this.db.setKv("settings", next);
+    applyProxy(next.proxyUrl);
     return next;
   }
 }

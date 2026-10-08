@@ -126,6 +126,7 @@ export interface OwnerSettings {
   inboxQuery: string;
   watchCalendar: boolean;
   staleDays: number;
+  proxyUrl: string;
 }
 
 export interface Me {

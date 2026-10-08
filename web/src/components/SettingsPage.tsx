@@ -300,6 +300,16 @@ function Preferences({ settings, reload }: { settings: OwnerSettings; reload: ()
           Mention quiet threads after (days)
           <input type="number" min={1} value={s.staleDays} onChange={(e) => setS({ ...s, staleDays: Number(e.target.value) })} />
         </label>
+        <label>
+          Proxy for the web and browser
+          <input
+            value={s.proxyUrl ?? ""}
+            placeholder="http://127.0.0.1:7890"
+            spellCheck={false}
+            onChange={(e) => setS({ ...s, proxyUrl: e.target.value })}
+            data-testid="proxy-url"
+          />
+        </label>
       </div>
       <label className="check">
         <input type="checkbox" checked={s.watchInbox} onChange={(e) => setS({ ...s, watchInbox: e.target.checked })} /> Watch my inbox and open threads for

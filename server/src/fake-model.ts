@@ -411,30 +411,34 @@ function browser(t: Turn): AssistantMessage {
     return reply("Everything is filled in. Confirm on the card and I'll submit it.");
   }
   const snap = last.text;
-  const el = (pattern: RegExp) => snap.split("\n").find((l) => /^\[e\d+\]/.test(l) && pattern.test(l))?.match(/^\[(e\d+)\]/)?.[1];
+  const lines = snap.split("\n").filter((l) => /\[ref=\w+\]/.test(l));
+  const el = (pattern: RegExp) => lines.find((l) => pattern.test(l))?.match(/\[ref=(\w+)\]/)?.[1];
   const typed = (ref: string | undefined) => ref && snaps.some((s) => s.name === "browser_type" && s.args.ref === ref);
-  const hasPassword = /input\(password\)/.test(snap);
+  const hasPassword = /textbox "Password"/i.test(snap);
   if (hasPassword) {
-    const user = el(/input\((text|email)\)/);
-    const pass = el(/input\(password\)/);
+    const user = el(/textbox "(Email|Username|Email or username)"/i);
+    const pass = el(/textbox "Password"/i);
     if (user && !typed(user) && !snaps.some((s) => s.name === "browser_type" && s.args.text === "{{username}}")) return call("browser_type", { ref: user, text: "{{username}}" });
     if (pass && !snaps.some((s) => s.name === "browser_type" && s.args.text === "{{password}}")) return call("browser_type", { ref: pass, text: "{{password}}" });
-    const signIn = el(/(button|input\(submit\)).*(sign in|log ?in)/i);
+    const signIn = el(/button "(sign in|log ?in)"/i);
     if (signIn) return call("browser_click", { ref: signIn, description: "Sign in" });
   }
   if (/Booking confirmed/i.test(snap)) return reply(`Done — ${(snap.match(/Booking confirmed for[^\n]*/) ?? snap.match(/Booking confirmed[^\n]*/))?.[0]}.`);
-  const name = el(/"Name"/i);
-  const guests = el(/"Guests"/i);
-  const date = el(/"Date"/i);
+  const name = el(/textbox "Name"/i);
+  const guests = el(/(combobox|textbox) "Guests"/i);
+  const date = el(/textbox "Date"/i);
   const guestCount = t.owner.match(/(\d+)\s*(?:people|guests|persons|人)/)?.[1] ?? "2";
   const ownerName = t.owner.match(/under (?:the name )?(\w+)/i)?.[1] ?? "Owner";
   // Element refs restart on each page, so only count what was filled since the last navigation.
   const lastNav = snaps.findLastIndex((s) => s.name === "browser_click" || s.name === "browser_open");
   const typedNow = snaps.slice(lastNav + 1).filter((s) => s.name === "browser_type" || s.name === "browser_select").map((s) => s.args.ref);
   if (name && !typedNow.includes(name)) return call("browser_type", { ref: name, text: ownerName });
-  if (guests && !typedNow.includes(guests)) return call(/select/.test(snap.split("\n").find((l) => l.startsWith(`[${guests}]`)) ?? "") ? "browser_select" : "browser_type", { ref: guests, ...(/select/.test(snap.split("\n").find((l) => l.startsWith(`[${guests}]`)) ?? "") ? { value: guestCount } : { text: guestCount }) });
+  if (guests && !typedNow.includes(guests)) {
+    const isSelect = /combobox "Guests"/i.test(snap);
+    return call(isSelect ? "browser_select" : "browser_type", { ref: guests, ...(isSelect ? { values: [guestCount] } : { text: guestCount }) });
+  }
   if (date && !typedNow.includes(date)) return call("browser_type", { ref: date, text: "2026-10-15" });
-  const submit = el(/(button|input\(submit\)).*(book|submit|reserve)/i);
+  const submit = el(/button "[^"]*(book|submit|reserve)/i);
   if (submit) return call("browser_click", { ref: submit, description: `Submit the booking for ${guestCount} under ${ownerName}` });
   return reply(`I opened ${url ?? "the page"} but couldn't find what to do next.`);
 }

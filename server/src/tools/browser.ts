@@ -7,21 +7,26 @@ function snapshotOutput(ctx: ToolContext, snap: Awaited<ReturnType<ToolContext["
   return { text: untrustedBlock(snap.url, formatSnapshot(snap)), details: { url: snap.url } };
 }
 
+const Ref = Type.String({ description: "Element ref from the latest snapshot, e.g. e12 or f1e3" });
+
 export const browserTools = [
   defineTool({
     name: "browser_open",
     label: "Open page",
-    description: "Open a URL in this thread's browser tab. Returns the page text and element refs.",
-    parameters: Type.Object({ url: Type.String() }),
+    description: "Open a URL in this thread's browser. Returns the page as an accessibility tree with element refs.",
+    parameters: Type.Object({
+      url: Type.String(),
+      new_tab: Type.Optional(Type.Boolean({ description: "Open in a new tab instead of the current one" })),
+    }),
     untrusted: true,
     async run(args, ctx) {
-      return snapshotOutput(ctx, await ctx.app.browser.open(ctx.thread.id, args.url));
+      return snapshotOutput(ctx, await ctx.app.browser.open(ctx.thread.id, args.url, Boolean(args.new_tab)));
     },
   }),
   defineTool({
     name: "browser_snapshot",
     label: "Look at page",
-    description: "Re-read the current page and its element refs.",
+    description: "Re-read the current page and its element refs. Refs from older snapshots may stop working after the page changes.",
     parameters: Type.Object({}),
     untrusted: true,
     async run(_args, ctx) {
@@ -29,45 +34,139 @@ export const browserTools = [
     },
   }),
   defineTool({
+    name: "browser_read",
+    label: "Read page",
+    description: "Return the visible text of the current page, for reading articles, prices or long result lists.",
+    parameters: Type.Object({}),
+    untrusted: true,
+    async run(_args, ctx) {
+      const r = await ctx.app.browser.read(ctx.thread.id);
+      return { text: untrustedBlock(r.url, `URL: ${r.url}\nTitle: ${r.title}\n\n${r.text}`), details: { url: r.url } };
+    },
+  }),
+  defineTool({
     name: "browser_click",
     label: "Click",
     description: "Click an element by ref. Clicks that submit, pay, book or buy wait for the owner's confirmation.",
     parameters: Type.Object({
-      ref: Type.String(),
+      ref: Ref,
       description: Type.String({ description: "What this click does, for the owner, e.g. 'Submit the booking form'" }),
+      double: Type.Optional(Type.Boolean()),
     }),
     untrusted: true,
     confirm: (args, ctx) => ctx.app.browser.isConsequentialClick(ctx.thread.id, args.ref),
     summarize: (args) => args.description,
     async run(args, ctx) {
-      return snapshotOutput(ctx, await ctx.app.browser.click(ctx.thread.id, args.ref));
+      return snapshotOutput(ctx, await ctx.app.browser.click(ctx.thread.id, args.ref, Boolean(args.double)));
     },
   }),
   defineTool({
     name: "browser_type",
     label: "Type",
     description:
-      "Type into a field by ref. Use {{username}} and {{password}} to fill stored credentials for the current site. Set submit=true to press Enter (waits for confirmation).",
+      "Replace the text of a field by ref. Use {{username}} and {{password}} to fill stored credentials for the current site. Set submit=true to press Enter (submitting a non-search form waits for confirmation). Set slowly=true for autocomplete fields that need real key presses.",
     parameters: Type.Object({
-      ref: Type.String(),
+      ref: Ref,
       text: Type.String(),
       submit: Type.Optional(Type.Boolean()),
+      slowly: Type.Optional(Type.Boolean()),
     }),
     untrusted: true,
-    confirm: (args) => Boolean(args.submit),
-    summarize: (args) => `Type into the page and press Enter to submit`,
+    confirm: (args, ctx) => (args.submit ? ctx.app.browser.isConsequentialSubmit(ctx.thread.id, args.ref) : false),
+    summarize: () => `Type into the page and press Enter to submit`,
     async run(args, ctx) {
-      return snapshotOutput(ctx, await ctx.app.browser.type(ctx.thread.id, args.ref, args.text, Boolean(args.submit)));
+      return snapshotOutput(ctx, await ctx.app.browser.type(ctx.thread.id, args.ref, args.text, Boolean(args.submit), Boolean(args.slowly)));
+    },
+  }),
+  defineTool({
+    name: "browser_press",
+    label: "Press key",
+    description: "Press a key or shortcut, e.g. Enter, Escape, Tab, ArrowDown, PageDown. Targets the element by ref, or the focused element when ref is omitted.",
+    parameters: Type.Object({ key: Type.String(), ref: Type.Optional(Ref) }),
+    untrusted: true,
+    confirm: (args, ctx) => (/^enter$/i.test(args.key) ? ctx.app.browser.isConsequentialSubmit(ctx.thread.id, args.ref) : false),
+    summarize: (args) => `Press ${args.key} to submit the form`,
+    async run(args, ctx) {
+      return snapshotOutput(ctx, await ctx.app.browser.press(ctx.thread.id, args.key, args.ref));
     },
   }),
   defineTool({
     name: "browser_select",
     label: "Choose option",
-    description: "Choose an option in a select element by ref.",
-    parameters: Type.Object({ ref: Type.String(), value: Type.String() }),
+    description: "Choose one or more options in a native select element (combobox) by ref. For custom dropdowns, click the dropdown and then the option instead.",
+    parameters: Type.Object({ ref: Ref, values: Type.Array(Type.String(), { minItems: 1 }) }),
     untrusted: true,
     async run(args, ctx) {
-      return snapshotOutput(ctx, await ctx.app.browser.select(ctx.thread.id, args.ref, args.value));
+      return snapshotOutput(ctx, await ctx.app.browser.select(ctx.thread.id, args.ref, args.values));
+    },
+  }),
+  defineTool({
+    name: "browser_check",
+    label: "Tick box",
+    description: "Check or uncheck a checkbox, radio button or switch by ref.",
+    parameters: Type.Object({ ref: Ref, checked: Type.Boolean() }),
+    untrusted: true,
+    async run(args, ctx) {
+      return snapshotOutput(ctx, await ctx.app.browser.check(ctx.thread.id, args.ref, args.checked));
+    },
+  }),
+  defineTool({
+    name: "browser_hover",
+    label: "Hover",
+    description: "Move the mouse over an element by ref, to open hover menus or tooltips.",
+    parameters: Type.Object({ ref: Ref }),
+    untrusted: true,
+    async run(args, ctx) {
+      return snapshotOutput(ctx, await ctx.app.browser.hover(ctx.thread.id, args.ref));
+    },
+  }),
+  defineTool({
+    name: "browser_scroll",
+    label: "Scroll",
+    description: "Scroll the page up or down to load more content, or scroll an element into view by ref.",
+    parameters: Type.Object({
+      direction: Type.Optional(Type.Union([Type.Literal("down"), Type.Literal("up")])),
+      ref: Type.Optional(Ref),
+    }),
+    untrusted: true,
+    async run(args, ctx) {
+      return snapshotOutput(ctx, await ctx.app.browser.scroll(ctx.thread.id, args.direction ?? "down", args.ref));
+    },
+  }),
+  defineTool({
+    name: "browser_wait",
+    label: "Wait",
+    description: "Wait until some text appears on the page, or for a number of seconds (max 20), when results are still loading.",
+    parameters: Type.Object({ text: Type.Optional(Type.String()), seconds: Type.Optional(Type.Number({ minimum: 0.5, maximum: 20 })) }),
+    untrusted: true,
+    async run(args, ctx) {
+      return snapshotOutput(ctx, await ctx.app.browser.wait(ctx.thread.id, args));
+    },
+  }),
+  defineTool({
+    name: "browser_back",
+    label: "Go back",
+    description: "Go back (or forward) in the current tab's history.",
+    parameters: Type.Object({ forward: Type.Optional(Type.Boolean()) }),
+    untrusted: true,
+    async run(args, ctx) {
+      return snapshotOutput(ctx, await ctx.app.browser.history(ctx.thread.id, args.forward ? "forward" : "back"));
+    },
+  }),
+  defineTool({
+    name: "browser_tab",
+    label: "Switch tab",
+    description: "Switch to or close one of this thread's tabs by index (listed in the snapshot). Links that open a new tab switch to it automatically.",
+    parameters: Type.Object({
+      index: Type.Optional(Type.Number({ minimum: 0 })),
+      close: Type.Optional(Type.Boolean({ description: "Close the tab (the current one when index is omitted)" })),
+    }),
+    untrusted: true,
+    async run(args, ctx) {
+      const b = ctx.app.browser;
+      if (args.close) return snapshotOutput(ctx, await b.closeTab(ctx.thread.id, args.index));
+      if (args.index === undefined) return snapshotOutput(ctx, await b.snapshot(ctx.thread.id));
+      return snapshotOutput(ctx, await b.selectTab(ctx.thread.id, args.index));
     },
   }),
   defineTool({

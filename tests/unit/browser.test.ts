@@ -1,0 +1,88 @@
+import { createServer, type Server } from "node:http";
+import type { AddressInfo } from "node:net";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import type { App } from "../../server/src/app.js";
+import { formatSnapshot } from "../../server/src/browser.js";
+import { normaliseProxy } from "../../server/src/net.js";
+import { testApp } from "./helpers.js";
+
+const PAGES: Record<string, string> = {
+  "/": `<h1>Home</h1>
+    <div style="cursor:pointer" onclick="document.getElementById('out').textContent='div clicked'">Fancy button</div>
+    <p id="out"></p>
+    <iframe srcdoc="<button onclick=&quot;this.textContent='inner clicked'&quot;>Inner</button>"></iframe>
+    <a href="/second" target="_blank">Open in new tab</a>
+    <form action="/search" role="search"><input name="q" aria-label="Search"></form>
+    <form action="/book" method="post"><label for="n">Name</label><input id="n" name="n"><button>Book table</button></form>`,
+  "/second": `<h1>Second page</h1>`,
+};
+
+let server: Server;
+let base = "";
+let app: App;
+
+beforeAll(async () => {
+  server = createServer((req, res) => {
+    const path = new URL(req.url ?? "/", "http://x").pathname;
+    res.writeHead(200, { "content-type": "text/html" });
+    res.end(`<!doctype html><title>${path}</title>${PAGES[path] ?? "<p>other</p>"}`);
+  });
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  app = testApp();
+});
+
+afterAll(async () => {
+  await app.browser.shutdown();
+  app.db.close();
+  server.close();
+});
+
+const ref = (tree: string, pattern: RegExp) => tree.split("\n").find((l) => pattern.test(l))?.match(/\[ref=(\w+)\]/)?.[1];
+
+describe("browser", () => {
+  it("acts on clickable divs and elements inside iframes through snapshot refs", async () => {
+    const t = app.threads.create({});
+    let snap = await app.browser.open(t.id, `${base}/`);
+    expect(formatSnapshot(snap)).toContain("[ref=");
+    snap = await app.browser.click(t.id, ref(snap.tree, /Fancy button/)!);
+    expect(snap.tree).toContain("div clicked");
+    const inner = ref(snap.tree, /button "Inner"/)!;
+    expect(inner).toMatch(/^f\d+e\d+$/);
+    snap = await app.browser.click(t.id, inner);
+    expect(snap.tree).toContain("inner clicked");
+  });
+
+  it("follows links that open a new tab and lists the tabs", async () => {
+    const t = app.threads.create({});
+    let snap = await app.browser.open(t.id, `${base}/`);
+    snap = await app.browser.click(t.id, ref(snap.tree, /link "Open in new tab"/)!);
+    expect(snap.title).toBe("/second");
+    expect(snap.tabs).toHaveLength(2);
+    snap = await app.browser.selectTab(t.id, 0);
+    expect(snap.title).toBe("/");
+  });
+
+  it("does not ask for confirmation to search, but does to book", async () => {
+    const t = app.threads.create({});
+    const snap = await app.browser.open(t.id, `${base}/`);
+    expect(await app.browser.isConsequentialSubmit(t.id, ref(snap.tree, /textbox "Search"/))).toBe(false);
+    expect(await app.browser.isConsequentialSubmit(t.id, ref(snap.tree, /textbox "Name"/))).toBe(true);
+    expect(await app.browser.isConsequentialClick(t.id, ref(snap.tree, /button "Book table"/)!)).toBe(true);
+  });
+
+  it("streams frames of the current tab for the live view", async () => {
+    const t = app.threads.create({});
+    await app.browser.open(t.id, `${base}/second`);
+    const frame = await app.browser.frame(t.id);
+    expect(frame?.subarray(0, 2)).toEqual(Buffer.from([0xff, 0xd8]));
+  });
+});
+
+describe("proxy setting", () => {
+  it("accepts host:port and full URLs", () => {
+    expect(normaliseProxy("127.0.0.1:7890")).toBe("http://127.0.0.1:7890");
+    expect(normaliseProxy(" socks5://127.0.0.1:7891 ")).toBe("socks5://127.0.0.1:7891");
+    expect(normaliseProxy("")).toBe("");
+  });
+});
