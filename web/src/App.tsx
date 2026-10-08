@@ -6,6 +6,7 @@ import { NewThread } from "./components/NewThread";
 import { SettingsPage } from "./components/SettingsPage";
 import { ThreadList } from "./components/ThreadList";
 import { ThreadView } from "./components/ThreadView";
+import { MemoryIcon, PlusIcon, SettingsIcon } from "./icons";
 import { go, useRoute } from "./route";
 
 type AuthState = { loading: true } | { loading: false; hasOwner: boolean; authenticated: boolean; setupNeedsCode: boolean };
@@ -74,7 +75,7 @@ function Shell({ onSignedOut }: { onSignedOut: () => void }) {
     });
   }, [loadThreads, loadMe]);
 
-  const current = route.name === "thread" ? route.id : null;
+  const current = route.name === "thread" ? route.id : route.name === "home" ? "overview" : null;
   const showList = route.name === "home";
   const needsYou = threads.filter((t) => t.group === "needs_you").length;
 
@@ -89,21 +90,23 @@ function Shell({ onSignedOut }: { onSignedOut: () => void }) {
     <div className={`shell ${showList ? "show-list" : "show-main"}`}>
       <aside className="sidebar">
         <header className="sidebar-head">
-          <div className="brand" onClick={() => go("thread/overview")}>
-            <img src="/icon.svg" alt="" width={26} height={26} />
+          <a className="brand" href="#thread/overview">
+            <img src="/icon.svg" alt="" width={24} height={24} />
             <span>Vireo</span>
-          </div>
-          <button className="btn primary small" onClick={() => go("new")} aria-label="New thread" data-testid="new-thread">
-            + New
+          </a>
+          <button className="icon-btn" onClick={() => go("new")} aria-label="New thread" title="New thread" data-testid="new-thread">
+            <PlusIcon />
           </button>
         </header>
         <ThreadList threads={threads} current={current} />
         <nav className="sidebar-foot">
-          <a href="#memory" className={route.name === "memory" ? "active" : ""}>
-            Memory
+          <a href="#memory" className={`nav-item ${route.name === "memory" ? "active" : ""}`}>
+            <MemoryIcon />
+            <span>Memory</span>
           </a>
-          <a href="#settings" className={route.name === "settings" ? "active" : ""}>
-            Settings
+          <a href="#settings" className={`nav-item ${route.name === "settings" ? "active" : ""}`}>
+            <SettingsIcon />
+            <span>Settings</span>
             {me && !me.models.ready ? <span className="dot warn" title="No model configured" /> : null}
           </a>
         </nav>

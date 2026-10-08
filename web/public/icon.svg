@@ -1,6 +1,14 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="112" fill="#2f6b4f"/>
-  <path d="M120 300c40-90 120-150 230-150 22 0 40 4 54 10-26 8-44 22-56 40 30 4 52 16 64 34-40-8-74-2-100 16-38 26-62 70-132 76-28 2-50-8-60-26z" fill="#f3f1e7"/>
-  <circle cx="318" cy="196" r="12" fill="#2f6b4f"/>
-  <path d="M352 190l46-10-40 26z" fill="#e2b74a"/>
+  <rect width="512" height="512" rx="116" fill="#e6f0e3"/>
+  <g transform="translate(-14 -6) scale(1.04)">
+  <path d="M168 352 L74 430 Q70 438 80 437 L196 384 Z" fill="#3f7556"/>
+  <ellipse cx="250" cy="298" rx="148" ry="104" transform="rotate(-24 250 298)" fill="#4e8a63"/>
+  <circle cx="324" cy="196" r="82" fill="#4e8a63"/>
+  <path d="M188 360 Q250 392 330 340 Q372 306 380 250 Q330 330 188 360Z" fill="#cfe3cc"/>
+  <path d="M170 300 Q228 228 318 262 Q262 300 170 300Z" fill="#3f7556"/>
+  <path d="M398 182 L462 198 L398 214 Z" fill="#3f7556"/>
+  <path d="M286 170 Q330 146 382 168" stroke="#f4f8f2" stroke-width="13" stroke-linecap="round" fill="none"/>
+  <circle cx="350" cy="196" r="15" fill="#1f3a2b"/>
+  <circle cx="355" cy="191" r="4.5" fill="#fff"/>
+  </g>
 </svg>

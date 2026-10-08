@@ -17,7 +17,7 @@ for (const [name, size, pad, solid] of [
   await page.setViewportSize({ width: size, height: size });
   const inner = Math.round(size * (1 - pad * 2));
   await page.setContent(
-    `<html><body style="margin:0;background:${solid ? "#2f6b4f" : "transparent"};display:grid;place-items:center;height:${size}px">` +
+    `<html><body style="margin:0;background:${solid ? "#e6f0e3" : "transparent"};display:grid;place-items:center;height:${size}px">` +
       `<div style="width:${inner}px;height:${inner}px">${svg.replace("<svg ", `<svg width="${inner}" height="${inner}" `)}</div></body></html>`,
   );
   await page.screenshot({ path: out(name), omitBackground: !solid });

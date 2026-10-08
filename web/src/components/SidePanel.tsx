@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, type ThreadDetail } from "../api";
 import { bytes, dateTime, toolLabel } from "../format";
+import { CloseIcon } from "../icons";
 
 interface ToolCallRow {
   id: number;
@@ -50,7 +51,7 @@ export function SidePanel({ detail, onClose }: { detail: ThreadDetail; onClose: 
           Activity
         </button>
         <button className="close" onClick={onClose} aria-label="Close">
-          ×
+          <CloseIcon />
         </button>
       </div>
       {tab === "related" ? (

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { ArrowUpIcon, AttachIcon, StopIcon } from "../icons";
 
 export function Composer({
   onSend,
@@ -56,9 +57,9 @@ export function Composer({
           ))}
         </div>
       ) : null}
-      <div className="composer-row">
+      <div className="composer-box">
         <button className="icon-btn" onClick={() => fileRef.current?.click()} aria-label="Attach files" title="Attach files">
-          📎
+          <AttachIcon />
         </button>
         <input
           ref={fileRef}
@@ -88,11 +89,11 @@ export function Composer({
         />
         {running && onStop && !text.trim() ? (
           <button className="send stop" onClick={onStop} aria-label="Stop">
-            ■
+            <StopIcon />
           </button>
         ) : (
           <button className="send" onClick={() => void submit()} disabled={busy || (!text.trim() && files.length === 0)} aria-label="Send" data-testid="send">
-            ↑
+            <ArrowUpIcon />
           </button>
         )}
       </div>

@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { api, ApiError, onEvent, type Action, type Message, type ThreadDetail } from "../api";
-import { dateTime, prettyDates, toolLabel } from "../format";
+import { dateTime, prettyDates, shortTime, toolLabel } from "../format";
 import { Markdown } from "../markdown";
 import { go } from "../route";
 import { ActionCard } from "./ActionCard";
 import { Composer } from "./Composer";
 import { ProcedureCard } from "./ProcedureCard";
 import { SidePanel } from "./SidePanel";
+import { AlertIcon, ArrowUpRightIcon, BellIcon, CheckIcon, ChevronLeft, ChevronRight, ClockIcon, PanelIcon, StatusIcon } from "../icons";
 
 type Item =
   | { kind: "user"; m: Extract<Message, { role: "user" }> }
@@ -146,44 +147,32 @@ export function ThreadView({ id }: { id: string }) {
 
   return (
     <div className={`thread-view ${panel ? "with-panel" : ""}`} data-testid="thread-view" data-thread-id={t.id}>
-      <header className="thread-head">
+      <header className="topbar">
         <a href="#" className="back" aria-label="Back to threads">
-          ‹
+          <ChevronLeft />
         </a>
-        {editingTitle ? (
-          <input
-            className="title-input"
-            defaultValue={t.title}
-            autoFocus
-            onBlur={(e) => void rename(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") void rename((e.target as HTMLInputElement).value);
-              if (e.key === "Escape") setEditingTitle(false);
-            }}
-          />
-        ) : (
-          <h2 onClick={() => !isOverview && setEditingTitle(true)} title={isOverview ? undefined : "Rename"} data-testid="thread-title">
-            {t.title}
-            {t.temporary ? <span className="tag">temporary</span> : null}
-            {t.state === "done" ? <span className="tag done">done</span> : null}
-          </h2>
-        )}
+        <span className="crumbs">
+          <span className="crumb-root">{isOverview ? "Vireo" : "Threads"}</span>
+          <span className="crumb-sep">/</span>
+          <span className="crumb-here">{t.title}</span>
+        </span>
         <div className="head-actions">
           {isOverview ? (
-            <button className="btn small" onClick={() => void api.post("/api/brief")} data-testid="brief-now">
+            <button className="btn ghost small" onClick={() => void api.post("/api/brief")} data-testid="brief-now">
               Brief me
             </button>
           ) : t.state === "done" ? (
-            <button className="btn small" onClick={() => void api.post(`/api/threads/${t.id}/reopen`).then(load)}>
+            <button className="btn ghost small" onClick={() => void api.post(`/api/threads/${t.id}/reopen`).then(load)}>
               Reopen
             </button>
           ) : (
-            <button className="btn small" onClick={() => void api.post(`/api/threads/${t.id}/done`).then(load)} data-testid="mark-done">
+            <button className="btn ghost small" onClick={() => void api.post(`/api/threads/${t.id}/done`).then(load)} data-testid="mark-done">
+              <CheckIcon />
               Done
             </button>
           )}
-          <button className={`btn small ghost ${panel ? "on" : ""}`} onClick={() => setPanel(!panel)} aria-label="Details" data-testid="toggle-panel">
-            Details
+          <button className={`btn ghost small ${panel ? "on" : ""}`} onClick={() => setPanel(!panel)} aria-label="Details" title="Details" data-testid="toggle-panel">
+            <PanelIcon />
           </button>
         </div>
       </header>
@@ -198,6 +187,47 @@ export function ThreadView({ id }: { id: string }) {
           }}
         >
           <div className="conversation-inner">
+            <div className="page-head">
+              {editingTitle ? (
+                <input
+                  className="title-input"
+                  defaultValue={t.title}
+                  autoFocus
+                  onBlur={(e) => void rename(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") void rename((e.target as HTMLInputElement).value);
+                    if (e.key === "Escape") setEditingTitle(false);
+                  }}
+                />
+              ) : (
+                <h1 onClick={() => !isOverview && setEditingTitle(true)} title={isOverview ? undefined : "Rename"} data-testid="thread-title">
+                  {t.title}
+                </h1>
+              )}
+              {isOverview ? (
+                <p className="page-sub">Quick questions and your morning brief.</p>
+              ) : (
+                <dl className="props">
+                  <div>
+                    <dt>
+                      <StatusIcon />
+                      Status
+                    </dt>
+                    <dd>
+                      <StatusTag t={t} />
+                      {t.temporary ? <span className="tag">Temporary</span> : null}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>
+                      <ClockIcon />
+                      Started
+                    </dt>
+                    <dd>{dateTime(t.createdAt)}</dd>
+                  </div>
+                </dl>
+              )}
+            </div>
             {items.length === 0 && !live ? (
               <div className="empty">{isOverview ? "Ask anything. Your morning brief lands here too." : "No messages yet."}</div>
             ) : null}
@@ -233,6 +263,13 @@ export function ThreadView({ id }: { id: string }) {
   );
 }
 
+function StatusTag({ t }: { t: ThreadDetail["thread"] }) {
+  if (t.state === "done") return <span className="tag green">Done</span>;
+  if (t.running) return <span className="tag blue">Working</span>;
+  if (t.needsYou) return <span className="tag orange">Needs you</span>;
+  return <span className="tag">In progress</span>;
+}
+
 function ItemView({ item, actions, onChange }: { item: Item; actions: Map<string, Action>; onChange: () => void }) {
   switch (item.kind) {
     case "user":
@@ -253,7 +290,9 @@ function ItemView({ item, actions, onChange }: { item: Item; actions: Map<string
       return (
         <div className="msg assistant" data-testid="msg-assistant">
           <Markdown text={item.m.text} />
-          <span className="meta">{dateTime(item.m.createdAt)}</span>
+          <span className="meta" title={dateTime(item.m.createdAt)}>
+            {shortTime(item.m.createdAt)}
+          </span>
         </div>
       );
     case "steps":
@@ -268,7 +307,10 @@ function ItemView({ item, actions, onChange }: { item: Item; actions: Map<string
       if (n.kind === "thread_link") {
         return (
           <div className="notice">
-            ↗ <a href={`#thread/${String(n.data?.threadId)}`}>{n.text}</a>
+            <a href={`#thread/${String(n.data?.threadId)}`}>
+              {n.text}
+              <ArrowUpRightIcon />
+            </a>
           </div>
         );
       }
@@ -278,8 +320,8 @@ function ItemView({ item, actions, onChange }: { item: Item; actions: Map<string
       }
       return (
         <div className={`notice ${n.kind}`} data-testid={`notice-${n.kind}`}>
-          {n.kind === "reminder" ? "⏰ " : n.kind === "error" ? "⚠︎ " : ""}
-          {n.text}
+          {n.kind === "reminder" ? <BellIcon /> : n.kind === "error" ? <AlertIcon /> : null}
+          <span>{n.text}</span>
         </div>
       );
     }
@@ -294,10 +336,12 @@ function Steps({ steps }: { steps: { name: string; args: Record<string, unknown>
   return (
     <div className="steps" data-testid="steps">
       <button className="steps-toggle" onClick={() => setOpen(!open)} aria-expanded={open}>
-        <span className="chev">{open ? "▾" : "▸"}</span>
+        <span className={`chev ${open ? "open" : ""}`}>
+          <ChevronRight />
+        </span>
         {labels.slice(0, 3).join(" · ")}
         {labels.length > 3 ? ` · +${labels.length - 3}` : ""}
-        <span className="muted"> ({visible.length} step{visible.length > 1 ? "s" : ""})</span>
+        <span className="count">{visible.length}</span>
       </button>
       {open ? (
         <ol className="step-list">

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, onEvent, type Fact, type Procedure } from "../api";
-import { dateTime } from "../format";
+import { dateTime, shortTime } from "../format";
+import { ArrowUpRightIcon, ChevronLeft } from "../icons";
 import { Markdown } from "../markdown";
 
 interface Episode {
@@ -45,13 +46,18 @@ export function MemoryPage() {
 
   return (
     <div className="page" data-testid="memory-page">
-      <header className="thread-head">
+      <header className="topbar">
         <a href="#" className="back" aria-label="Back">
-          ‹
+          <ChevronLeft />
         </a>
-        <h2>Memory</h2>
+        <span className="crumbs">
+          <span className="crumb-root">Vireo</span>
+          <span className="crumb-sep">/</span>
+          <span className="crumb-here">Memory</span>
+        </span>
       </header>
       <div className="page-body">
+        <h1 className="page-title">Memory</h1>
         <p className="muted">
           What Vireo knows about you, shared across all threads. Newer facts replace older ones; every fact links to where it came from. Correct or delete anything.
         </p>
@@ -120,12 +126,14 @@ export function MemoryPage() {
             <h3>Recent episodes</h3>
             {episodes.slice(0, 15).map((e) => (
               <div key={e.id} className="episode">
-                <small className="muted">{dateTime(e.occurredAt)}</small> {e.content.slice(0, 240)}
+                <span className="episode-time" title={dateTime(e.occurredAt)}>
+                  {shortTime(e.occurredAt)}
+                </span>
+                <span className="episode-text">{e.content.replace(/^Owner said in "[^"]*": /, "").slice(0, 240)}</span>
                 {e.threadId ? (
-                  <>
-                    {" "}
-                    <a href={`#thread/${e.threadId}`}>open thread</a>
-                  </>
+                  <a href={`#thread/${e.threadId}`} className="icon-btn" title="Open thread" aria-label="Open thread">
+                    <ArrowUpRightIcon />
+                  </a>
                 ) : null}
               </div>
             ))}

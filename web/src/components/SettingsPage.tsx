@@ -1,17 +1,23 @@
 import { useEffect, useState } from "react";
+import { ChevronLeft } from "../icons";
 import { api, type Me, type ModelStatus, type OwnerSettings } from "../api";
 
 export function SettingsPage({ me, reload, onSignedOut }: { me: Me | null; reload: () => Promise<void>; onSignedOut: () => void }) {
   if (!me) return <div className="page" />;
   return (
     <div className="page" data-testid="settings-page">
-      <header className="thread-head">
+      <header className="topbar">
         <a href="#" className="back" aria-label="Back">
-          ‹
+          <ChevronLeft />
         </a>
-        <h2>Settings</h2>
+        <span className="crumbs">
+          <span className="crumb-root">Vireo</span>
+          <span className="crumb-sep">/</span>
+          <span className="crumb-here">Settings</span>
+        </span>
       </header>
       <div className="page-body settings">
+        <h1 className="page-title">Settings</h1>
         <Models reload={reload} />
         <Google me={me} reload={reload} />
         <Notifications me={me} reload={reload} />

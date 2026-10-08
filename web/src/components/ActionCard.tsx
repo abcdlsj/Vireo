@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { api, type Action } from "../api";
 import { prettyDates, toolLabel } from "../format";
+import { AlertIcon, CheckIcon, ToolIcon, XCircleIcon } from "../icons";
 
 const LONG_FIELDS = new Set(["body", "description", "steps", "text"]);
 
@@ -30,10 +31,11 @@ export function ActionCard({ action, onChange }: { action: Action; onChange: () 
   return (
     <div className={`action-card ${action.status}`} data-testid="action-card" data-status={action.status}>
       <div className="action-head">
-        <span className="action-kind">{toolLabel(action.tool)}</span>
-        <span className={`status-pill ${action.status}`}>
-          {pending ? "Needs your confirmation" : action.status === "done" ? "Done" : action.status === "cancelled" ? "Cancelled" : action.status === "failed" ? "Failed" : "Working…"}
+        <span className="action-kind">
+          <ToolIcon tool={action.tool} />
+          {toolLabel(action.tool)}
         </span>
+        <ActionStatus status={action.status} />
       </div>
       <div className="action-summary">{prettyDates(action.summary)}</div>
       <dl className="action-args">
@@ -81,5 +83,37 @@ export function ActionCard({ action, onChange }: { action: Action; onChange: () 
         </div>
       ) : null}
     </div>
+  );
+}
+
+/** Pending needs no label: the Confirm button already says it. */
+function ActionStatus({ status }: { status: Action["status"] }) {
+  if (status === "pending") return null;
+  if (status === "done")
+    return (
+      <span className="status-pill done">
+        <CheckIcon />
+        Done
+      </span>
+    );
+  if (status === "cancelled")
+    return (
+      <span className="status-pill">
+        <XCircleIcon />
+        Cancelled
+      </span>
+    );
+  if (status === "failed")
+    return (
+      <span className="status-pill failed">
+        <AlertIcon />
+        Failed
+      </span>
+    );
+  return (
+    <span className="status-pill">
+      <span className="pulse" />
+      Working
+    </span>
   );
 }

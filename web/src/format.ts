@@ -1,6 +1,6 @@
 export function relTime(ms: number): string {
   const d = Date.now() - ms;
-  if (d < 60_000) return "just now";
+  if (d < 60_000) return "now";
   if (d < 3600_000) return `${Math.floor(d / 60_000)}m`;
   if (d < 86400_000) return `${Math.floor(d / 3600_000)}h`;
   if (d < 7 * 86400_000) return `${Math.floor(d / 86400_000)}d`;
@@ -9,6 +9,13 @@ export function relTime(ms: number): string {
 
 export function dateTime(ms: number): string {
   return new Date(ms).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
+/** Time of day for today, otherwise the date and time. */
+export function shortTime(ms: number): string {
+  const d = new Date(ms);
+  const sameDay = d.toDateString() === new Date().toDateString();
+  return d.toLocaleString(undefined, sameDay ? { hour: "2-digit", minute: "2-digit" } : { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
 export function bytes(n: number): string {
