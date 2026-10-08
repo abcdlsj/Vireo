@@ -22,6 +22,7 @@
     "acceptance": "npm run build && node scripts/acceptance.mjs",
     "host": "node --env-file-if-exists=.env --disable-warning=ExperimentalWarning dist/server/index.js",
     "app": "node web/serve.mjs",
+    "deploy": "scripts/deploy.sh",
     "pair": "node --env-file-if-exists=.env --disable-warning=ExperimentalWarning dist/server/pair.js"
   },
   "dependencies": {
