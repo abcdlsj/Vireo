@@ -23,11 +23,14 @@ describe("memory graph", () => {
     expect(mem.list({ includeHistory: true })).toHaveLength(1);
   });
 
-  it("answers what was true at a point in time", () => {
+  it("answers what was true at a point in time", async () => {
+    const tick = () => new Promise((r) => setTimeout(r, 5));
     const mem = new MemoryStore(tempDb().db);
     const before = Date.now() - 1;
+    await tick();
     const old = mem.addFact({ key: "employer", statement: "Owner works at Acme" }).fact;
     const between = old.validFrom;
+    await tick(); // the replacement must be strictly later than "between"
     mem.addFact({ key: "employer", statement: "Owner works at Globex" });
     expect(mem.asOf(before, "works")).toHaveLength(0);
     expect(mem.asOf(between, "works").map((f) => f.statement)).toEqual(["Owner works at Acme"]);
