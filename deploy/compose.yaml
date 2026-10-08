@@ -4,7 +4,7 @@
 # Chromium that matches the playwright package.
 #
 #   host  the headless host (agent + API); reachable only by the app
-#   app   the UI; proxies /api to the host, published on loopback for a reverse proxy
+#   app   the UI; proxies /api to the host, published on VIREO_APP_BIND:VIREO_APP_PORT
 #
 # Model keys and other host settings: ./host.env (optional), or Settings in the app.
 x-runtime: &runtime
@@ -45,7 +45,7 @@ services:
     <<: *runtime
     command: ["node", "web/serve.mjs"]
     ports:
-      - "127.0.0.1:${VIREO_APP_PORT:-8780}:8780"
+      - "${VIREO_APP_BIND:-127.0.0.1}:${VIREO_APP_PORT:-8780}:8780"
     environment:
       VIREO_HOST_URL: http://host:8787
     depends_on:

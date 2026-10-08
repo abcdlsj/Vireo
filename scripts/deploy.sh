@@ -8,14 +8,16 @@
 #
 #   DEPLOY_HOST        ssh host (default tenc_sh)
 #   DEPLOY_DIR         directory on the server, relative to home (default vireo)
-#   VIREO_PUBLIC_URL   public HTTPS address (default https://vireo.warrenai.xyz)
-#   VIREO_APP_PORT     loopback port for the app on the server (default 8780)
+#   VIREO_APP_BIND     address the app listens on (default 0.0.0.0; 127.0.0.1 behind a reverse proxy)
+#   VIREO_APP_PORT     port the app listens on (default 8780)
+#   VIREO_PUBLIC_URL   address you open it at (default http://<server IP>:<port>)
 set -euo pipefail
 
 DEPLOY_HOST="${DEPLOY_HOST:-tenc_sh}"
 DEPLOY_DIR="${DEPLOY_DIR:-vireo}"
-VIREO_PUBLIC_URL="${VIREO_PUBLIC_URL:-https://vireo.warrenai.xyz}"
+VIREO_APP_BIND="${VIREO_APP_BIND:-0.0.0.0}"
 VIREO_APP_PORT="${VIREO_APP_PORT:-8780}"
+VIREO_PUBLIC_URL="${VIREO_PUBLIC_URL:-http://$(ssh -G "$DEPLOY_HOST" | awk '/^hostname /{print $2}'):$VIREO_APP_PORT}"
 
 cd "$(dirname "$0")/.."
 STAGE=.deploy
@@ -47,6 +49,7 @@ cp deploy/compose.yaml "$STAGE/compose.yaml"
 cat >"$STAGE/.env" <<EOF
 COMPOSE_PROJECT_NAME=vireo
 VIREO_PUBLIC_URL=$VIREO_PUBLIC_URL
+VIREO_APP_BIND=$VIREO_APP_BIND
 VIREO_APP_PORT=$VIREO_APP_PORT
 VIREO_NAME=$DEPLOY_HOST
 TZ=Asia/Shanghai
