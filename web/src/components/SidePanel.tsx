@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ClipboardEvent, type CompositionEvent, type DragEvent, type KeyboardEvent, type MouseEvent, type PointerEvent } from "react";
 import { api, fileUrl, type ThreadDetail } from "../api";
 import { authedUrl } from "../hosts";
 import { bytes, compact, dateTime, duration, purposeLabel, shortTime, stepOutcome, stepSubject, tokens, toolLabel, usd } from "../format";
-import { CloseIcon } from "../icons";
+import { CloseIcon, FullscreenIcon, NarrowIcon, WidenIcon } from "../icons";
 
 interface ToolCallRow {
   id: number;
@@ -30,12 +30,19 @@ interface LlmRow {
   created_at: number;
 }
 
+const WIDE_KEY = "vireo.panel.wide";
+
 /** Everything related to the thread: pages, emails, events, files, and the full audit trail (S6, N7). */
 export function SidePanel({ detail, running, browsing, onClose }: { detail: ThreadDetail; running: boolean; browsing: boolean; onClose: () => void }) {
   const [tab, setTab] = useState<"related" | "browser" | "activity" | "usage">(browsing ? "browser" : "related");
   useEffect(() => {
     if (browsing) setTab("browser");
   }, [browsing]);
+  const [wide, setWideState] = useState(() => localStorage.getItem(WIDE_KEY) === "1");
+  const setWide = (on: boolean) => {
+    setWideState(on);
+    localStorage.setItem(WIDE_KEY, on ? "1" : "0");
+  };
   const [audit, setAudit] = useState<{ toolCalls: ToolCallRow[]; llmCalls: LlmRow[] } | null>(null);
   const tid = detail.thread.id;
 
@@ -47,7 +54,7 @@ export function SidePanel({ detail, running, browsing, onClose }: { detail: Thre
   const totalTokens = audit?.llmCalls.reduce((n, c) => n + c.input_tokens + c.output_tokens, 0) ?? 0;
 
   return (
-    <aside className="side-panel" data-testid="side-panel">
+    <aside className={`side-panel ${wide ? "wide" : ""}`} data-testid="side-panel">
       <div className="panel-tabs">
         <button className={tab === "related" ? "on" : ""} onClick={() => setTab("related")}>
           Related
@@ -60,6 +67,9 @@ export function SidePanel({ detail, running, browsing, onClose }: { detail: Thre
         </button>
         <button className={tab === "usage" ? "on" : ""} onClick={() => setTab("usage")} data-testid="tab-usage">
           Usage
+        </button>
+        <button className="close widen" onClick={() => setWide(!wide)} aria-label={wide ? "Narrow panel" : "Widen panel"} title={wide ? "Narrow" : "Widen"} aria-pressed={wide} data-testid="widen-panel">
+          {wide ? <NarrowIcon /> : <WidenIcon />}
         </button>
         <button className="close" onClick={onClose} aria-label="Close">
           <CloseIcon />
@@ -303,42 +313,207 @@ function UsageView({ threadId, detail }: { threadId: string; detail: ThreadDetai
   );
 }
 
-/** The thread's browser tab; refreshes frame by frame while the agent is working. */
+interface Control {
+  page: boolean;
+  controlled: boolean;
+}
+
+const KEY_NAMES: Record<string, string> = { " ": "Space" };
+
+/** Playwright's name for a key press with modifiers, e.g. "Control+a"; null for plain characters, which are inserted as text. */
+function keyName(e: KeyboardEvent): string | null {
+  const mods = [e.ctrlKey && "Control", e.altKey && "Alt", e.metaKey && "Meta"].filter(Boolean) as string[];
+  if (e.key.length === 1 && !mods.length) return null;
+  if (["Control", "Alt", "Meta", "Shift", "Dead", "Process", "Unidentified"].includes(e.key)) return "";
+  if (e.shiftKey && e.key.length > 1) mods.push("Shift");
+  return [...mods, KEY_NAMES[e.key] ?? e.key].join("+");
+}
+
+const BUTTONS = ["left", "middle", "right"] as const;
+
+/**
+ * The thread's browser tab; refreshes frame by frame while the agent is working.
+ * It opens full size in an overlay, where the owner can take over the browser
+ * and use it by hand; the agent's browser steps wait until it is handed back.
+ */
 function BrowserView({ threadId, running }: { threadId: string; running: boolean }) {
   const [tick, setTick] = useState(0);
   const [state, setState] = useState<"loading" | "shown" | "none">("loading");
+  const [full, setFull] = useState(false);
+  const [control, setControl] = useState<Control>({ page: false, controlled: false });
+  const [error, setError] = useState("");
   const timer = useRef<number | undefined>(undefined);
+  const img = useRef<HTMLImageElement>(null);
+  const stage = useRef<HTMLDivElement>(null);
+  const queue = useRef<Promise<unknown>>(Promise.resolve());
+  const pendingMove = useRef<{ x: number; y: number } | null>(null);
+  const live = running || control.controlled;
 
-  // Fetch a fresh frame when the run starts or stops; while running, the next frame is requested after each load.
-  useEffect(() => setTick((n) => n + 1), [running]);
+  // Fetch a fresh frame when the run starts or stops; while live, the next frame is requested after each load.
+  useEffect(() => setTick((n) => n + 1), [running, control.controlled]);
   useEffect(() => () => window.clearTimeout(timer.current), []);
+  useEffect(() => {
+    void api.get<Control>(`/api/threads/${threadId}/browser/control`).then(setControl).catch(() => undefined);
+  }, [threadId, running, state]);
 
   const next = () => {
     window.clearTimeout(timer.current);
-    if (running) timer.current = window.setTimeout(() => setTick((n) => n + 1), 250);
+    if (live) timer.current = window.setTimeout(() => setTick((n) => n + 1), control.controlled ? 120 : 250);
   };
+
+  const setControlled = async (on: boolean) => {
+    setError("");
+    try {
+      setControl(await api.post<Control>(`/api/threads/${threadId}/browser/control`, { on }));
+      if (on) {
+        setFull(true);
+        window.setTimeout(() => stage.current?.focus(), 0);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  // Leaving the thread hands the browser back, so the agent is never left waiting on a closed view.
+  const controlled = useRef(false);
+  controlled.current = control.controlled;
+  useEffect(
+    () => () => {
+      if (controlled.current) void api.post(`/api/threads/${threadId}/browser/control`, { on: false }).catch(() => undefined);
+    },
+    [threadId],
+  );
+
+  const close = () => {
+    if (control.controlled) void setControlled(false);
+    setFull(false);
+  };
+
+  useEffect(() => {
+    if (!full || control.controlled) return;
+    const onKey = (e: globalThis.KeyboardEvent) => e.key === "Escape" && setFull(false);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [full, control.controlled]);
+
+  /** Sends inputs one after another so the page sees them in order. */
+  const send = (ev: Record<string, unknown>) => {
+    queue.current = queue.current.then(() => api.post(`/api/threads/${threadId}/browser/input`, ev)).catch(() => undefined);
+  };
+
+  const at = (clientX: number, clientY: number) => {
+    const r = img.current!.getBoundingClientRect();
+    return { x: (clientX - r.left) / r.width, y: (clientY - r.top) / r.height };
+  };
+
+  // Wheel events need a non-passive listener to keep the overlay from scrolling.
+  useEffect(() => {
+    const el = img.current;
+    if (!el || !control.controlled) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      send({ type: "wheel", ...at(e.clientX, e.clientY), dx: e.deltaX, dy: e.deltaY });
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  });
+
+  const input = control.controlled
+    ? {
+        onPointerDown: (e: PointerEvent) => {
+          e.preventDefault();
+          stage.current?.focus();
+          (e.target as Element).setPointerCapture(e.pointerId);
+          send({ type: "down", ...at(e.clientX, e.clientY), button: BUTTONS[e.button] ?? "left" });
+        },
+        onPointerUp: (e: PointerEvent) => send({ type: "up", ...at(e.clientX, e.clientY), button: BUTTONS[e.button] ?? "left" }),
+        onPointerMove: (e: PointerEvent) => {
+          const first = !pendingMove.current;
+          pendingMove.current = at(e.clientX, e.clientY);
+          if (!first) return;
+          window.requestAnimationFrame(() => {
+            if (pendingMove.current) send({ type: "move", ...pendingMove.current });
+            pendingMove.current = null;
+          });
+        },
+        onContextMenu: (e: MouseEvent) => e.preventDefault(),
+        onDragStart: (e: DragEvent) => e.preventDefault(),
+      }
+    : {};
+
+  const keys = control.controlled
+    ? {
+        onKeyDown: (e: KeyboardEvent) => {
+          if (e.nativeEvent.isComposing) return;
+          // Leave paste to the paste event, which carries the text.
+          if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "v") return;
+          const name = keyName(e);
+          e.preventDefault();
+          if (name === null) send({ type: "text", text: e.key });
+          else if (name) send({ type: "key", key: name });
+        },
+        onPaste: (e: ClipboardEvent) => {
+          e.preventDefault();
+          const text = e.clipboardData.getData("text/plain");
+          if (text) send({ type: "text", text });
+        },
+        onCompositionEnd: (e: CompositionEvent) => e.data && send({ type: "text", text: e.data }),
+      }
+    : {};
+
+  const canTakeOver = control.page && state === "shown";
 
   return (
     <div className="panel-body browser-view" data-testid="browser-view">
-      <div className="browser-head">
-        {running && state === "shown" ? <span className="live-dot" aria-hidden="true" /> : null}
-        <span>{state === "none" ? "" : running ? "Live" : "Last seen"}</span>
+      {full ? <div className="browser-backdrop" onClick={control.controlled ? undefined : close} /> : null}
+      <div
+        className={`browser-stage ${full ? "full" : ""} ${control.controlled ? "controlled" : ""}`}
+        ref={stage}
+        role={full ? "dialog" : undefined}
+        aria-modal={full || undefined}
+        aria-label={full ? "Browser" : undefined}
+        tabIndex={control.controlled ? 0 : undefined}
+        data-testid="browser-stage"
+        {...keys}
+      >
+        <div className="browser-head">
+          {live && state === "shown" ? <span className="live-dot" aria-hidden="true" /> : null}
+          <span>{state === "none" ? "" : control.controlled ? "You're in control" : running ? "Live" : "Last seen"}</span>
+          <span className="browser-actions">
+            {canTakeOver || control.controlled ? (
+              <button className={`btn small ${control.controlled ? "primary" : "ghost"}`} onClick={() => void setControlled(!control.controlled)} data-testid="browser-takeover">
+                {control.controlled ? "Hand back" : "Take over"}
+              </button>
+            ) : null}
+            {state === "shown" ? (
+              <button className="icon-btn" onClick={() => (full ? close() : setFull(true))} aria-label={full ? "Close" : "Open full size"} title={full ? "Close" : "Full size"} data-testid="browser-full">
+                {full ? <CloseIcon /> : <FullscreenIcon />}
+              </button>
+            ) : null}
+          </span>
+        </div>
+        {error ? <p className="error small">{error}</p> : null}
+        {state === "none" ? <p className="muted">When Vireo browses the web for this thread, the page shows up here.</p> : null}
+        <img
+          key={threadId}
+          ref={img}
+          src={authedUrl(`/api/threads/${threadId}/browser?t=${tick}`)}
+          alt="The page Vireo is looking at"
+          hidden={state !== "shown"}
+          draggable={false}
+          onClick={!full && !control.controlled ? () => setFull(true) : undefined}
+          onLoad={() => {
+            setState("shown");
+            next();
+          }}
+          onError={() => {
+            setState((s) => (s === "shown" ? s : "none"));
+            next();
+          }}
+          {...input}
+        />
+        {control.controlled ? <p className="muted fine">Vireo waits while you use the browser. Hand it back when you're done.</p> : null}
       </div>
-      {state === "none" ? <p className="muted">When Vireo browses the web for this thread, the page shows up here.</p> : null}
-      <img
-        key={threadId}
-        src={authedUrl(`/api/threads/${threadId}/browser?t=${tick}`)}
-        alt="The page Vireo is looking at"
-        hidden={state !== "shown"}
-        onLoad={() => {
-          setState("shown");
-          next();
-        }}
-        onError={() => {
-          setState((s) => (s === "shown" ? s : "none"));
-          next();
-        }}
-      />
     </div>
   );
 }

@@ -90,6 +90,24 @@ export const CloseIcon = () => (
   </Icon>
 );
 
+export const WidenIcon = () => (
+  <Icon>
+    <path d="M6.5 4 2.5 8l4 4M2.5 8h6M11 3v10" />
+  </Icon>
+);
+
+export const NarrowIcon = () => (
+  <Icon>
+    <path d="M4.5 4l4 4-4 4M8.5 8h-6M11 3v10" />
+  </Icon>
+);
+
+export const FullscreenIcon = () => (
+  <Icon>
+    <path d="M2.8 6V2.8H6M10 2.8h3.2V6M13.2 10v3.2H10M6 13.2H2.8V10" />
+  </Icon>
+);
+
 export const ClockIcon = () => (
   <Icon>
     <circle cx="8" cy="8" r="5.6" />

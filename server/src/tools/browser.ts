@@ -1,6 +1,6 @@
 import { Type } from "typebox";
 import { formatSnapshot } from "../browser.js";
-import { defineTool, untrustedBlock, type ToolContext } from "./types.js";
+import { defineTool, untrustedBlock, type ToolContext, type ToolDef } from "./types.js";
 
 function snapshotOutput(ctx: ToolContext, snap: Awaited<ReturnType<ToolContext["app"]["browser"]["snapshot"]>>) {
   ctx.app.threads.addRelated(ctx.thread.id, { kind: "page", title: snap.title || snap.url, url: snap.url });
@@ -9,7 +9,7 @@ function snapshotOutput(ctx: ToolContext, snap: Awaited<ReturnType<ToolContext["
 
 const Ref = Type.String({ description: "Element ref from the latest snapshot, e.g. e12 or f1e3" });
 
-export const browserTools = [
+const tools = [
   defineTool({
     name: "browser_open",
     label: "Open page",
@@ -195,3 +195,20 @@ export const browserTools = [
     },
   }),
 ];
+
+/** While the owner has taken over the browser, the agent's browser tools wait for it to be handed back. */
+function waitsForOwner(t: ToolDef): ToolDef {
+  if (!t.name.startsWith("browser_")) return t;
+  return {
+    ...t,
+    async run(args, ctx) {
+      if (ctx.app.browser.isControlled(ctx.thread.id)) ctx.app.threads.setStatus(ctx.thread.id, "Waiting for you to hand back the browser");
+      const waited = await ctx.app.browser.waitForOwner(ctx.thread.id, ctx.signal);
+      if (waited) ctx.app.threads.setStatus(ctx.thread.id, `${t.label}…`);
+      const out = await t.run(args, ctx);
+      return waited ? { ...out, text: `The owner used the browser and has handed it back; the page may have changed.\n\n${out.text}` } : out;
+    },
+  };
+}
+
+export const browserTools = (tools as ToolDef[]).map(waitsForOwner);

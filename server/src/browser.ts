@@ -40,6 +40,13 @@ const TREE_LIMIT = 24_000;
 /** Playwright's snapshot for agents (the one Playwright MCP uses); public in behaviour, untyped in 1.56. */
 type AiSnapshotPage = Page & { _snapshotForAI(options?: { timeout?: number }): Promise<string> };
 
+/** One input from the owner while they control the browser; x and y are fractions of the viewport. */
+export type OwnerInput =
+  | { type: "move" | "down" | "up"; x: number; y: number; button?: "left" | "middle" | "right" }
+  | { type: "wheel"; x: number; y: number; dx: number; dy: number }
+  | { type: "key"; key: string }
+  | { type: "text"; text: string };
+
 interface ThreadTabs {
   pages: Page[];
   current?: Page;
@@ -54,6 +61,8 @@ export class BrowserService {
   private screencasts = new WeakMap<Page, CDPSession>();
   /** Latest frame per thread, kept after the tab closes so the owner can still see where the browser ended up. */
   private frames = new Map<string, Buffer>();
+  /** Threads whose browser the owner has taken over; the agent's browser tools wait until it is handed back. */
+  private control = new Map<string, { released: Promise<void>; release: () => void; queue: Promise<void> }>();
 
   constructor(private readonly app: App) {}
 
@@ -119,6 +128,11 @@ export class BrowserService {
       return true;
     }
     const t = this.tabs(threadId);
+    // Wherever the owner goes by hand is theirs to choose.
+    if (this.control.has(threadId)) {
+      t.allowed.add(host);
+      return true;
+    }
     for (const h of t.allowed) if (host === h || host.endsWith(`.${h}`) || h.endsWith(`.${host}`)) return true;
     if (Date.now() - t.lastAction < ACTION_WINDOW_MS) {
       t.allowed.add(host);
@@ -428,18 +442,95 @@ export class BrowserService {
     return this.frames.get(threadId) ?? null;
   }
 
+  isControlled(threadId: string): boolean {
+    return this.control.has(threadId);
+  }
+
+  /** The owner takes the thread's browser; returns false when there is no open tab to take. */
+  takeOver(threadId: string): boolean {
+    if (!this.hasPage(threadId)) return false;
+    if (!this.control.has(threadId)) {
+      let release = () => {};
+      const released = new Promise<void>((r) => (release = r));
+      this.control.set(threadId, { released, release, queue: Promise.resolve() });
+    }
+    return true;
+  }
+
+  handBack(threadId: string): void {
+    this.control.get(threadId)?.release();
+    this.control.delete(threadId);
+  }
+
+  /** Resolves once the owner hands the browser back; true when the agent had to wait. */
+  async waitForOwner(threadId: string, signal?: AbortSignal): Promise<boolean> {
+    const c = this.control.get(threadId);
+    if (!c) return false;
+    await new Promise<void>((resolve, reject) => {
+      if (signal?.aborted) return reject(new Error("Stopped"));
+      signal?.addEventListener("abort", () => reject(new Error("Stopped")), { once: true });
+      void c.released.then(resolve);
+    });
+    return true;
+  }
+
+  /** Replays the owner's mouse and keyboard on the current tab, in order. */
+  input(threadId: string, ev: OwnerInput): Promise<void> {
+    const c = this.control.get(threadId);
+    if (!c) return Promise.reject(new Error("Take over the browser first"));
+    const run = async () => {
+      const t = this.tabs(threadId);
+      const page = t.current;
+      if (!page) return;
+      const vp = page.viewportSize() ?? { width: 1280, height: 900 };
+      const at = (e: { x: number; y: number }) => [Math.round(clamp01(e.x) * vp.width), Math.round(clamp01(e.y) * vp.height)] as const;
+      switch (ev.type) {
+        case "move":
+          await page.mouse.move(...at(ev));
+          break;
+        case "down":
+          await page.mouse.move(...at(ev));
+          await page.mouse.down({ button: ev.button ?? "left" });
+          break;
+        case "up":
+          await page.mouse.move(...at(ev));
+          await page.mouse.up({ button: ev.button ?? "left" });
+          break;
+        case "wheel":
+          await page.mouse.move(...at(ev));
+          await page.mouse.wheel(ev.dx, ev.dy);
+          break;
+        case "key":
+          await page.keyboard.press(ev.key);
+          break;
+        case "text":
+          await page.keyboard.insertText(ev.text);
+          break;
+      }
+    };
+    const next = c.queue.then(run);
+    c.queue = next.catch(() => undefined);
+    return next;
+  }
+
   async closeThread(threadId: string): Promise<void> {
+    this.handBack(threadId);
     const t = this.threads.get(threadId);
     this.threads.delete(threadId);
     for (const p of t?.pages ?? []) await p.close().catch(() => undefined);
   }
 
   async shutdown(): Promise<void> {
+    for (const id of [...this.control.keys()]) this.handBack(id);
     const ctx = this.context;
     this.context = undefined;
     this.threads.clear();
     if (ctx) await (await ctx).close().catch(() => undefined);
   }
+}
+
+function clamp01(n: number): number {
+  return Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : 0;
 }
 
 export function formatSnapshot(s: PageSnapshot): string {

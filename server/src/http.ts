@@ -4,6 +4,7 @@ import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { streamSSE } from "hono/streaming";
 import type { IncomingMessage } from "node:http";
 import type { App } from "./app.js";
+import type { OwnerInput } from "./browser.js";
 import { seenContexts } from "./fake-model.js";
 import { bus, type BusEvent } from "./bus.js";
 import { hostName, hostUrls, pairingInstructions } from "./pairing.js";
@@ -355,6 +356,42 @@ export function createHttp(app: App): Hono<Env> {
     const frame = await app.browser.frame(c.req.param("id"));
     if (!frame) return c.json({ error: "No browser activity" }, 404);
     return new Response(new Uint8Array(frame), { headers: { "content-type": "image/jpeg", "cache-control": "no-store" } });
+  });
+
+  api.get("/api/threads/:id/browser/control", (c) => {
+    const id = c.req.param("id");
+    return c.json({ page: app.browser.hasPage(id), controlled: app.browser.isControlled(id) });
+  });
+
+  api.post("/api/threads/:id/browser/control", async (c) => {
+    const id = c.req.param("id");
+    const body = await c.req.json<{ on?: boolean }>().catch(() => ({ on: undefined }));
+    if (body.on) {
+      if (!app.browser.takeOver(id)) return c.json({ error: "There is no open page to take over" }, 409);
+    } else {
+      app.browser.handBack(id);
+    }
+    return c.json({ page: app.browser.hasPage(id), controlled: app.browser.isControlled(id) });
+  });
+
+  api.post("/api/threads/:id/browser/input", async (c) => {
+    const id = c.req.param("id");
+    if (!app.browser.isControlled(id)) return c.json({ error: "Take over the browser first" }, 409);
+    const ev = await c.req.json<OwnerInput>().catch(() => null);
+    const ok =
+      ev &&
+      (((ev.type === "move" || ev.type === "down" || ev.type === "up") && typeof ev.x === "number" && typeof ev.y === "number") ||
+        (ev.type === "wheel" && typeof ev.dx === "number" && typeof ev.dy === "number") ||
+        (ev.type === "key" && typeof ev.key === "string" && ev.key.length <= 40) ||
+        (ev.type === "text" && typeof ev.text === "string" && ev.text.length <= 10_000));
+    if (!ok) return c.json({ error: "Unknown input" }, 400);
+    if ((ev.type === "down" || ev.type === "up") && ev.button && !["left", "middle", "right"].includes(ev.button)) return c.json({ error: "Unknown button" }, 400);
+    try {
+      await app.browser.input(id, ev);
+    } catch (err) {
+      return c.json({ error: err instanceof Error ? err.message : String(err) }, 409);
+    }
+    return c.json({ ok: true });
   });
 
   api.post("/api/threads/:id/files", async (c) => {

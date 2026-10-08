@@ -44,6 +44,23 @@ test.describe("Milestone 4 — Proactive and hands-on", () => {
     // The browser tab's live view shows the page the agent worked on.
     await page.getByTestId("tab-browser").click();
     await expect(page.getByTestId("browser-view").locator("img")).toBeVisible();
+
+    // The panel widens, the page opens full size, and the owner can take the browser over and hand it back.
+    const panel = page.getByTestId("side-panel");
+    const narrow = (await panel.boundingBox())!.width;
+    await page.getByTestId("widen-panel").click();
+    await expect.poll(async () => (await panel.boundingBox())!.width).toBeGreaterThan(narrow);
+    await page.getByTestId("browser-takeover").click();
+    const stage = page.getByTestId("browser-stage");
+    await expect(stage).toHaveClass(/full/);
+    await expect(stage).toHaveClass(/controlled/);
+    expect((await (await request.get(`/api/threads/${id}/browser/control`)).json()).controlled).toBe(true);
+    await stage.locator("img").click();
+    await page.getByTestId("browser-takeover").click();
+    await expect(stage).not.toHaveClass(/controlled/);
+    expect((await (await request.get(`/api/threads/${id}/browser/control`)).json()).controlled).toBe(false);
+    await page.getByTestId("browser-full").click();
+    await expect(stage).not.toHaveClass(/full/);
   });
 
   test("[M4.3] credentials never appear in prompts or logs", async ({ request }) => {

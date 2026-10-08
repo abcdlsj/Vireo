@@ -1171,6 +1171,59 @@ button.link.danger {
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   display: block;
+  cursor: zoom-in;
+}
+
+.browser-stage {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.browser-head .browser-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.browser-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 15, 15, 0.45);
+  z-index: 30;
+}
+
+/* Full size: centred over the app, as large as the window allows at the page's aspect ratio. */
+.browser-stage.full {
+  position: fixed;
+  z-index: 31;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(1280px, calc(100vw - 48px), calc((100dvh - 120px) * 1280 / 900));
+  padding: 10px 12px 12px;
+  background: var(--bg);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-pop);
+  outline: none;
+}
+
+.browser-stage.full img {
+  cursor: default;
+}
+
+.browser-stage.controlled img {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+  cursor: default;
+  touch-action: none;
+  user-select: none;
+}
+
+.browser-stage .fine {
+  margin: 0;
+  font-size: 12px;
 }
 
 /* ---------- action & procedure cards (callout blocks) ---------- */
@@ -1458,12 +1511,19 @@ button.link.danger {
   border-bottom-color: var(--text);
 }
 
+.side-panel.wide {
+  width: min(720px, 55vw);
+}
+
 .panel-tabs .close {
-  margin-left: auto;
   padding: 4px;
   margin-bottom: 4px;
   border-radius: var(--radius-sm);
   border-bottom: none;
+}
+
+.panel-tabs .close.widen {
+  margin-left: auto;
 }
 
 .panel-tabs .close:hover {
@@ -2351,6 +2411,18 @@ ul.rows {
 
   .head-actions .label {
     display: none;
+  }
+
+  .panel-tabs .close.widen {
+    display: none;
+  }
+
+  .side-panel.wide {
+    width: auto;
+  }
+
+  .panel-tabs .close.widen + .close {
+    margin-left: auto;
   }
 
   .side-panel {

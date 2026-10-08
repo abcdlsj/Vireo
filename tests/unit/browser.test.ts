@@ -77,6 +77,46 @@ describe("browser", () => {
     const frame = await app.browser.frame(t.id);
     expect(frame?.subarray(0, 2)).toEqual(Buffer.from([0xff, 0xd8]));
   });
+
+  it("lets the owner take over by hand while the agent's browser steps wait", async () => {
+    const t = app.threads.create({});
+    expect(app.browser.takeOver(t.id)).toBe(false);
+    await app.browser.open(t.id, `${base}/`);
+    expect(app.browser.takeOver(t.id)).toBe(true);
+
+    let resumed = false;
+    const agent = app.browser.waitForOwner(t.id).then((waited) => (resumed = waited));
+
+    // Click the fancy button by its position, then type into the search field.
+    const page = await app.browser.page(t.id);
+    const vp = page.viewportSize()!;
+    const box = (await page.getByText("Fancy button").boundingBox())!;
+    const at = { x: (box.x + box.width / 2) / vp.width, y: (box.y + box.height / 2) / vp.height };
+    await app.browser.input(t.id, { type: "down", ...at });
+    await app.browser.input(t.id, { type: "up", ...at });
+    await page.getByLabel("Search").focus();
+    await app.browser.input(t.id, { type: "text", text: "hello" });
+    await app.browser.input(t.id, { type: "key", key: "Backspace" });
+    expect(await page.locator("#out").textContent()).toBe("div clicked");
+    expect(await page.getByLabel("Search").inputValue()).toBe("hell");
+    expect(resumed).toBe(false);
+
+    app.browser.handBack(t.id);
+    await agent;
+    expect(resumed).toBe(true);
+    await expect(app.browser.input(t.id, { type: "key", key: "a" })).rejects.toThrow(/Take over/);
+  });
+
+  it("stops waiting for the owner when the run is stopped", async () => {
+    const t = app.threads.create({});
+    await app.browser.open(t.id, `${base}/second`);
+    app.browser.takeOver(t.id);
+    const stop = new AbortController();
+    const wait = app.browser.waitForOwner(t.id, stop.signal);
+    stop.abort();
+    await expect(wait).rejects.toThrow(/Stopped/);
+    app.browser.handBack(t.id);
+  });
 });
 
 describe("proxy setting", () => {
