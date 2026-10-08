@@ -7,7 +7,7 @@ import { ActionCard } from "./ActionCard";
 import { Composer } from "./Composer";
 import { ProcedureCard } from "./ProcedureCard";
 import { SidePanel } from "./SidePanel";
-import { AlertIcon, ArrowUpRightIcon, BellIcon, CheckIcon, ChevronLeft, ChevronRight, ClockIcon, PanelIcon, StatusIcon } from "../icons";
+import { AlertIcon, ArrowUpRightIcon, BellIcon, CheckIcon, ChevronLeft, ChevronRight, ClockIcon, PanelIcon, StatusIcon, SunIcon } from "../icons";
 
 type Item =
   | { kind: "user"; m: Extract<Message, { role: "user" }> }
@@ -158,8 +158,8 @@ export function ThreadView({ id }: { id: string }) {
         </span>
         <div className="head-actions">
           {isOverview ? (
-            <button className="btn ghost small" onClick={() => void api.post("/api/brief")} data-testid="brief-now">
-              Brief me
+            <button className="btn ghost small" onClick={() => void api.post("/api/brief")} aria-label="Brief me now" title="Brief me now" data-testid="brief-now">
+              <SunIcon />
             </button>
           ) : t.state === "done" ? (
             <button className="btn ghost small" onClick={() => void api.post(`/api/threads/${t.id}/reopen`).then(load)}>
@@ -250,7 +250,7 @@ export function ThreadView({ id }: { id: string }) {
             ) : null}
           </div>
         </div>
-        {panel ? <SidePanel detail={detail} onClose={() => setPanel(false)} /> : null}
+        {panel ? <SidePanel detail={detail} running={t.running} onClose={() => setPanel(false)} /> : null}
       </div>
 
       <Composer
@@ -350,12 +350,63 @@ function Steps({ steps }: { steps: { name: string; args: Record<string, unknown>
               <div className="step-name">
                 {toolLabel(s.name)} <code>{s.name}</code>
               </div>
-              <pre className="step-args">{JSON.stringify(s.args, null, 2)}</pre>
-              {s.result ? <pre className="step-result">{s.result.text}</pre> : <div className="muted">Running…</div>}
+              <div className="step-args">
+                <Fields value={s.args} />
+              </div>
+              {s.result ? (
+                <div className="step-result">
+                  <Fields value={parseJson(s.result.text)} />
+                </div>
+              ) : (
+                <div className="muted">Running…</div>
+              )}
             </li>
           ))}
         </ol>
       ) : null}
     </div>
+  );
+}
+
+function parseJson(text: string): unknown {
+  const t = text.trim();
+  if (!t.startsWith("{") && !t.startsWith("[")) return text;
+  try {
+    return JSON.parse(t);
+  } catch {
+    return text;
+  }
+}
+
+/** Renders tool arguments and JSON results as readable label/value lines instead of raw JSON. */
+function Fields({ value }: { value: unknown }) {
+  if (value === null || value === undefined || value === "") return <span className="muted">—</span>;
+  if (typeof value !== "object") return <span className="field-text">{String(value)}</span>;
+  if (Array.isArray(value)) {
+    if (value.length === 0) return <span className="muted">None</span>;
+    if (value.every((v) => v === null || typeof v !== "object")) return <span className="field-text">{value.join(", ")}</span>;
+    return (
+      <ul className="field-list">
+        {value.map((v, i) => (
+          <li key={i}>
+            <Fields value={v} />
+          </li>
+        ))}
+      </ul>
+    );
+  }
+  const entries = Object.entries(value as Record<string, unknown>);
+  if (entries.length === 0) return <span className="muted">No details</span>;
+  return (
+    <dl className="fields">
+      {entries.map(([k, v]) => (
+        <div key={k}>
+          <dt>{k.replace(/_/g, " ")}</dt>
+          <dd>
+            <Fields value={v} />
+          </dd>
+        </div>
+      ))}
+    </dl>
   );
 }

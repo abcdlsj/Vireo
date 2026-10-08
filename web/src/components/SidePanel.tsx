@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, type ThreadDetail } from "../api";
 import { bytes, dateTime, toolLabel } from "../format";
 import { CloseIcon } from "../icons";
@@ -29,8 +29,8 @@ interface LlmRow {
 }
 
 /** Everything related to the thread: pages, emails, events, files, and the full audit trail (S6, N7). */
-export function SidePanel({ detail, onClose }: { detail: ThreadDetail; onClose: () => void }) {
-  const [tab, setTab] = useState<"related" | "activity">("related");
+export function SidePanel({ detail, running, onClose }: { detail: ThreadDetail; running: boolean; onClose: () => void }) {
+  const [tab, setTab] = useState<"related" | "browser" | "activity">("related");
   const [audit, setAudit] = useState<{ toolCalls: ToolCallRow[]; llmCalls: LlmRow[] } | null>(null);
   const tid = detail.thread.id;
 
@@ -46,6 +46,9 @@ export function SidePanel({ detail, onClose }: { detail: ThreadDetail; onClose: 
       <div className="panel-tabs">
         <button className={tab === "related" ? "on" : ""} onClick={() => setTab("related")}>
           Related
+        </button>
+        <button className={tab === "browser" ? "on" : ""} onClick={() => setTab("browser")} data-testid="tab-browser">
+          Browser
         </button>
         <button className={tab === "activity" ? "on" : ""} onClick={() => setTab("activity")} data-testid="tab-activity">
           Activity
@@ -91,6 +94,8 @@ export function SidePanel({ detail, onClose }: { detail: ThreadDetail; onClose: 
             );
           })}
         </div>
+      ) : tab === "browser" ? (
+        <BrowserView threadId={tid} running={running} />
       ) : (
         <div className="panel-body" data-testid="audit">
           {!audit ? (
@@ -131,5 +136,45 @@ export function SidePanel({ detail, onClose }: { detail: ThreadDetail; onClose: 
         </div>
       )}
     </aside>
+  );
+}
+
+/** The thread's browser tab; refreshes frame by frame while the agent is working. */
+function BrowserView({ threadId, running }: { threadId: string; running: boolean }) {
+  const [tick, setTick] = useState(0);
+  const [state, setState] = useState<"loading" | "shown" | "none">("loading");
+  const timer = useRef<number | undefined>(undefined);
+
+  // Fetch a fresh frame when the run starts or stops; while running, the next frame is requested after each load.
+  useEffect(() => setTick((n) => n + 1), [running]);
+  useEffect(() => () => window.clearTimeout(timer.current), []);
+
+  const next = () => {
+    window.clearTimeout(timer.current);
+    if (running) timer.current = window.setTimeout(() => setTick((n) => n + 1), 800);
+  };
+
+  return (
+    <div className="panel-body browser-view" data-testid="browser-view">
+      <div className="browser-head">
+        {running && state === "shown" ? <span className="live-dot" aria-hidden="true" /> : null}
+        <span>{state === "none" ? "" : running ? "Live" : "Last seen"}</span>
+      </div>
+      {state === "none" ? <p className="muted">When Vireo browses the web for this thread, the page shows up here.</p> : null}
+      <img
+        key={threadId}
+        src={`/api/threads/${threadId}/browser?t=${tick}`}
+        alt="The page Vireo is looking at"
+        hidden={state !== "shown"}
+        onLoad={() => {
+          setState("shown");
+          next();
+        }}
+        onError={() => {
+          setState((s) => (s === "shown" ? s : "none"));
+          next();
+        }}
+      />
+    </div>
   );
 }

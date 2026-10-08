@@ -32,6 +32,8 @@ export class BrowserService {
   private context?: Promise<BrowserContext>;
   private pages = new Map<string, Page>();
   private allowed = new Map<string, Set<string>>();
+  /** Last frame per thread, so the owner can still see where the browser ended up after the tab closes. */
+  private frames = new Map<string, Buffer>();
 
   constructor(private readonly app: App) {}
 
@@ -231,7 +233,18 @@ export class BrowserService {
     return page.screenshot({ type: "png", fullPage: false });
   }
 
+  /** A small JPEG of the thread's tab for the live view; falls back to the last frame once the tab is gone. */
+  async frame(threadId: string): Promise<Buffer | null> {
+    const p = this.pages.get(threadId);
+    if (p && !p.isClosed()) {
+      const shot = await p.screenshot({ type: "jpeg", quality: 60, fullPage: false, timeout: 5000 }).catch(() => null);
+      if (shot) this.frames.set(threadId, shot);
+    }
+    return this.frames.get(threadId) ?? null;
+  }
+
   async closeThread(threadId: string): Promise<void> {
+    await this.frame(threadId);
     const p = this.pages.get(threadId);
     this.pages.delete(threadId);
     this.allowed.delete(threadId);

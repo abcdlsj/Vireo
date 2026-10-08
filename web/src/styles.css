@@ -992,15 +992,85 @@ button.link.danger {
 
 .step-args,
 .step-result {
-  font: 12px/1.5 var(--mono);
+  font-size: 13px;
+  line-height: 1.55;
   background: var(--block);
   border-radius: var(--radius-sm);
   padding: 8px 10px;
   margin: 4px 0 0;
-  white-space: pre-wrap;
   word-break: break-word;
   max-height: 220px;
   overflow: auto;
+}
+
+.step-result {
+  color: var(--muted);
+}
+
+.field-text {
+  white-space: pre-wrap;
+}
+
+.fields {
+  margin: 0;
+}
+
+.fields > div {
+  display: flex;
+  gap: 10px;
+}
+
+.fields dt {
+  flex: 0 0 auto;
+  min-width: 72px;
+  color: var(--muted);
+}
+
+.fields dd {
+  margin: 0;
+  min-width: 0;
+  flex: 1;
+}
+
+.field-list {
+  margin: 0;
+  padding-left: 16px;
+}
+
+/* ---------- live browser view ---------- */
+.browser-view {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.browser-view .browser-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.browser-view .live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: live-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes live-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.browser-view img {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  display: block;
 }
 
 /* ---------- action & procedure cards (callout blocks) ---------- */

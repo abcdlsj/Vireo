@@ -146,6 +146,13 @@ export const SparkIcon = () => (
   </Icon>
 );
 
+export const SunIcon = () => (
+  <Icon>
+    <circle cx="8" cy="8" r="2.6" />
+    <path d="M8 1.8v1.4M8 12.8v1.4M1.8 8h1.4M12.8 8h1.4M3.6 3.6l1 1M11.4 11.4l1 1M3.6 12.4l1-1M11.4 4.6l1-1" />
+  </Icon>
+);
+
 export const XCircleIcon = () => (
   <Icon>
     <circle cx="8" cy="8" r="5.6" />

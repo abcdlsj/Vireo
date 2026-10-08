@@ -281,6 +281,12 @@ export function createHttp(app: App): Hono<Env> {
     });
   });
 
+  api.get("/api/threads/:id/browser", async (c) => {
+    const frame = await app.browser.frame(c.req.param("id"));
+    if (!frame) return c.json({ error: "No browser activity" }, 404);
+    return new Response(new Uint8Array(frame), { headers: { "content-type": "image/jpeg", "cache-control": "no-store" } });
+  });
+
   api.post("/api/threads/:id/files", async (c) => {
     const id = c.req.param("id");
     if (!app.threads.get(id)) return c.json({ error: "Not found" }, 404);
