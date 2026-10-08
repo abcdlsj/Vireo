@@ -23,12 +23,11 @@
   },
   "dependencies": {
     "@hono/node-server": "^2.1.4",
-    "@mariozechner/pi-agent-core": "^0.73.1",
-    "@mariozechner/pi-ai": "^0.73.1",
-    "@mariozechner/pi-coding-agent": "^0.73.1",
     "@mozilla/readability": "^0.6.0",
+    "@openai/agents": "^0.19.0",
     "hono": "^4.13.13",
     "linkedom": "^0.18.13",
+    "openai": "^7.30.1",
     "playwright": "1.56.1",
     "typebox": "^1.1.24",
     "web-push": "^3.6.7"

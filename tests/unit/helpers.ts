@@ -22,7 +22,6 @@ export function testApp(dir = tempDir()): App {
   return createApp(
     loadConfig({
       VIREO_DATA_DIR: dir,
-      PI_CODING_AGENT_DIR: join(dir, "pi"),
       VIREO_FAKE_MODEL: "1",
       VIREO_FAKE_GOOGLE: "1",
     }),

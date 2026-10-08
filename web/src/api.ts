@@ -103,23 +103,18 @@ export interface Fact {
   current: boolean;
 }
 
-export interface ModelRef {
-  provider: string;
-  id: string;
-  name: string;
-}
-
 export interface ModelStatus {
   ready: boolean;
   fake: boolean;
-  main?: ModelRef;
-  fast?: ModelRef;
-  available: ModelRef[];
-  piAgentDir: string;
-  providers: { id: string; name: string; configured: boolean; source?: string; oauth: boolean }[];
+  baseUrl: string;
+  hasKey: boolean;
+  source: { baseUrl: "settings" | "env" | "default"; apiKey: "settings" | "env" | "none" };
+  api: "chat" | "responses";
+  main?: string;
+  fast?: string;
+  choice: { main?: string; fast?: string };
+  available: string[];
   error?: string;
-  choice?: { main?: string; fast?: string };
-  oauth?: { id: string; name: string }[];
 }
 
 export interface OwnerSettings {

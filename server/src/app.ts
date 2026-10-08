@@ -48,9 +48,9 @@ export function createApp(config: Config): App {
   app.auth = new Auth(db, config);
   app.threads = new ThreadStore(db);
   app.memory = new MemoryStore(db);
-  app.models = new ModelService(config, db);
   app.integrations = new Integrations(config, db);
   app.vault = new Vault(db, config.dataDir);
+  app.models = new ModelService(config, db, app.vault);
   app.push = new Push(db);
   app.files = new Files(db, config.dataDir);
   app.browser = new BrowserService(app);

@@ -8,7 +8,7 @@ Vireo's milestones are done when every acceptance criterion holds in real use, n
 ## Before you start
 
 - Run `npm run build && npm start`, or use `docker compose up -d`.
-- In **Settings → Model**, check that a real model is shown, either pi's default or one you picked.
+- In **Settings → Model**, set your endpoint, key and models (or use `.env` with Docker Compose), and check that **Test connection** succeeds.
 - For Milestone 3, connect Google in **Settings → Google Calendar & Gmail**. The local calendar is enough for the calendar parts.
 - For notifications, open Vireo over HTTPS on your phone, install it to the home screen, and enable **Settings → Notifications**.
 
@@ -18,7 +18,7 @@ Vireo's milestones are done when every acceptance criterion holds in real use, n
 - [ ] **M1.2** Tap **New thread** and ask "How do vireos build their nests?". The answer streams in, and the thread gets a short name.
 - [ ] **M1.3** Start two threads at once: "My code word is ALPHA, remember it for this thread" and "My code word is BRAVO …". Ask each one "What is my code word?". Each answers with only its own word.
 - [ ] **M1.4** Ask "Research the history of the name 'vireo' and cite sources". You get a summary with source links, and the pages appear under **Related** in the side panel.
-- [ ] **M1.5** In Settings, switch the main model. The next reply uses it, as shown in **Usage** and in the thread's **Activity**.
+- [ ] **M1.5** In Settings, switch the main model (for example to another provider through LiteLLM). The next reply uses it, as shown in **Usage** and in the thread's **Activity**.
 
 ## Milestone 2 — Vireo remembers
 

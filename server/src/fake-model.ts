@@ -1,21 +1,23 @@
-import {
-  type AssistantMessage,
-  type Context,
-  type Message,
-  fauxAssistantMessage,
-  fauxText,
-  fauxToolCall,
-} from "@mariozechner/pi-ai";
+import type { AssistantMessage, Message, TextContent, ToolCall } from "./messages.js";
+import { newId, now } from "./util.js";
 
 /**
  * A deterministic, rule-based stand-in for a real model, used by the
- * end-to-end tests and demo mode (VIREO_FAKE_MODEL=1). It only reads what a
- * real model would see — the system prompt, this thread's messages and tool
- * results — so the tests exercise Vireo's real plumbing: routing, handoffs,
- * per-thread context, memory injection, tools and confirmations.
+ * end-to-end tests and demo mode (VIREO_FAKE_MODEL=1). It is served over the
+ * OpenAI Chat Completions protocol (see fake-llm-server.ts) and only reads
+ * what a real model would see — the system prompt, this thread's messages and
+ * tool results — so the tests exercise Vireo's real plumbing: the Agents SDK,
+ * routing, handoffs, per-thread context, memory injection, tools and
+ * confirmations.
  */
 
-type Block = ReturnType<typeof fauxText> | ReturnType<typeof fauxToolCall>;
+export interface FakeContext {
+  systemPrompt?: string;
+  messages: Message[];
+  tools?: { name: string }[];
+}
+
+type Block = TextContent | ToolCall;
 
 function text(m: Message): string {
   if (m.role === "user") return typeof m.content === "string" ? m.content : m.content.map((c) => (c.type === "text" ? c.text : "")).join("");
@@ -24,13 +26,12 @@ function text(m: Message): string {
 }
 
 function reply(content: string | Block | Block[]): AssistantMessage {
-  const blocks = typeof content === "string" ? [fauxText(content)] : Array.isArray(content) ? content : [content];
-  const hasTool = blocks.some((b) => b.type === "toolCall");
-  return fauxAssistantMessage(blocks, { stopReason: hasTool ? "toolUse" : "stop" });
+  const blocks = typeof content === "string" ? [{ type: "text" as const, text: content }] : Array.isArray(content) ? content : [content];
+  return { role: "assistant", content: blocks, model: "fake", timestamp: now() };
 }
 
 function call(name: string, args: Record<string, unknown>): AssistantMessage {
-  return reply(fauxToolCall(name, args));
+  return reply({ type: "toolCall", id: newId("call"), name, arguments: args });
 }
 
 const isCjk = (s: string) => /[\u3400-\u9fff]/.test(s);
@@ -38,7 +39,7 @@ const isCjk = (s: string) => /[\u3400-\u9fff]/.test(s);
 /** Everything the scripted model was shown (test mode only), so tests can assert what never reaches a model. */
 export const seenContexts: string[] = [];
 
-export function fakeResponse(context: Context): AssistantMessage {
+export function fakeResponse(context: FakeContext): AssistantMessage {
   if (process.env.VIREO_TEST_MODE) {
     seenContexts.push(JSON.stringify({ system: context.systemPrompt, messages: context.messages }));
     if (seenContexts.length > 5000) seenContexts.splice(0, 1000);
@@ -134,7 +135,7 @@ interface Turn {
   results: { name: string; text: string; args: Record<string, unknown> }[];
 }
 
-function buildTurn(context: Context): Turn {
+function buildTurn(context: FakeContext): Turn {
   const msgs = context.messages;
   let idx = -1;
   for (let i = msgs.length - 1; i >= 0; i--) {
@@ -157,7 +158,7 @@ function buildTurn(context: Context): Turn {
   };
 }
 
-function agentTurn(context: Context): AssistantMessage {
+function agentTurn(context: FakeContext): AssistantMessage {
   const t = buildTurn(context);
   const last = t.results.at(-1);
   // After a handoff the new specialist starts on the owner's message.

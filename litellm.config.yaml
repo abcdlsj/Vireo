@@ -1,0 +1,38 @@
+# LiteLLM proxy in front of Vireo: one OpenAI-compatible endpoint for every
+# provider. Each route below is active when its API key is set in .env.
+# Pick models with VIREO_MODEL / VIREO_FAST_MODEL (or in Vireo's Settings),
+# using provider-prefixed names such as "anthropic/claude-sonnet-4-5" or
+# "gemini/gemini-2.5-flash". See https://docs.litellm.ai/docs/providers
+model_list:
+  - model_name: "openai/*"
+    litellm_params:
+      model: "openai/*"
+      api_key: os.environ/OPENAI_API_KEY
+  - model_name: "anthropic/*"
+    litellm_params:
+      model: "anthropic/*"
+      api_key: os.environ/ANTHROPIC_API_KEY
+  - model_name: "gemini/*"
+    litellm_params:
+      model: "gemini/*"
+      api_key: os.environ/GEMINI_API_KEY
+  - model_name: "openrouter/*"
+    litellm_params:
+      model: "openrouter/*"
+      api_key: os.environ/OPENROUTER_API_KEY
+  - model_name: "deepseek/*"
+    litellm_params:
+      model: "deepseek/*"
+      api_key: os.environ/DEEPSEEK_API_KEY
+  # A model server on the Docker host, e.g. Ollama.
+  - model_name: "ollama/*"
+    litellm_params:
+      model: "ollama_chat/*"
+      api_base: http://host.docker.internal:11434
+
+litellm_settings:
+  # Drop parameters a provider does not support instead of failing the call.
+  drop_params: true
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY

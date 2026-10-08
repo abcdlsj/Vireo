@@ -1,4 +1,3 @@
-import type { ImageContent } from "@mariozechner/pi-ai";
 import type { Static, TSchema } from "typebox";
 import type { App } from "../app.js";
 import type { Thread } from "../threads.js";
@@ -10,16 +9,11 @@ export interface ToolContext {
   /** True when the owner already confirmed this exact call. */
   confirmed?: boolean;
   signal?: AbortSignal;
-  /** Set by transfer tools; the runner switches agents after the turn. */
-  handoff?: { to: string; reason: string };
 }
 
 export interface ToolOutput {
   text: string;
   details?: Record<string, unknown>;
-  images?: ImageContent[];
-  /** Skip the automatic follow-up model call (used by handoffs). */
-  terminate?: boolean;
 }
 
 export interface ToolDef<P extends TSchema = TSchema> {

@@ -1,4 +1,11 @@
-# docker compose up -d   →   open http://localhost:8787
+# Vireo plus a LiteLLM proxy, so any model provider works through one
+# OpenAI-compatible endpoint.
+#
+#   cp .env.example .env    # add at least one provider key and pick a model
+#   docker compose up -d    # then open http://localhost:8787
+#
+# Using OpenAI (or any compatible endpoint) directly? Set VIREO_LLM_BASE_URL
+# and VIREO_LLM_API_KEY in .env and run only Vireo: docker compose up -d vireo
 services:
   vireo:
     build: .
@@ -9,8 +16,25 @@ services:
     volumes:
       # Everything Vireo keeps: database, files, browser profile, keys.
       - ./data:/data
-      # Your pi credentials, so Vireo uses your own pi model access.
-      # Vireo may refresh OAuth tokens here, so keep it writable.
-      - ${PI_CODING_AGENT_DIR:-~/.pi/agent}:/pi
     environment:
-      - TZ=${TZ:-UTC}
+      VIREO_LLM_BASE_URL: ${VIREO_LLM_BASE_URL:-http://litellm:4000/v1}
+      VIREO_LLM_API_KEY: ${VIREO_LLM_API_KEY:-${LITELLM_MASTER_KEY:-sk-vireo-local}}
+      VIREO_MODEL: ${VIREO_MODEL:-}
+      VIREO_FAST_MODEL: ${VIREO_FAST_MODEL:-}
+      TZ: ${TZ:-UTC}
+    depends_on:
+      - litellm
+
+  litellm:
+    image: ghcr.io/berriai/litellm:main-v1.83.14-stable
+    restart: unless-stopped
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+    volumes:
+      - ./litellm.config.yaml:/app/config.yaml:ro
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-sk-vireo-local}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

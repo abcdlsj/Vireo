@@ -39,7 +39,6 @@ export default defineConfig({
       env: {
         VIREO_PORT: String(PORT),
         VIREO_DATA_DIR: DATA,
-        PI_CODING_AGENT_DIR: `${DATA}/pi`,
         VIREO_FAKE_MODEL: "1",
         VIREO_FAKE_GOOGLE: "1",
         VIREO_TEST_MODE: "1",

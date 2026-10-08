@@ -1,4 +1,4 @@
-import type { AssistantMessage } from "@mariozechner/pi-ai";
+import type { AssistantMessage } from "./messages.js";
 import type { App } from "./app.js";
 import type { CalendarEvent } from "./integrations/types.js";
 import { OVERVIEW_ID } from "./threads.js";
@@ -139,11 +139,7 @@ export class Scheduler {
     const message: AssistantMessage = {
       role: "assistant",
       content: [{ type: "text", text }],
-      api: "vireo",
-      provider: "vireo",
       model: "brief",
-      usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
-      stopReason: "stop",
       timestamp: now(),
     };
     this.app.threads.addMessage(OVERVIEW_ID, message, { agent: "brief" });

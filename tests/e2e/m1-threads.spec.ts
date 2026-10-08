@@ -95,15 +95,21 @@ test.describe("Milestone 1 — Threads that think", () => {
   });
 
   test("[M1.5] model access is configurable", async ({ page, request }) => {
+    // The endpoint's models are listed over the OpenAI API, and the owner can pick per tier.
     const models = await (await request.get("/api/models")).json();
     expect(models.ready).toBeTruthy();
-    expect(models.available.length).toBeGreaterThanOrEqual(2);
-    await request.put("/api/models", { data: { main: "vireo-fake/fake-main", fast: "vireo-fake/fake-main" } });
-    const after = await (await request.get("/api/models")).json();
-    expect(after.fast.id).toBe("fake-main");
-    await request.put("/api/models", { data: {} });
+    expect(models.available).toEqual(expect.arrayContaining(["fake-main", "fake-fast"]));
+    expect(models.fast).toBe("fake-fast");
+    await request.put("/api/models", { data: { fastModel: "fake-main" } });
+    expect((await (await request.get("/api/models")).json()).fast).toBe("fake-main");
+    await request.put("/api/models", { data: { fastModel: "" } });
+    expect((await (await request.get("/api/models")).json()).fast).toBe("fake-fast");
+
     await page.goto("/#settings");
-    await expect(page.getByTestId("models-card")).toContainText("Vireo scripted model");
+    const card = page.getByTestId("models-card");
+    await expect(card).toContainText("fake-main");
+    await card.getByTestId("llm-test").click();
+    await expect(card.getByTestId("llm-test-result")).toContainText("Connected");
   });
 
   test("[C1] Overview answers quick things and opens a thread for multi-step matters", async ({ page, request }) => {

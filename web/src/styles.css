@@ -1142,14 +1142,6 @@ button.link.danger {
   min-width: 140px;
 }
 
-.provider {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 7px 0;
-  border-bottom: 1px solid var(--line);
-}
-
 .row-buttons {
   display: flex;
   gap: 8px;
@@ -1157,17 +1149,23 @@ button.link.danger {
   flex-wrap: wrap;
 }
 
-.login-flow {
-  background: var(--panel-2);
-  border-radius: 10px;
-  padding: 10px 12px;
+.stack {
+  display: grid;
+  gap: 10px;
   margin-top: 10px;
 }
 
-.login-flow form {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+.stack label {
+  display: grid;
+  gap: 4px;
+}
+
+.stack .grid2 {
+  margin: 0;
+}
+
+.ok {
+  color: var(--accent);
 }
 
 table.usage {

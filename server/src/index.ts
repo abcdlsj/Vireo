@@ -22,6 +22,7 @@ const config = loadConfig();
 const app = createApp(config);
 const http = createHttp(app);
 
+await app.models.refresh();
 const server = serve({ fetch: http.fetch, port: config.port, hostname: config.host }, (info) => {
   const status = app.models.status();
   const lines = [
@@ -29,8 +30,8 @@ const server = serve({ fetch: http.fetch, port: config.port, hostname: config.ho
     `  Vireo is running on http://localhost:${info.port}`,
     `  Data: ${config.dataDir}`,
     status.ready
-      ? `  Model: ${status.main?.provider}/${status.main?.id} (routine work: ${status.fast?.provider}/${status.fast?.id})`
-      : `  Model: none yet. Sign in from Settings, or run \`pi\` and /login (credentials in ${config.piAgentDir}).`,
+      ? `  Model: ${status.main} at ${status.baseUrl} (routine work: ${status.fast})`
+      : `  Model: none yet. Set a base URL, API key and model in Settings, or set OPENAI_API_KEY.${status.error ? ` (${status.error})` : ""}`,
   ];
   if (!app.auth.hasOwner()) lines.push(`  First-run setup code: ${app.auth.setupCode} (not needed on localhost)`);
   console.log(lines.join("\n"), "\n");

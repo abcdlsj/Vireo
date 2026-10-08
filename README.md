@@ -2,23 +2,21 @@
 
 A self-hosted personal agent for one owner. Every matter lives in its own thread, Vireo remembers what matters about you across threads, and nothing outward-facing (an email, an invitation, a form submission) happens until you confirm it.
 
-Vireo runs on [pi](https://github.com/badlogic/pi-mono). It reads the credentials you already use for pi, so it runs on your own model access, whether that is a Claude or ChatGPT subscription, GitHub Copilot, Gemini, or an API key.
+Vireo is built on the [OpenAI Agents SDK](https://openai.github.io/openai-agents-js/) and talks to any OpenAI-compatible endpoint, so a base URL and an API key are all it needs: OpenAI itself, a [LiteLLM](https://docs.litellm.ai/) proxy (Anthropic, Gemini, Bedrock, DeepSeek, Ollama and 100+ more), OpenRouter, or a local server.
 
 ## Quick start
-
-If you already use pi, there is nothing to configure.
 
 ```bash
 git clone https://github.com/abcdlsj/vireo && cd vireo
 npm install
 npm run build
-npm start
+OPENAI_API_KEY=sk-... npm start
 ```
 
 Open http://localhost:8787, choose a password, and start a thread.
 
-- **Model:** Vireo uses pi's default provider and model from `~/.pi/agent`. It also picks a cheaper model from the same provider for routine work such as titles and memory upkeep. You can change both in Settings.
-- **No pi yet?** Sign in from **Settings → Model**. You can use the same OAuth sign-in as pi (Claude Pro/Max, ChatGPT, Copilot, Gemini) or paste an API key. Credentials are saved in pi's `auth.json`, so pi and Vireo share them.
+- **Model:** with only an OpenAI key, Vireo lists the endpoint's models and picks a strong one for conversations and a cheaper one for routine work such as titles and memory upkeep. You can change both in **Settings → Model**.
+- **Another provider or endpoint?** Enter a base URL, API key and model in **Settings → Model** (no restart needed), or set `VIREO_LLM_BASE_URL`, `VIREO_LLM_API_KEY` and `VIREO_MODEL`. **Test connection** checks it. The Docker setup below includes LiteLLM for providers that don't speak the OpenAI API.
 - **Calendar and email:** these work immediately with a built-in local calendar. Connect Google Calendar and Gmail from Settings whenever you like.
 - **Web search** works without a key. Vireo uses DuckDuckGo's HTML endpoint by default; set `VIREO_SEARXNG_URL` or `BRAVE_API_KEY` to use something else.
 - **Browser actions** use Playwright's Chromium. If it is missing, run `npx playwright install chromium`. The Docker image already includes it.
@@ -28,17 +26,21 @@ Requires Node 22.13 or newer. Vireo uses the built-in `node:sqlite`, so there ar
 ## Self-hosting with Docker
 
 ```bash
+cp .env.example .env   # add a provider key and pick your models
 docker compose up -d
 ```
 
-That builds the image (Node and Chromium included), stores everything in `./data`, and mounts your pi credentials from `~/.pi/agent`. To keep them elsewhere, set `PI_CODING_AGENT_DIR`. Then open http://localhost:8787.
+That starts two containers and stores everything in `./data`. Then open http://localhost:8787.
 
-Without Compose:
+- **vireo** is the app, with Node and Chromium included.
+- **litellm** is a [LiteLLM](https://docs.litellm.ai/) proxy configured by `litellm.config.yaml`. It routes `openai/*`, `anthropic/*`, `gemini/*`, `openrouter/*`, `deepseek/*` and `ollama/*` model names to their providers, using the keys in `.env`. Set `VIREO_MODEL` and `VIREO_FAST_MODEL` to names like `anthropic/claude-sonnet-4-5`.
+
+To skip LiteLLM and use an OpenAI-compatible endpoint directly, set `VIREO_LLM_BASE_URL` and `VIREO_LLM_API_KEY` in `.env` and run `docker compose up -d vireo`. Without Compose:
 
 ```bash
 docker build -t vireo .
-docker run -d --name vireo -p 8787:8787 \
-  -v "$PWD/data:/data" -v "$HOME/.pi/agent:/pi" vireo
+docker run -d --name vireo -p 8787:8787 -v "$PWD/data:/data" \
+  -e OPENAI_API_KEY=sk-... vireo
 ```
 
 ### Reaching it from your phone
@@ -57,14 +59,18 @@ On first run from a non-local address, Vireo asks for the **setup code** printed
 
 ## Configuration
 
-Everything is optional. The defaults are chosen so that no variable needs to be set.
+Only model access needs setting up, either here or in **Settings → Model**, where saved values take precedence. Everything else has a working default.
 
 | Variable | Default | Purpose |
 |---|---|---|
+| `VIREO_LLM_BASE_URL` (or `OPENAI_BASE_URL`) | `https://api.openai.com/v1` | OpenAI-compatible endpoint |
+| `VIREO_LLM_API_KEY` (or `OPENAI_API_KEY`) | – | API key for that endpoint |
+| `VIREO_MODEL` | picked from the endpoint's list | Main model |
+| `VIREO_FAST_MODEL` | a cheaper sibling of the main model | Model for routine work |
+| `VIREO_LLM_API` | `chat` | `chat` (Chat Completions, works everywhere) or `responses` (OpenAI only) |
 | `VIREO_PORT` | `8787` | HTTP port |
 | `VIREO_HOST` | `0.0.0.0` | Bind address |
 | `VIREO_DATA_DIR` | `./data` | Database, files, browser profile, keys |
-| `PI_CODING_AGENT_DIR` | `~/.pi/agent` | pi's credentials, models and settings |
 | `VIREO_PASSWORD` | – | Fixed owner password (skips the setup screen) |
 | `VIREO_PUBLIC_URL` | detected | Public base URL, used for OAuth redirects |
 | `VIREO_SEARXNG_URL` | – | Use a SearXNG instance for web search |
@@ -81,7 +87,7 @@ Preferences such as time zone, morning brief time, working hours and which proac
 ## How it works
 
 - **Threads:** each matter is a thread with its own context. A run is built only from that thread's messages plus relevant memory, so two threads never mix. **Overview** is pinned. It answers quick things, receives the morning brief, and opens new threads for multi-step matters.
-- **Agents:** a triage agent hands each request to a specialist (general, research, calendar, email, browser) through handoff tools. These are pi `Agent` instances that stream to the PWA over server-sent events.
+- **Agents:** Swarm-style multi-agent routing on the OpenAI Agents SDK. A triage agent (on the cheaper model) hands each request to a specialist (general, research, calendar, email, browser) with the SDK's native handoffs, and specialists can hand off to each other. Each specialist has only its own tools. Runs stream to the PWA over server-sent events, and every handoff appears in the thread's audit trail.
 - **Memory:** a temporal knowledge graph in SQLite. It stores entities, facts with validity intervals, and the episodes they came from.
   - A fast model extracts facts after each turn. A changed fact replaces the old one, which is kept as history rather than deleted.
   - When a thread is marked done, its conclusions are distilled.
@@ -101,7 +107,7 @@ tests/e2e      Playwright: one test per PRD acceptance criterion
 
 ### Differences from the PRD draft
 
-- **pi instead of the OpenAI Agents SDK.** pi provides the agent loop, multi-provider model access and OAuth sign-in, so Vireo needs no LiteLLM and runs on your own pi quota.
+- **LiteLLM is optional.** It ships in the Docker Compose setup for multi-provider access. Vireo itself only needs an OpenAI-compatible endpoint.
 - **Built-in memory graph instead of Graphiti.** It follows the same bi-temporal model (episodes, entities, facts with validity and supersession) but lives in SQLite. That means no Neo4j and no extra service.
 - **Native Google REST instead of an MCP server.** You connect with your own OAuth client from Settings. Until then, a local calendar keeps everything working.
 
@@ -115,8 +121,8 @@ npm run test:e2e     # end-to-end suite (needs Chromium)
 npm run acceptance   # build, run everything, write acceptance-report.md
 ```
 
-The end-to-end suite runs the built server with a deterministic scripted model, an in-memory mailbox and a local fixture website (search results, a sign-in page, a booking form). It runs the same way on every machine and needs no network or model credentials. Each test is named after the acceptance criterion it proves, for example `[M3.4] nothing outward-facing happens without confirmation`, and `npm run acceptance` turns the results into a report with one row per criterion.
+The end-to-end suite runs the built server with a deterministic scripted model served over the OpenAI Chat Completions protocol (so the Agents SDK, streaming, tool calls and handoffs all run for real), an in-memory mailbox and a local fixture website (search results, a sign-in page, a booking form). It runs the same way on every machine and needs no network or model credentials. Each test is named after the acceptance criterion it proves, for example `[M3.4] nothing outward-facing happens without confirmation`, and `npm run acceptance` turns the results into a report with one row per criterion.
 
 To try a real model by hand, follow [docs/ACCEPTANCE.md](docs/ACCEPTANCE.md).
 
-To demo without a model, run `VIREO_FAKE_MODEL=1 VIREO_FAKE_GOOGLE=1 npm start`.
+To demo without a model, run `VIREO_FAKE_MODEL=1 VIREO_FAKE_GOOGLE=1 npm start`. To serve the scripted model as a standalone endpoint (for example behind LiteLLM), run `node scripts/fake-llm.mjs 8911`.

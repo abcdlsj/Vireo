@@ -45,18 +45,36 @@ export function SettingsPage({ me, reload, onSignedOut }: { me: Me | null; reloa
 
 function Models({ reload }: { reload: () => Promise<void> }) {
   const [st, setSt] = useState<ModelStatus | null>(null);
-  const [login, setLogin] = useState<string | null>(null);
-  const [keyProvider, setKeyProvider] = useState("anthropic");
-  const [key, setKey] = useState("");
-  const load = () => api.get<ModelStatus>("/api/models").then(setSt);
+  const [form, setForm] = useState({ baseUrl: "", apiKey: "", model: "", fastModel: "", api: "chat" as "chat" | "responses" });
+  const [busy, setBusy] = useState(false);
+  const [test, setTest] = useState<{ ok: boolean; message: string } | null>(null);
+  const load = () =>
+    api.get<ModelStatus>("/api/models").then((r) => {
+      setSt(r);
+      setForm({ baseUrl: r.source.baseUrl === "settings" ? r.baseUrl : "", apiKey: "", model: r.choice.main ?? "", fastModel: r.choice.fast ?? "", api: r.api });
+    });
   useEffect(() => {
     void load();
   }, []);
   if (!st) return null;
-  const choose = async (field: "main" | "fast", value: string) => {
-    await api.put("/api/models", { ...st.choice, [field]: value || undefined });
-    await load();
-    await reload();
+  const save = async () => {
+    setBusy(true);
+    setTest(null);
+    try {
+      await api.put("/api/models", { ...form, apiKey: form.apiKey || undefined });
+      await load();
+      await reload();
+    } finally {
+      setBusy(false);
+    }
+  };
+  const runTest = async () => {
+    setBusy(true);
+    try {
+      setTest(await api.post<{ ok: boolean; message: string }>("/api/models/test"));
+    } finally {
+      setBusy(false);
+    }
   };
   return (
     <section className="card" data-testid="models-card">
@@ -64,161 +82,79 @@ function Models({ reload }: { reload: () => Promise<void> }) {
       {st.fake ? <p className="tag">Demo mode: a scripted model is answering.</p> : null}
       {st.ready ? (
         <p>
-          Using <b>{st.main?.name}</b> <span className="muted">({st.main?.provider})</span>; routine work on <b>{st.fast?.name}</b>.
+          Using <b>{st.main}</b>; routine work on <b>{st.fast}</b>. <span className="muted small">{st.baseUrl}</span>
         </p>
       ) : (
-        <p className="error">No model yet. Sign in with a subscription below, add an API key, or run <code>pi</code> and use <code>/login</code> on this machine.</p>
+        <p className="error">No model yet. Enter an OpenAI-compatible endpoint and API key below.</p>
       )}
+      {st.error ? <p className="error small">{st.error}</p> : null}
       <p className="muted small">
-        Vireo uses pi's credentials at <code>{st.piAgentDir}</code>, so anything you've signed in to with pi works here, on your own quota.
+        Any OpenAI-compatible endpoint works: OpenAI, a LiteLLM proxy (for Anthropic, Gemini, Bedrock and more), OpenRouter, or a local server such as Ollama.
       </p>
-      {st.available.length ? (
+      <form
+        className="stack"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void save();
+        }}
+      >
+        <label>
+          Base URL
+          <input
+            value={form.baseUrl}
+            placeholder={st.source.baseUrl === "settings" ? "" : `${st.baseUrl}${st.source.baseUrl === "env" ? " (from environment)" : " (default)"}`}
+            onChange={(e) => setForm({ ...form, baseUrl: e.target.value })}
+            data-testid="llm-base-url"
+          />
+        </label>
+        <label>
+          API key
+          <input
+            type="password"
+            value={form.apiKey}
+            placeholder={st.hasKey ? `Saved${st.source.apiKey === "env" ? " (from environment)" : ""}; type to replace` : "sk-…"}
+            onChange={(e) => setForm({ ...form, apiKey: e.target.value })}
+            data-testid="llm-api-key"
+          />
+        </label>
         <div className="grid2">
           <label>
             Main model
-            <select value={st.choice?.main ?? ""} onChange={(e) => void choose("main", e.target.value)}>
-              <option value="">Automatic</option>
-              {st.available.map((m) => (
-                <option key={`${m.provider}/${m.id}`} value={`${m.provider}/${m.id}`}>
-                  {m.provider} · {m.name}
-                </option>
-              ))}
-            </select>
+            <input list="llm-models" value={form.model} placeholder={st.main ? `${st.main} (automatic)` : "e.g. gpt-5"} onChange={(e) => setForm({ ...form, model: e.target.value })} data-testid="llm-model" />
           </label>
           <label>
             Routine work
-            <select value={st.choice?.fast ?? ""} onChange={(e) => void choose("fast", e.target.value)}>
-              <option value="">Automatic (cheaper model)</option>
-              {st.available.map((m) => (
-                <option key={`${m.provider}/${m.id}`} value={`${m.provider}/${m.id}`}>
-                  {m.provider} · {m.name}
-                </option>
-              ))}
-            </select>
+            <input list="llm-models" value={form.fastModel} placeholder={st.fast ? `${st.fast} (automatic)` : "a cheaper model"} onChange={(e) => setForm({ ...form, fastModel: e.target.value })} />
           </label>
         </div>
-      ) : null}
-      <h4>Providers</h4>
-      <div className="provider-list">
-        {(st.oauth ?? []).map((p) => {
-          const configured = st.providers.find((x) => x.id === p.id)?.configured;
-          return (
-            <div key={p.id} className="provider">
-              <span>
-                {p.name} {configured ? <span className="tag ok">signed in</span> : null}
-              </span>
-              {configured ? (
-                <button className="btn small ghost" onClick={() => void api.del(`/api/models/providers/${p.id}`).then(load).then(reload)}>
-                  Sign out
-                </button>
-              ) : (
-                <button
-                  className="btn small"
-                  onClick={() => void api.post<{ id: string }>("/api/models/login", { provider: p.id }).then((r) => setLogin(r.id))}
-                >
-                  Sign in
-                </button>
-              )}
-            </div>
-          );
-        })}
-      </div>
-      {login ? (
-        <LoginFlow
-          id={login}
-          onDone={() => {
-            setLogin(null);
-            void load().then(reload);
-          }}
-        />
-      ) : null}
-      <form
-        className="inline-form"
-        onSubmit={(e) => {
-          e.preventDefault();
-          void api.post("/api/models/apikey", { provider: keyProvider, key }).then(() => {
-            setKey("");
-            void load().then(reload);
-          });
-        }}
-      >
-        <select value={keyProvider} onChange={(e) => setKeyProvider(e.target.value)}>
-          {st.providers
-            .filter((p) => !p.oauth || p.id === "anthropic")
-            .map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-        </select>
-        <input type="password" placeholder="API key" value={key} onChange={(e) => setKey(e.target.value)} />
-        <button className="btn small" disabled={!key}>
-          Save key
-        </button>
+        <datalist id="llm-models">
+          {st.available.map((m) => (
+            <option key={m} value={m} />
+          ))}
+        </datalist>
+        <label>
+          API
+          <select value={form.api} onChange={(e) => setForm({ ...form, api: e.target.value as "chat" | "responses" })}>
+            <option value="chat">Chat Completions (works with every compatible endpoint)</option>
+            <option value="responses">Responses (OpenAI only)</option>
+          </select>
+        </label>
+        <div className="row-buttons">
+          <button className="btn small" disabled={busy}>
+            Save
+          </button>
+          <button type="button" className="btn small ghost" disabled={busy} onClick={() => void runTest()} data-testid="llm-test">
+            Test connection
+          </button>
+          {st.hasKey && st.source.apiKey === "settings" ? (
+            <button type="button" className="btn small ghost" disabled={busy} onClick={() => void api.put("/api/models", { apiKey: "" }).then(load).then(reload)}>
+              Remove saved key
+            </button>
+          ) : null}
+        </div>
+        {test ? <p className={test.ok ? "ok small" : "error small"} data-testid="llm-test-result">{test.message}</p> : null}
       </form>
     </section>
-  );
-}
-
-interface LoginState {
-  status: "running" | "done" | "error";
-  authUrl?: string;
-  instructions?: string;
-  progress: string[];
-  prompt?: { kind: "text" | "select"; message: string; placeholder?: string; options?: { id: string; label: string }[] };
-  error?: string;
-}
-
-function LoginFlow({ id, onDone }: { id: string; onDone: () => void }) {
-  const [s, setS] = useState<LoginState | null>(null);
-  const [answer, setAnswer] = useState("");
-  useEffect(() => {
-    const t = window.setInterval(() => {
-      void api.get<LoginState>(`/api/models/login/${id}`).then((r) => {
-        setS(r);
-        if (r.status === "done") {
-          window.clearInterval(t);
-          onDone();
-        }
-      });
-    }, 1000);
-    return () => window.clearInterval(t);
-  }, [id]);
-  if (!s) return <p className="muted">Starting sign-in…</p>;
-  return (
-    <div className="login-flow">
-      {s.authUrl ? (
-        <p>
-          1. <a href={s.authUrl} target="_blank" rel="noreferrer">Open the sign-in page</a> and approve access.
-          {s.instructions ? <span className="muted"> {s.instructions}</span> : null}
-        </p>
-      ) : null}
-      {s.prompt ? (
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            void api.post(`/api/models/login/${id}/answer`, { value: answer }).then(() => setAnswer(""));
-          }}
-        >
-          <p>2. {s.prompt.message}</p>
-          {s.prompt.kind === "select" ? (
-            <select value={answer} onChange={(e) => setAnswer(e.target.value)}>
-              <option value="">Choose…</option>
-              {s.prompt.options?.map((o) => (
-                <option key={o.id} value={o.id}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-          ) : (
-            <input value={answer} placeholder={s.prompt.placeholder} onChange={(e) => setAnswer(e.target.value)} />
-          )}
-          <button className="btn small">Continue</button>
-        </form>
-      ) : null}
-      {s.progress.length ? <p className="muted small">{s.progress.at(-1)}</p> : null}
-      {s.status === "error" ? <p className="error">{s.error}</p> : null}
-    </div>
   );
 }
 

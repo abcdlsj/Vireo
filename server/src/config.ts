@@ -1,5 +1,4 @@
 import { mkdirSync } from "node:fs";
-import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 
 /**
@@ -10,8 +9,6 @@ export interface Config {
   port: number;
   host: string;
   dataDir: string;
-  /** Directory holding pi's auth.json / models.json / settings.json. */
-  piAgentDir: string;
   /** Directory with the built web app. */
   webDir: string;
   /** Use the deterministic scripted model instead of a real one (tests, demos). */
@@ -46,16 +43,10 @@ function bool(v: string | undefined, fallback: boolean): boolean {
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const dataDir = resolve(env.VIREO_DATA_DIR ?? join(process.cwd(), "data"));
   mkdirSync(dataDir, { recursive: true });
-  const piAgentDir = resolve(
-    env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi", "agent"),
-  );
-  // pi's SDK reads this variable; keep it consistent with what Vireo uses.
-  process.env.PI_CODING_AGENT_DIR = piAgentDir;
   return {
     port: Number(env.VIREO_PORT ?? env.PORT ?? 8787),
     host: env.VIREO_HOST ?? "0.0.0.0",
     dataDir,
-    piAgentDir,
     webDir: resolve(env.VIREO_WEB_DIR ?? join(process.cwd(), "dist", "web")),
     fakeModel: bool(env.VIREO_FAKE_MODEL, false),
     fakeGoogle: bool(env.VIREO_FAKE_GOOGLE, false),

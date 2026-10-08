@@ -1,4 +1,4 @@
-import type { ImageContent } from "@mariozechner/pi-ai";
+import type { ImageContent } from "./messages.js";
 import { Hono, type Context, type Next } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { streamSSE } from "hono/streaming";
@@ -379,34 +379,13 @@ export function createHttp(app: App): Hono<Env> {
   api.get("/api/settings", (c) => c.json(app.settings.get()));
   api.patch("/api/settings", async (c) => c.json(app.settings.update(await c.req.json())));
 
-  // ---- models (pi) ----
-  api.get("/api/models", (c) => c.json({ ...app.models.status(), choice: app.models.getChoice(), oauth: app.models.oauthProviders() }));
-  api.put("/api/models", async (c) => {
-    app.models.setChoice(await c.req.json());
+  // ---- models (any OpenAI-compatible endpoint) ----
+  api.get("/api/models", async (c) => {
+    await app.models.refresh();
     return c.json(app.models.status());
   });
-  api.post("/api/models/login", async (c) => {
-    const { provider } = await c.req.json<{ provider: string }>();
-    const s = app.models.startLogin(provider);
-    return c.json({ id: s.id });
-  });
-  api.get("/api/models/login/:id", (c) => {
-    const s = app.models.getLogin(c.req.param("id"));
-    return s ? c.json(s) : c.json({ error: "Not found" }, 404);
-  });
-  api.post("/api/models/login/:id/answer", async (c) => {
-    const { value } = await c.req.json<{ value?: string }>();
-    return c.json({ ok: app.models.answerLogin(c.req.param("id"), value) });
-  });
-  api.post("/api/models/apikey", async (c) => {
-    const { provider, key } = await c.req.json<{ provider: string; key: string }>();
-    app.models.setApiKey(provider, key);
-    return c.json(app.models.status());
-  });
-  api.delete("/api/models/providers/:id", (c) => {
-    app.models.logout(c.req.param("id"));
-    return c.json(app.models.status());
-  });
+  api.put("/api/models", async (c) => c.json(await app.models.save(await c.req.json())));
+  api.post("/api/models/test", async (c) => c.json(await app.models.test()));
 
   // ---- Google ----
   api.put("/api/google/client", async (c) => {

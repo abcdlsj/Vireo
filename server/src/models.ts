@@ -1,229 +1,246 @@
-import {
-  type Api,
-  type AssistantMessage,
-  type Context,
-  type Model,
-  type OAuthLoginCallbacks,
-  completeSimple,
-  registerFauxProvider,
-  streamSimple,
-} from "@mariozechner/pi-ai";
-import type { StreamFn } from "@mariozechner/pi-agent-core";
-import { AuthStorage, ModelRegistry, SettingsManager } from "@mariozechner/pi-coding-agent";
-import { join } from "node:path";
+import { Agent, Runner, setTracingDisabled, type ModelProvider } from "@openai/agents";
+import { OpenAIProvider } from "@openai/agents-openai";
+import OpenAI from "openai";
 import type { Config } from "./config.js";
 import type { Db } from "./db.js";
-import { errorMessage, newId, now } from "./util.js";
-import { fakeResponse } from "./fake-model.js";
+import { startFakeLlmServer } from "./fake-llm-server.js";
+import { errorMessage, now } from "./util.js";
+import type { Vault } from "./vault.js";
 
 /**
- * Model access goes through pi's SDK. Credentials are read from the owner's
- * own pi agent directory (~/.pi/agent/auth.json), so whatever the owner is
- * logged in to with `pi` (Claude Pro/Max, ChatGPT/Codex, Copilot, API keys…)
- * works in Vireo with no extra configuration, using the owner's own quota.
+ * Model access goes through the OpenAI Agents SDK, pointed at any
+ * OpenAI-compatible endpoint: OpenAI itself, a LiteLLM proxy (which fronts
+ * Anthropic, Gemini, Bedrock, Ollama and more), OpenRouter, a local server…
+ * A base URL and an API key are all it needs.
  */
 
-export interface ModelRef {
-  provider: string;
-  id: string;
-  name: string;
-}
+export type LlmApi = "chat" | "responses";
 
-export interface ModelChoice {
-  /** "provider/modelId" overrides; empty means automatic. */
-  main?: string;
-  fast?: string;
+export interface LlmSettings {
+  baseUrl?: string;
+  apiKey?: string;
+  /** Main model, for conversations and agent work. */
+  model?: string;
+  /** Cheaper model for routine work (titles, memory upkeep, summaries). */
+  fastModel?: string;
+  /** "chat" (Chat Completions, works everywhere) or "responses" (OpenAI's Responses API). */
+  api?: LlmApi;
 }
 
 export interface ModelStatus {
   ready: boolean;
   fake: boolean;
-  main?: ModelRef;
-  fast?: ModelRef;
-  available: ModelRef[];
-  piAgentDir: string;
-  providers: { id: string; name: string; configured: boolean; source?: string; oauth: boolean }[];
+  baseUrl: string;
+  hasKey: boolean;
+  /** Where each value came from, for the settings page. */
+  source: { baseUrl: "settings" | "env" | "default"; apiKey: "settings" | "env" | "none" };
+  api: LlmApi;
+  main?: string;
+  fast?: string;
+  /** Explicitly configured names (empty means automatic). */
+  choice: { main?: string; fast?: string };
+  available: string[];
   error?: string;
 }
 
-/** Preferred providers when nothing is configured, strongest-first. */
-const PROVIDER_PREFERENCE = [
-  "anthropic",
-  "openai-codex",
-  "openai",
-  "google",
-  "github-copilot",
-  "amazon-bedrock",
-  "google-vertex",
-  "azure-openai-responses",
-  "openrouter",
-  "deepseek",
-  "xai",
-  "mistral",
-];
-
-const MAIN_PATTERNS = [/opus/, /sonnet/, /^gpt-5(\.\d+)?$/, /gpt-5/, /gemini-.*pro/, /./];
+const OPENAI_URL = "https://api.openai.com/v1";
+const NOT_CHAT = /(embed|tts|whisper|dall-e|image|audio|realtime|moderation|transcribe|search|vision-preview|davinci|babbage|rerank)/i;
+const MAIN_PATTERNS = [/claude.*opus/i, /claude.*sonnet/i, /^(openai\/)?gpt-5(\.\d+)?$/i, /gpt-5(?!.*(mini|nano))/i, /gemini.*pro/i, /gpt-4\.1$/i, /gpt-4o$/i, /deepseek/i, /qwen/i, /./];
 const FAST_PATTERN = /(haiku|mini|flash|nano|lite|small|fast)/i;
 
-interface LoginSession {
-  id: string;
-  provider: string;
-  status: "running" | "done" | "error";
-  authUrl?: string;
-  instructions?: string;
-  progress: string[];
-  prompt?: { kind: "text" | "select"; message: string; placeholder?: string; options?: { id: string; label: string }[] };
-  answer?: (value: string | undefined) => void;
-  error?: string;
-}
+setTracingDisabled(true);
 
 export class ModelService {
-  readonly authStorage: AuthStorage;
-  readonly registry: ModelRegistry;
-  private fakeRegistration?: ReturnType<typeof registerFauxProvider>;
-  private logins = new Map<string, LoginSession>();
+  private fakeUrl?: Promise<string>;
+  private available: string[] = [];
+  private listError?: string;
+  private listedFor = "";
+  private cached?: { key: string; provider: ModelProvider; client: OpenAI };
 
   constructor(
     private readonly config: Config,
     private readonly db: Db,
+    private readonly vault: Vault,
   ) {
-    this.authStorage = AuthStorage.create(join(config.piAgentDir, "auth.json"));
-    this.registry = ModelRegistry.create(this.authStorage, join(config.piAgentDir, "models.json"));
-    if (config.fakeModel) this.setupFake();
+    if (config.fakeModel) this.fakeUrl = startFakeLlmServer().then((s) => s.url);
+    void this.refresh();
   }
 
-  private setupFake(): void {
-    const reg = registerFauxProvider({
-      provider: "vireo-fake",
-      api: "vireo-fake",
-      models: [
-        { id: "fake-main", name: "Vireo scripted model", reasoning: false, input: ["text", "image"] },
-        { id: "fake-fast", name: "Vireo scripted model (fast)", reasoning: false },
-      ],
-      tokensPerSecond: Number(process.env.VIREO_FAKE_TOKENS_PER_SECOND ?? 400),
-    });
-    const factory = (context: Context) => fakeResponse(context);
-    const refill = () => {
-      if (reg.getPendingResponseCount() < 100) reg.appendResponses(Array.from({ length: 1000 }, () => factory));
-    };
-    refill();
-    setInterval(refill, 1000).unref();
-    this.fakeRegistration = reg;
-  }
+  // ---- configuration ----
 
-  getChoice(): ModelChoice {
-    return this.db.getKv<ModelChoice>("models.choice") ?? {};
-  }
-
-  setChoice(choice: ModelChoice): void {
-    this.db.setKv("models.choice", choice);
-  }
-
-  available(): Model<Api>[] {
-    if (this.fakeRegistration) return [...this.fakeRegistration.models];
-    this.authStorage.reload();
-    this.registry.refresh();
-    return this.registry.getAvailable();
-  }
-
-  private findRef(ref: string | undefined, models: Model<Api>[]): Model<Api> | undefined {
-    if (!ref) return undefined;
-    const [provider, ...rest] = ref.split("/");
-    const id = rest.join("/");
-    return models.find((m) => m.provider === provider && m.id === id) ?? models.find((m) => m.id === ref);
-  }
-
-  /** The strongest configured model: owner choice, then pi's default, then a preference list. */
-  mainModel(): Model<Api> | undefined {
-    const models = this.available();
-    if (models.length === 0) return undefined;
-    const chosen = this.findRef(this.getChoice().main, models);
-    if (chosen) return chosen;
-    if (this.fakeRegistration) return this.fakeRegistration.getModel("fake-main");
-    try {
-      const settings = SettingsManager.create(process.cwd(), this.config.piAgentDir);
-      const provider = settings.getDefaultProvider();
-      const modelId = settings.getDefaultModel();
-      if (provider && modelId) {
-        const m = models.find((x) => x.provider === provider && x.id === modelId);
-        if (m) return m;
+  private saved(): LlmSettings {
+    const s = this.db.getKv<LlmSettings & { apiKeyEnc?: string }>("llm.settings") ?? {};
+    let apiKey: string | undefined;
+    if (s.apiKeyEnc) {
+      try {
+        apiKey = this.vault.decrypt(s.apiKeyEnc);
+      } catch {
+        apiKey = undefined;
       }
-    } catch {
-      // pi settings are optional
     }
-    const providers = [...new Set(models.map((m) => m.provider))].sort((a, b) => rank(a) - rank(b));
-    const provider = providers[0]!;
-    const own = models.filter((m) => m.provider === provider && !FAST_PATTERN.test(m.id));
-    const pool = own.length > 0 ? own : models.filter((m) => m.provider === provider);
-    for (const pattern of MAIN_PATTERNS) {
-      const hits = pool.filter((m) => pattern.test(m.id)).sort(newestFirst);
-      if (hits.length > 0) return hits[0];
-    }
-    return pool[0];
+    return { baseUrl: s.baseUrl, model: s.model, fastModel: s.fastModel, api: s.api, apiKey };
   }
 
-  /** A cheaper model for routine work (titles, memory upkeep, summaries). */
-  fastModel(): Model<Api> | undefined {
-    const models = this.available();
-    const chosen = this.findRef(this.getChoice().fast, models);
-    if (chosen) return chosen;
-    if (this.fakeRegistration) return this.fakeRegistration.getModel("fake-fast");
+  /** Saves owner settings. Empty strings clear a value; an omitted apiKey keeps the stored one. */
+  async save(input: LlmSettings): Promise<ModelStatus> {
+    const cur = this.db.getKv<LlmSettings & { apiKeyEnc?: string }>("llm.settings") ?? {};
+    const clean = (v: string | undefined, old: string | undefined) => (v === undefined ? old : v.trim() || undefined);
+    const next = {
+      baseUrl: clean(input.baseUrl, cur.baseUrl),
+      model: clean(input.model, cur.model),
+      fastModel: clean(input.fastModel, cur.fastModel),
+      api: input.api ?? cur.api,
+      apiKeyEnc: input.apiKey === undefined ? cur.apiKeyEnc : input.apiKey.trim() ? this.vault.encrypt(input.apiKey.trim()) : undefined,
+    };
+    this.db.setKv("llm.settings", next);
+    this.cached = undefined;
+    await this.refresh(true);
+    return this.status();
+  }
+
+  /** Effective settings: what the owner saved in the app wins over environment variables. */
+  private effective(): Required<Pick<LlmSettings, "baseUrl" | "api">> & LlmSettings & { source: ModelStatus["source"] } {
+    const env = process.env;
+    const s = this.saved();
+    const envUrl = env.VIREO_LLM_BASE_URL || env.OPENAI_BASE_URL;
+    const envKey = env.VIREO_LLM_API_KEY || env.OPENAI_API_KEY;
+    const baseUrl = s.baseUrl || envUrl || OPENAI_URL;
+    return {
+      baseUrl: baseUrl.replace(/\/+$/, ""),
+      apiKey: s.apiKey || envKey,
+      model: s.model || env.VIREO_MODEL || undefined,
+      fastModel: s.fastModel || env.VIREO_FAST_MODEL || undefined,
+      api: s.api || (env.VIREO_LLM_API === "responses" ? "responses" : "chat"),
+      source: {
+        baseUrl: s.baseUrl ? "settings" : envUrl ? "env" : "default",
+        apiKey: s.apiKey ? "settings" : envKey ? "env" : "none",
+      },
+    };
+  }
+
+  /** The endpoint is usable: an API key, or a self-hosted endpoint that may not need one. */
+  private reachable(): boolean {
+    if (this.config.fakeModel) return true;
+    const e = this.effective();
+    return Boolean(e.apiKey) || e.source.baseUrl !== "default";
+  }
+
+  private async connection(): Promise<{ baseUrl: string; apiKey: string; api: LlmApi }> {
+    if (this.fakeUrl) return { baseUrl: await this.fakeUrl, apiKey: "vireo-fake", api: "chat" };
+    const e = this.effective();
+    // Local endpoints such as Ollama accept any key, but the client requires one.
+    return { baseUrl: e.baseUrl, apiKey: e.apiKey || "not-needed", api: e.api };
+  }
+
+  private async clients(): Promise<{ provider: ModelProvider; client: OpenAI }> {
+    const c = await this.connection();
+    const key = `${c.baseUrl}|${c.apiKey}|${c.api}`;
+    if (this.cached?.key !== key) {
+      const client = new OpenAI({ apiKey: c.apiKey, baseURL: c.baseUrl, timeout: 180_000, maxRetries: 2 });
+      this.cached = { key, client, provider: new OpenAIProvider({ openAIClient: client, useResponses: c.api === "responses" }) };
+    }
+    return this.cached;
+  }
+
+  /** Lists the endpoint's models so the owner can pick, and so a model can be chosen automatically. */
+  async refresh(force = false): Promise<void> {
+    if (!this.reachable()) {
+      this.available = [];
+      this.listError = undefined;
+      return;
+    }
+    const c = await this.connection();
+    const key = `${c.baseUrl}|${c.apiKey}`;
+    if (!force && key === this.listedFor && this.available.length) return;
+    try {
+      const { client } = await this.clients();
+      const ids: string[] = [];
+      for await (const m of client.models.list()) ids.push(m.id);
+      this.available = ids.filter((id) => !NOT_CHAT.test(id) && !id.includes("*")).sort();
+      this.listError = undefined;
+    } catch (err) {
+      this.available = [];
+      this.listError = `Could not list models at ${c.baseUrl}: ${errorMessage(err)}`;
+    }
+    this.listedFor = key;
+  }
+
+  /** The main model name, or undefined when none is configured or discoverable. */
+  mainModel(): string | undefined {
+    if (!this.reachable()) return undefined;
+    if (this.config.fakeModel) return this.saved().model || "fake-main";
+    const e = this.effective();
+    if (e.model) return e.model;
+    for (const p of MAIN_PATTERNS) {
+      const pool = this.available.filter((id) => !FAST_PATTERN.test(id) || p.source === ".");
+      const hit = pool.filter((id) => p.test(id)).sort(newestFirst)[0];
+      if (hit) return hit;
+    }
+    return undefined;
+  }
+
+  fastModel(): string | undefined {
     const main = this.mainModel();
     if (!main) return undefined;
-    const sameProvider = models
-      .filter((m) => m.provider === main.provider && FAST_PATTERN.test(m.id) && !/preview|image|audio|tts|realtime|embed/.test(m.id))
-      .sort(newestFirst);
-    return sameProvider[0] ?? main;
+    if (this.config.fakeModel) return this.saved().fastModel || "fake-fast";
+    const e = this.effective();
+    if (e.fastModel) return e.fastModel;
+    // A cheaper sibling from the same family/provider, e.g. claude-*-haiku next to claude-*-sonnet.
+    const family = main.split(/[-/:]/)[0]!;
+    const sibling = this.available.filter((id) => id.startsWith(family) && FAST_PATTERN.test(id)).sort(newestFirst)[0];
+    return sibling ?? main;
   }
 
   status(): ModelStatus {
-    let error: string | undefined;
-    let available: Model<Api>[] = [];
-    try {
-      available = this.available();
-    } catch (err) {
-      error = errorMessage(err);
-    }
+    const e = this.effective();
+    const s = this.saved();
     const main = this.mainModel();
-    const fast = this.fastModel();
-    const oauthIds = new Set(this.authStorage.getOAuthProviders().map((p) => p.id));
-    const providerIds = [...new Set([...PROVIDER_PREFERENCE, ...oauthIds])];
     return {
       ready: Boolean(main),
-      fake: Boolean(this.fakeRegistration),
-      main: main && ref(main),
-      fast: fast && ref(fast),
-      available: available.map(ref),
-      piAgentDir: this.config.piAgentDir,
-      providers: providerIds.map((id) => {
-        const st = this.authStorage.getAuthStatus(id);
-        return {
-          id,
-          name: this.registry.getProviderDisplayName(id),
-          configured: st.configured,
-          source: st.source,
-          oauth: oauthIds.has(id),
-        };
-      }),
-      error: error ?? this.registry.getError(),
+      fake: this.config.fakeModel,
+      baseUrl: this.config.fakeModel ? "(scripted model)" : e.baseUrl,
+      hasKey: Boolean(e.apiKey),
+      source: e.source,
+      api: e.api,
+      main,
+      fast: this.fastModel(),
+      choice: { main: s.model, fast: s.fastModel },
+      available: this.available,
+      error: this.listError ?? (this.reachable() && !main ? "No model selected. Choose one below, or set VIREO_MODEL." : undefined),
     };
   }
 
-  /** Stream function for pi-agent-core that resolves fresh credentials per request. */
-  readonly streamFn: StreamFn = async (model, context, options) => {
-    if (this.fakeRegistration) return streamSimple(model, context, options);
-    const auth = await this.registry.getApiKeyAndHeaders(model);
-    if (!auth.ok) throw new Error(auth.error);
-    return streamSimple(model, context, {
-      ...options,
-      apiKey: auth.apiKey ?? options?.apiKey,
-      headers: { ...(options?.headers ?? {}), ...(auth.headers ?? {}) },
-    });
-  };
+  /** The SDK runner for agent runs, bound to the current endpoint. */
+  async runner(): Promise<Runner> {
+    const { provider } = await this.clients();
+    return new Runner({ modelProvider: provider, tracingDisabled: true });
+  }
+
+  /** Short name of the endpoint for usage records ("api.openai.com", "litellm", "scripted"). */
+  providerLabel(): string {
+    if (this.config.fakeModel) return "scripted";
+    try {
+      return new URL(this.effective().baseUrl).hostname;
+    } catch {
+      return "custom";
+    }
+  }
+
+  /** Checks the endpoint and model with a tiny request. */
+  async test(): Promise<{ ok: boolean; message: string }> {
+    await this.refresh(true);
+    try {
+      const out = await this.complete({ task: "connection_test", system: "Reply with the single word: ok", prompt: "ping", maxTokens: 20, tier: "main" });
+      return { ok: true, message: `Connected. ${this.mainModel()} replied: ${out.slice(0, 40)}` };
+    } catch (err) {
+      return { ok: false, message: errorMessage(err) };
+    }
+  }
 
   /**
-   * One-shot completion for routine work. The first system line names the
-   * task so logs and the scripted test model can tell calls apart.
+   * One-shot completion for routine work, run as a single-turn agent. The first
+   * system line names the task so logs and the scripted test model can tell
+   * calls apart.
    */
   async complete(opts: {
     task: string;
@@ -234,37 +251,23 @@ export class ModelService {
     maxTokens?: number;
   }): Promise<string> {
     const model = opts.tier === "main" ? this.mainModel() : this.fastModel();
-    if (!model) throw new Error("No model is configured. Sign in to a model provider in Settings.");
+    if (!model) throw new Error("No model is configured. Set a base URL, API key and model in Settings.");
     const started = now();
-    let message: AssistantMessage;
+    const agent = new Agent({
+      name: opts.task,
+      instructions: `Task: ${opts.task}\n\n${opts.system}`,
+      model,
+      modelSettings: { maxTokens: opts.maxTokens ?? 2000 },
+    });
     try {
-      const auth = this.fakeRegistration ? { ok: true as const } : await this.registry.getApiKeyAndHeaders(model);
-      if (!auth.ok) throw new Error(auth.error);
-      message = await completeSimple(
-        model,
-        {
-          systemPrompt: `Task: ${opts.task}\n\n${opts.system}`,
-          messages: [{ role: "user", content: opts.prompt, timestamp: now() }],
-        },
-        {
-          apiKey: "apiKey" in auth ? auth.apiKey : undefined,
-          headers: "headers" in auth ? auth.headers : undefined,
-          maxTokens: opts.maxTokens ?? 2000,
-        },
-      );
+      const result = await (await this.runner()).run(agent, opts.prompt, { maxTurns: 1 });
+      const u = result.state.usage;
+      this.recordUsage({ threadId: opts.threadId, purpose: opts.task, model, input: u.inputTokens, output: u.outputTokens, durationMs: now() - started });
+      return String(result.finalOutput ?? "").trim();
     } catch (err) {
       this.recordUsage({ threadId: opts.threadId, purpose: opts.task, model, durationMs: now() - started, error: errorMessage(err) });
       throw err;
     }
-    this.recordUsage({ threadId: opts.threadId, purpose: opts.task, model, message, durationMs: now() - started });
-    if (message.stopReason === "error" || message.stopReason === "aborted") {
-      throw new Error(message.errorMessage ?? "Model call failed");
-    }
-    return message.content
-      .filter((b): b is { type: "text"; text: string } => b.type === "text")
-      .map((b) => b.text)
-      .join("")
-      .trim();
   }
 
   /** Like complete() but parses a JSON object out of the reply. */
@@ -277,107 +280,32 @@ export class ModelService {
     threadId?: string;
     purpose: string;
     agent?: string;
-    model: Model<Api>;
-    message?: AssistantMessage;
+    model: string;
+    input?: number;
+    output?: number;
     durationMs?: number;
     error?: string;
   }): void {
-    const u = opts.message?.usage;
     this.db.run(
       `INSERT INTO llm_calls (thread_id, purpose, agent, provider, model, input_tokens, output_tokens, cost, duration_ms, error, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       opts.threadId ?? null,
       opts.purpose,
       opts.agent ?? null,
-      opts.model.provider,
-      opts.model.id,
-      u ? u.input + u.cacheRead + u.cacheWrite : 0,
-      u?.output ?? 0,
-      u?.cost?.total ?? 0,
+      this.providerLabel(),
+      opts.model,
+      opts.input ?? 0,
+      opts.output ?? 0,
+      0,
       opts.durationMs ?? null,
-      opts.error ?? opts.message?.errorMessage ?? null,
+      opts.error ?? null,
       now(),
     );
   }
-
-  // ---- Provider sign-in from the web app (uses pi's OAuth flows) ----
-
-  oauthProviders(): { id: string; name: string }[] {
-    return this.authStorage.getOAuthProviders().map((p) => ({ id: p.id, name: p.name }));
-  }
-
-  startLogin(provider: string): LoginSession {
-    const session: LoginSession = { id: newId("login"), provider, status: "running", progress: [] };
-    this.logins.set(session.id, session);
-    const ask = (prompt: LoginSession["prompt"]) =>
-      new Promise<string | undefined>((resolve) => {
-        session.prompt = prompt;
-        session.answer = (v) => {
-          session.prompt = undefined;
-          session.answer = undefined;
-          resolve(v);
-        };
-      });
-    const callbacks: OAuthLoginCallbacks = {
-      onAuth: (info) => {
-        session.authUrl = info.url;
-        session.instructions = info.instructions;
-      },
-      onPrompt: async (p) => (await ask({ kind: "text", message: p.message, placeholder: p.placeholder })) ?? "",
-      onManualCodeInput: async () =>
-        (await ask({
-          kind: "text",
-          message: "After approving, paste the final redirect URL or the code shown here.",
-        })) ?? "",
-      onSelect: async (p) => ask({ kind: "select", message: p.message, options: p.options }),
-      onProgress: (m) => session.progress.push(m),
-    };
-    this.authStorage
-      .login(provider, callbacks)
-      .then(() => {
-        session.status = "done";
-      })
-      .catch((err) => {
-        session.status = "error";
-        session.error = errorMessage(err);
-      });
-    return session;
-  }
-
-  getLogin(id: string): Omit<LoginSession, "answer"> | undefined {
-    const s = this.logins.get(id);
-    if (!s) return undefined;
-    const { answer: _answer, ...rest } = s;
-    return rest;
-  }
-
-  answerLogin(id: string, value: string | undefined): boolean {
-    const s = this.logins.get(id);
-    if (!s?.answer) return false;
-    s.answer(value);
-    return true;
-  }
-
-  setApiKey(provider: string, key: string): void {
-    this.authStorage.set(provider, { type: "api_key", key });
-  }
-
-  logout(provider: string): void {
-    this.authStorage.logout(provider);
-  }
 }
 
-function rank(provider: string): number {
-  const i = PROVIDER_PREFERENCE.indexOf(provider);
-  return i === -1 ? PROVIDER_PREFERENCE.length : i;
-}
-
-function newestFirst(a: Model<Api>, b: Model<Api>): number {
-  return b.id.localeCompare(a.id, undefined, { numeric: true });
-}
-
-function ref(m: Model<Api>): ModelRef {
-  return { provider: m.provider, id: m.id, name: m.name };
+function newestFirst(a: string, b: string): number {
+  return b.localeCompare(a, undefined, { numeric: true });
 }
 
 export function extractJson<T>(text: string): T | undefined {

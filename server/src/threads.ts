@@ -1,4 +1,4 @@
-import type { AgentMessage } from "@mariozechner/pi-agent-core";
+import type { AgentMessage, NoticeBody } from "./messages.js";
 import { bus } from "./bus.js";
 import type { Db } from "./db.js";
 import { newId, now, safeJson, scoreText, searchTerms } from "./util.js";
@@ -43,20 +43,7 @@ export interface Thread {
   doneAt: number | null;
 }
 
-/** A notice is a Vireo-authored event in a thread (confirmations, reminders, links). */
-export interface NoticeBody {
-  role: "notice";
-  kind: string;
-  text: string;
-  data?: Record<string, unknown>;
-  timestamp: number;
-}
-
-declare module "@mariozechner/pi-agent-core" {
-  interface CustomAgentMessages {
-    notice: NoticeBody;
-  }
-}
+export type { NoticeBody } from "./messages.js";
 
 export interface StoredMessage {
   id: number;
