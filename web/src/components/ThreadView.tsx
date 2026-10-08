@@ -7,7 +7,7 @@ import { ActionCard } from "./ActionCard";
 import { Composer } from "./Composer";
 import { ProcedureCard } from "./ProcedureCard";
 import { SidePanel } from "./SidePanel";
-import { AlertIcon, ArrowUpRightIcon, BellIcon, CheckIcon, ChevronLeft, ChevronRight, ClockIcon, PanelIcon, StatusIcon, SunIcon } from "../icons";
+import { AlertIcon, ArrowUpRightIcon, BellIcon, CheckIcon, ChevronLeft, ChevronRight, ClockIcon, PanelIcon, StatusIcon, BriefIcon } from "../icons";
 
 type Item =
   | { kind: "user"; m: Extract<Message, { role: "user" }> }
@@ -159,7 +159,7 @@ export function ThreadView({ id }: { id: string }) {
         <div className="head-actions">
           {isOverview ? (
             <button className="btn ghost small" onClick={() => void api.post("/api/brief")} aria-label="Brief me now" title="Brief me now" data-testid="brief-now">
-              <SunIcon />
+              <BriefIcon />
             </button>
           ) : t.state === "done" ? (
             <button className="btn ghost small" onClick={() => void api.post(`/api/threads/${t.id}/reopen`).then(load)}>

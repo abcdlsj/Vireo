@@ -3,6 +3,9 @@ import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import "@fontsource-variable/inter/wght.css";
 import "./styles.css";
+import { initTheme } from "./theme";
+
+initTheme();
 
 if ("serviceWorker" in navigator && location.protocol !== "file:") {
   navigator.serviceWorker.register("/sw.js").catch(() => undefined);

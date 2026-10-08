@@ -146,10 +146,11 @@ export const SparkIcon = () => (
   </Icon>
 );
 
-export const SunIcon = () => (
+export const BriefIcon = () => (
   <Icon>
-    <circle cx="8" cy="8" r="2.6" />
-    <path d="M8 1.8v1.4M8 12.8v1.4M1.8 8h1.4M12.8 8h1.4M3.6 3.6l1 1M11.4 11.4l1 1M3.6 12.4l1-1M11.4 4.6l1-1" />
+    <path d="M3 3.2h8v9.6a.9.9 0 0 0 .9.9H3.9a.9.9 0 0 1-.9-.9z" />
+    <path d="M11 6h2v6.8a.9.9 0 0 1-1.8 0" />
+    <path d="M5 5.6h4M5 8h4M5 10.4h2.6" />
   </Icon>
 );
 

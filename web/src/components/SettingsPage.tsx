@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { ChevronLeft } from "../icons";
 import { api, type Me, type ModelStatus, type OwnerSettings } from "../api";
+import { setThemeChoice, themeChoice, type ThemeChoice } from "../theme";
 
 export function SettingsPage({ me, reload, onSignedOut }: { me: Me | null; reload: () => Promise<void>; onSignedOut: () => void }) {
   if (!me) return <div className="page" />;
@@ -22,6 +23,7 @@ export function SettingsPage({ me, reload, onSignedOut }: { me: Me | null; reloa
         <Google me={me} reload={reload} />
         <Notifications me={me} reload={reload} />
         <Preferences settings={me.settings} reload={reload} />
+        <Appearance />
         <SignIns />
         <Usage />
         <section className="card">
@@ -310,6 +312,32 @@ function Preferences({ settings, reload }: { settings: OwnerSettings; reload: ()
       <button className="btn primary" onClick={() => void save()}>
         {saved ? "Saved" : "Save"}
       </button>
+    </section>
+  );
+}
+
+function Appearance() {
+  const [choice, setChoice] = useState<ThemeChoice>(themeChoice);
+  return (
+    <section className="card">
+      <h3>Appearance</h3>
+      <label>
+        Theme
+        <select
+          value={choice}
+          onChange={(e) => {
+            const v = e.target.value as ThemeChoice;
+            setChoice(v);
+            setThemeChoice(v);
+          }}
+          data-testid="theme-select"
+        >
+          <option value="system">Match system</option>
+          <option value="light">Light</option>
+          <option value="dark">Dark</option>
+        </select>
+      </label>
+      <p className="muted small">Saved on this device.</p>
     </section>
   );
 }

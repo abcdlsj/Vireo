@@ -43,42 +43,41 @@
   color-scheme: light;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #191919;
-    --sidebar: #202020;
-    --text: #e3e2e0;
-    --text-2: rgba(255, 255, 255, 0.62);
-    --muted: rgba(255, 255, 255, 0.46);
-    --faint: rgba(255, 255, 255, 0.3);
-    --line: rgba(255, 255, 255, 0.08);
-    --line-strong: rgba(255, 255, 255, 0.14);
-    --hover: rgba(255, 255, 255, 0.055);
-    --active: rgba(255, 255, 255, 0.08);
-    --block: #252525;
-    --field: #202020;
+/* Dark palette; theme.ts sets data-theme from the owner's choice or the system setting. */
+:root[data-theme="dark"] {
+  --bg: #191919;
+  --sidebar: #202020;
+  --text: #e3e2e0;
+  --text-2: rgba(255, 255, 255, 0.62);
+  --muted: rgba(255, 255, 255, 0.46);
+  --faint: rgba(255, 255, 255, 0.3);
+  --line: rgba(255, 255, 255, 0.08);
+  --line-strong: rgba(255, 255, 255, 0.14);
+  --hover: rgba(255, 255, 255, 0.055);
+  --active: rgba(255, 255, 255, 0.08);
+  --block: #252525;
+  --field: #202020;
 
-    --accent: #6ea882;
-    --accent-hover: #7cb38f;
-    --accent-text: #10170f;
-    --accent-ink: #8cc29f;
-    --accent-soft: #1f2a22;
-    --accent-tag: #243a2c;
-    --accent-tag-text: #b6dcc1;
+  --accent: #6ea882;
+  --accent-hover: #7cb38f;
+  --accent-text: #10170f;
+  --accent-ink: #8cc29f;
+  --accent-soft: #1f2a22;
+  --accent-tag: #243a2c;
+  --accent-tag-text: #b6dcc1;
 
-    --orange: #e0904a;
-    --orange-tag: #3d2c1f;
-    --orange-text: #e9b98d;
-    --blue-tag: #1f2f40;
-    --blue-text: #a9c6e6;
-    --red: #e07b73;
-    --red-tag: #3f2422;
-    --red-text: #f0b1ab;
+  --orange: #e0904a;
+  --orange-tag: #3d2c1f;
+  --orange-text: #e9b98d;
+  --blue-tag: #1f2f40;
+  --blue-text: #a9c6e6;
+  --red: #e07b73;
+  --red-tag: #3f2422;
+  --red-text: #f0b1ab;
 
-    --shadow-pop: 0 0 0 1px rgba(255, 255, 255, 0.06), 0 3px 6px rgba(0, 0, 0, 0.3), 0 9px 24px rgba(0, 0, 0, 0.4);
-    --shadow-soft: none;
-    color-scheme: dark;
-  }
+  --shadow-pop: 0 0 0 1px rgba(255, 255, 255, 0.06), 0 3px 6px rgba(0, 0, 0, 0.3), 0 9px 24px rgba(0, 0, 0, 0.4);
+  --shadow-soft: none;
+  color-scheme: dark;
 }
 
 * {
