@@ -12,7 +12,9 @@ export type BusEvent =
   | { type: "action.updated"; threadId: string; actionId: string }
   | { type: "memory.updated" }
   | { type: "procedure.updated" }
-  | { type: "plugins.updated" };
+  | { type: "plugins.updated" }
+  /** Server-side only: a run ended; text is what the assistant said in it. */
+  | { type: "run.finished"; threadId: string; text: string };
 
 class Bus extends EventEmitter {
   publish(event: BusEvent): void {

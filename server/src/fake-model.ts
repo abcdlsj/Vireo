@@ -177,6 +177,8 @@ function agentTurn(context: FakeContext): AssistantMessage {
       return browser(t);
     case "Tailnet":
       return tailnet(t);
+    case "MCP":
+      return mcp(t);
     default:
       return general(t);
   }
@@ -204,6 +206,7 @@ function triage(t: Turn): AssistantMessage {
   if (/https?:\/\/|website|book a table|fill (in|out)|form|log ?in to|网站|表单|订座/.test(m)) to = "browser";
   else if (/email|e-mail|inbox|mail from|reply to|邮件|回信/.test(m)) to = "email";
   else if (/schedule|meeting|calendar|free time|free slot|invite|appointment|会议|日程|约/.test(m)) to = "calendar";
+  else if (t.tools.has("transfer_to_mcp") && /\bmcp\b/.test(m)) to = "mcp";
   else if (t.tools.has("transfer_to_tailnet") && /tailnet|tailscale|my machines|my servers|\bssh\b|\bping\b|服务器|机器/.test(m)) to = "tailnet";
   else if (/research|search|look up|find out|sources|latest|news|compare|调研|搜索|查一下|研究/.test(m)) to = "research";
   if (/^(hi|hello|hey|thanks|thank you|你好|谢谢)[.!！ ]*$/i.test(t.owner.trim())) {
@@ -403,6 +406,17 @@ function tailnet(t: Turn): AssistantMessage {
   const online = lines.filter((l) => /\| online/.test(l)).map((l) => l.slice(2).split(" | ")[0]);
   const offline = lines.filter((l) => /\| offline/.test(l)).map((l) => l.slice(2).split(" | ")[0]);
   return reply(`Your tailnet has ${lines.length} machine(s). Online: ${online.join(", ") || "none"}. Offline: ${offline.join(", ") || "none"}.`);
+}
+
+/** "Use MCP <tool>: <text>" calls the MCP tool whose name ends in <tool> with { text }. */
+function mcp(t: Turn): AssistantMessage {
+  const m = t.owner.match(/mcp (\w+):?\s*(.*)$/i);
+  const name = [...t.tools].find((n) => n.startsWith("mcp_") && m && n.endsWith(`_${m[1]}`)) ?? [...t.tools].find((n) => n.startsWith("mcp_"));
+  if (!name) return reply("No MCP tools are connected.");
+  const r = t.results.find((x) => x.name === name);
+  if (!r) return call(name, { text: m?.[2] ?? "" });
+  if (/awaiting|confirm/i.test(r.text)) return reply("Confirm on the card and I'll run it.");
+  return reply(`MCP said: ${r.text.replace(/<\/?untrusted_content[^>]*>/g, "").split("\n").find((l) => l.trim()) ?? ""}`);
 }
 
 function email(t: Turn): AssistantMessage {

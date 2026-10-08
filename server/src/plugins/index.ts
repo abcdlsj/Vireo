@@ -4,16 +4,22 @@ import type { Hono } from "hono";
 import type { AgentDef } from "../agents.js";
 import type { App } from "../app.js";
 import { bus } from "../bus.js";
+import type { Notification } from "../push.js";
 import type { ToolDef } from "../tools/types.js";
 import { errorMessage } from "../util.js";
+import type { SearchResult } from "../tools/research.js";
+import { feishuPlugin } from "./feishu/index.js";
 import { googlePlugin } from "./google/index.js";
+import { mcpPlugin } from "./mcp/index.js";
+import { searchPlugin } from "./search/index.js";
 import { tailscalePlugin } from "./tailscale/index.js";
+import { telegramPlugin } from "./telegram/index.js";
 import type { ActionResult, PluginDef, PluginRuntime, PluginStatus, RequestInfo } from "./types.js";
 
 export * from "./types.js";
 
 /** The community catalog: every plugin that ships with Vireo. */
-export const CATALOG: PluginDef[] = [googlePlugin, tailscalePlugin];
+export const CATALOG: PluginDef[] = [googlePlugin, tailscalePlugin, telegramPlugin, feishuPlugin, mcpPlugin, searchPlugin];
 
 interface Stored {
   enabled: boolean;
@@ -51,6 +57,7 @@ export class Plugins {
           dir,
           config: <T>() => this.config(def.id) as T,
           setConfig: (patch) => this.write(def.id, patch),
+          changed: () => this.changed(),
         }),
       );
     }
@@ -217,6 +224,36 @@ export class Plugins {
 
   secrets(): string[] {
     return CATALOG.flatMap((d) => this.runtime(d.id)?.secrets?.() ?? []).filter((s) => s.length >= 4);
+  }
+
+  /** Results from an installed search plugin, or undefined to use the built-in search. */
+  async search(query: string, max: number): Promise<SearchResult[] | undefined> {
+    for (const d of CATALOG) {
+      const r = this.runtime(d.id);
+      if (r?.search) {
+        const out = await r.search(query, max);
+        if (out) return out;
+      }
+    }
+    return undefined;
+  }
+
+  reader(): ReturnType<NonNullable<PluginRuntime["reader"]>> {
+    for (const d of CATALOG) {
+      const r = this.runtime(d.id)?.reader?.();
+      if (r) return r;
+    }
+    return undefined;
+  }
+
+  notify(n: Notification): void {
+    for (const d of CATALOG) {
+      try {
+        this.runtime(d.id)?.notify?.(n);
+      } catch (err) {
+        console.warn(`[plugin:${d.id}] notify failed: ${errorMessage(err)}`);
+      }
+    }
   }
 
   publicRoutes(api: Hono): void {

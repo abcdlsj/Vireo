@@ -361,6 +361,13 @@ export class Runner {
       void this.app.push.notify({ title: `Done: ${after.title}`, body: truncate(text, 140), url: `/#thread/${threadId}`, tag: threadId });
     }
     if (!after.temporary) this.app.memoryWorker.afterRun(threadId);
+    const said = this.app.threads
+      .messages(threadId, { limit: 20 })
+      .filter((m) => m.role === "assistant" && m.createdAt >= runStarted)
+      .map((m) => messageText(m.body))
+      .filter(Boolean)
+      .join("\n\n");
+    bus.publish({ type: "run.finished", threadId, text: said });
   }
 
   /** Names a thread from its first message (e.g. "Book flight to Shanghai, Oct 15"). */

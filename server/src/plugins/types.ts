@@ -1,6 +1,8 @@
 import type { Hono } from "hono";
 import type { AgentDef } from "../agents.js";
 import type { App } from "../app.js";
+import type { Notification } from "../push.js";
+import type { SearchResult } from "../tools/research.js";
 import type { ToolDef } from "../tools/types.js";
 
 /**
@@ -60,6 +62,8 @@ export interface PluginContext {
   config<T = Record<string, unknown>>(): T;
   /** Persists settings the plugin manages itself (e.g. migrated values). */
   setConfig(patch: Record<string, unknown>): void;
+  /** Tells Vireo the plugin's tools or agents changed (e.g. after connecting). */
+  changed(): void;
 }
 
 export interface PluginRuntime {
@@ -80,6 +84,12 @@ export interface PluginRuntime {
   publicRoutes?(api: Hono): void;
   /** Plaintext secrets to scrub from tool output and logs. */
   secrets?(): string[];
+  /** Called for every owner notification (reminders, confirmations, the brief). */
+  notify?(n: Notification): void;
+  /** Replaces the built-in web search; undefined means "not configured, use the built-in one". */
+  search?(query: string, max: number): Promise<SearchResult[] | undefined>;
+  /** Reads pages the built-in reader cannot (or every page, with always). */
+  reader?(): { always: boolean; read(url: string): Promise<{ title: string; text: string; url: string }> } | undefined;
 }
 
 export interface PluginDef {

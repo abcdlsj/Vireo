@@ -45,9 +45,13 @@ export class Push {
     return this.db.get<{ n: number }>("SELECT COUNT(*) AS n FROM push_subscriptions")?.n ?? 0;
   }
 
+  /** Other places notifications go (chat plugins). */
+  onNotify?: (n: Notification) => void;
+
   async notify(n: Notification): Promise<void> {
     this.recent.unshift({ ...n, at: now() });
     this.recent.splice(50);
+    this.onNotify?.(n);
     const subs = this.db.all<{ endpoint: string; keys: string }>("SELECT endpoint, keys FROM push_subscriptions");
     await Promise.all(
       subs.map(async (s) => {

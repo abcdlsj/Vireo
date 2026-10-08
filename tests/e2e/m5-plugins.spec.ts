@@ -9,7 +9,7 @@ test.describe("Milestone 5 — Plugins", () => {
     await page.goto("/#settings/plugins");
     const card = page.getByTestId("plugins-card");
     await card.getByTestId("community-plugins").click();
-    await expect(page.getByTestId("plugin-catalog")).toContainText("Tailscale");
+    for (const name of ["Tailscale", "Telegram", "Feishu / Lark", "MCP servers", "Search providers"]) await expect(page.getByTestId("plugin-catalog")).toContainText(name);
     await page.getByTestId("add-plugin-tailscale").click();
     const ts = page.getByTestId("plugin-tailscale");
     await expect(ts).toBeVisible();

@@ -110,12 +110,18 @@ export const researchTools = [
     }),
     untrusted: true,
     async run(args, ctx) {
-      const results = await webSearch(ctx.app.config, args.query, args.max_results ?? 6);
-      if (results.length === 0) return { text: "No results." };
+      const max = args.max_results ?? 6;
+      let note = "";
+      let results = await ctx.app.plugins.search(args.query, max).catch((err: Error) => {
+        note = `(The configured search provider failed: ${err.message}. These results are from the built-in search.)\n`;
+        return undefined;
+      });
+      results ??= await webSearch(ctx.app.config, args.query, max);
+      if (results.length === 0) return { text: `${note}No results.` };
       return {
         text: untrustedBlock(
           "web search",
-          results.map((r, i) => `${i + 1}. ${r.title}\n   ${r.url}\n   ${r.snippet}`).join("\n"),
+          note + results.map((r, i) => `${i + 1}. ${r.title}\n   ${r.url}\n   ${r.snippet}`).join("\n"),
         ),
         details: { results },
       };
@@ -128,7 +134,19 @@ export const researchTools = [
     parameters: Type.Object({ url: Type.String() }),
     untrusted: true,
     async run(args, ctx) {
-      const page = await fetchReadable(args.url);
+      // A reader plugin (Jina Reader) handles every page, or the ones Vireo can't read itself.
+      const reader = ctx.app.plugins.reader();
+      let page: { title: string; text: string; url: string };
+      if (reader?.always) page = await reader.read(args.url);
+      else {
+        try {
+          page = await fetchReadable(args.url);
+          if (reader && page.text.trim().length < 200) page = await reader.read(args.url).catch(() => page);
+        } catch (err) {
+          if (!reader) throw err;
+          page = await reader.read(args.url);
+        }
+      }
       ctx.app.threads.addRelated(ctx.thread.id, { kind: "page", title: page.title, url: page.url });
       return {
         text: untrustedBlock(page.url, `Title: ${page.title}\nURL: ${page.url}\n\n${truncate(page.text, 15000)}`),

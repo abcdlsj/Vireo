@@ -66,6 +66,7 @@ export function createApp(config: Config): App {
   app.browser = new BrowserService(app);
   app.plugins = new Plugins(app);
   app.vault.extraSecrets = () => app.plugins.secrets();
+  app.push.onNotify = (n) => app.plugins.notify(n);
   app.buildTools = () => buildTools(app.plugins.tools());
   app.tools = app.buildTools();
   app.actions = new Actions(app);
