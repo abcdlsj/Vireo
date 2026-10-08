@@ -1,0 +1,525 @@
+import type { ImageContent } from "@mariozechner/pi-ai";
+import { Hono, type Context, type Next } from "hono";
+import { deleteCookie, getCookie, setCookie } from "hono/cookie";
+import { streamSSE } from "hono/streaming";
+import type { IncomingMessage } from "node:http";
+import { existsSync, readFileSync, statSync } from "node:fs";
+import { extname, join, normalize } from "node:path";
+import type { App } from "./app.js";
+import { bus, type BusEvent } from "./bus.js";
+import { OVERVIEW_ID, type StoredMessage } from "./threads.js";
+import { errorMessage, newId, now, truncate } from "./util.js";
+
+type Env = { Bindings: { incoming: IncomingMessage } };
+
+const COOKIE = "vireo_session";
+
+const MIME: Record<string, string> = {
+  ".html": "text/html; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".json": "application/json",
+  ".webmanifest": "application/manifest+json",
+  ".png": "image/png",
+  ".svg": "image/svg+xml",
+  ".ico": "image/x-icon",
+  ".woff2": "font/woff2",
+};
+
+function isLoopback(c: Context<Env>): boolean {
+  const addr = c.env?.incoming?.socket?.remoteAddress ?? "";
+  const forwarded = c.req.header("x-forwarded-for");
+  return !forwarded && (addr === "127.0.0.1" || addr === "::1" || addr === "::ffff:127.0.0.1");
+}
+
+function tokenOf(c: Context): string | undefined {
+  const auth = c.req.header("authorization");
+  if (auth?.startsWith("Bearer ")) return auth.slice(7);
+  return getCookie(c, COOKIE) ?? c.req.query("token") ?? undefined;
+}
+
+function secureRequest(c: Context): boolean {
+  return c.req.url.startsWith("https:") || c.req.header("x-forwarded-proto") === "https";
+}
+
+/** Shapes stored messages for the UI. */
+export function viewMessage(m: StoredMessage) {
+  const b = m.body as unknown as Record<string, unknown>;
+  if (m.role === "notice") {
+    return { id: m.id, role: "notice", kind: b.kind, text: b.text, data: b.data ?? null, createdAt: m.createdAt };
+  }
+  if (m.role === "user") {
+    const content = b.content as string | { type: string; text?: string; mimeType?: string; data?: string }[];
+    const text = typeof content === "string" ? content : content.filter((x) => x.type === "text").map((x) => x.text).join("");
+    const images = typeof content === "string" ? [] : content.filter((x) => x.type === "image").map((x) => `data:${x.mimeType};base64,${x.data}`);
+    return { id: m.id, role: "user", text, images, fromVireo: m.agent === "vireo", createdAt: m.createdAt };
+  }
+  if (m.role === "assistant") {
+    const content = b.content as { type: string; text?: string; thinking?: string; id?: string; name?: string; arguments?: unknown }[];
+    return {
+      id: m.id,
+      role: "assistant",
+      agent: m.agent,
+      text: content.filter((x) => x.type === "text").map((x) => x.text).join(""),
+      thinking: content.filter((x) => x.type === "thinking").map((x) => x.thinking).join("") || undefined,
+      toolCalls: content.filter((x) => x.type === "toolCall").map((x) => ({ id: x.id, name: x.name, args: x.arguments })),
+      createdAt: m.createdAt,
+    };
+  }
+  const content = (b.content as { type: string; text?: string }[]) ?? [];
+  return {
+    id: m.id,
+    role: "tool",
+    toolCallId: b.toolCallId,
+    toolName: b.toolName,
+    isError: b.isError,
+    text: truncate(content.filter((x) => x.type === "text").map((x) => x.text).join("\n"), 3000),
+    awaitingConfirmation: (b.details as { awaitingConfirmation?: string } | undefined)?.awaitingConfirmation,
+    createdAt: m.createdAt,
+  };
+}
+
+export function createHttp(app: App): Hono<Env> {
+  const api = new Hono<Env>();
+
+  api.onError((err, c) => {
+    console.error("[http]", err);
+    return c.json({ error: errorMessage(err) }, 400);
+  });
+
+  // ---- public ----
+  api.get("/api/health", (c) => c.json({ ok: true, version: "0.1.0" }));
+
+  api.get("/api/auth/status", (c) =>
+    c.json({
+      hasOwner: app.auth.hasOwner(),
+      authenticated: app.auth.check(tokenOf(c)),
+      setupNeedsCode: !isLoopback(c) && !app.config.testMode,
+    }),
+  );
+
+  const startSession = (c: Context<Env>, label: string) => {
+    const token = app.auth.createSession(label || c.req.header("user-agent") || "device");
+    setCookie(c, COOKIE, token, {
+      httpOnly: true,
+      sameSite: "Lax",
+      secure: secureRequest(c),
+      path: "/",
+      maxAge: 60 * 60 * 24 * 365,
+    });
+    return token;
+  };
+
+  api.post("/api/auth/setup", async (c) => {
+    if (app.auth.hasOwner()) return c.json({ error: "Already set up" }, 409);
+    const body = await c.req.json<{ password: string; code?: string; timezone?: string }>();
+    if (!isLoopback(c) && !app.config.testMode && body.code?.trim() !== app.auth.setupCode) {
+      return c.json({ error: "Wrong setup code. It is printed in the server log." }, 403);
+    }
+    app.auth.setPassword(body.password);
+    if (body.timezone) app.settings.update({ timezone: body.timezone });
+    const token = startSession(c, c.req.header("user-agent") ?? "device");
+    return c.json({ ok: true, token });
+  });
+
+  const attempts = new Map<string, { n: number; at: number }>();
+  api.post("/api/auth/login", async (c) => {
+    const ip = c.env?.incoming?.socket?.remoteAddress ?? "?";
+    const a = attempts.get(ip) ?? { n: 0, at: now() };
+    if (now() - a.at > 15 * 60_000) Object.assign(a, { n: 0, at: now() });
+    if (a.n >= 10) return c.json({ error: "Too many attempts. Try again later." }, 429);
+    const body = await c.req.json<{ password: string; label?: string }>();
+    if (!app.auth.verify(body.password ?? "")) {
+      a.n += 1;
+      attempts.set(ip, a);
+      return c.json({ error: "Wrong password" }, 401);
+    }
+    attempts.delete(ip);
+    return c.json({ ok: true, token: startSession(c, body.label ?? "") });
+  });
+
+  api.post("/api/auth/logout", (c) => {
+    const t = tokenOf(c);
+    if (t) app.auth.revoke(t);
+    deleteCookie(c, COOKIE, { path: "/" });
+    return c.json({ ok: true });
+  });
+
+  // Google redirects here; the state parameter ties it to an authenticated request.
+  api.get("/api/google/callback", async (c) => {
+    const state = c.req.query("state");
+    const expected = app.db.getKv<{ state: string; redirectUri: string }>("google.pending");
+    if (!state || !expected || expected.state !== state) return c.text("Invalid or expired sign-in request.", 400);
+    app.db.deleteKv("google.pending");
+    const error = c.req.query("error");
+    if (error) return c.redirect(`/#settings?google=${encodeURIComponent(error)}`);
+    await app.integrations.google.exchange(c.req.query("code") ?? "", expected.redirectUri);
+    return c.redirect("/#settings?google=connected");
+  });
+
+  // ---- everything below requires the owner ----
+  const requireOwner = async (c: Context<Env>, next: Next) => {
+    if (!app.auth.check(tokenOf(c))) return c.json({ error: "Not signed in" }, 401);
+    await next();
+  };
+  api.use("/api/*", requireOwner);
+
+  api.get("/api/me", (c) =>
+    c.json({
+      settings: app.settings.get(),
+      models: app.models.status(),
+      integrations: app.integrations.status(),
+      push: { publicKey: app.push.publicKey, subscriptions: app.push.count() },
+      testMode: app.config.testMode,
+    }),
+  );
+
+  // SSE stream of live updates for every open device (N3).
+  api.get("/api/events", (c) =>
+    streamSSE(c, async (stream) => {
+      const queue: BusEvent[] = [];
+      let wake: (() => void) | undefined;
+      const unsubscribe = bus.subscribe((e) => {
+        queue.push(e);
+        wake?.();
+      });
+      stream.onAbort(() => {
+        unsubscribe();
+        wake?.();
+      });
+      await stream.writeSSE({ event: "ready", data: "{}" });
+      while (!stream.aborted) {
+        if (queue.length === 0) {
+          await Promise.race([new Promise<void>((r) => (wake = r)), new Promise((r) => setTimeout(r, 20000))]);
+          wake = undefined;
+          if (queue.length === 0) {
+            await stream.writeSSE({ event: "ping", data: String(now()) });
+            continue;
+          }
+        }
+        const batch = queue.splice(0, queue.length);
+        for (const e of batch) await stream.writeSSE({ event: "message", data: JSON.stringify(e) });
+      }
+      unsubscribe();
+    }),
+  );
+
+  // ---- threads ----
+  api.get("/api/threads", (c) => c.json({ threads: app.threads.list() }));
+
+  api.post("/api/threads", async (c) => {
+    const body = await c.req.json<{ text?: string; temporary?: boolean; title?: string }>();
+    const thread = app.threads.create({ temporary: body.temporary, title: body.title });
+    if (body.text?.trim()) app.runner.send(thread.id, body.text.trim());
+    return c.json({ thread: app.threads.get(thread.id) });
+  });
+
+  api.get("/api/threads/:id", (c) => {
+    const id = c.req.param("id");
+    const thread = app.threads.get(id);
+    if (!thread) return c.json({ error: "Not found" }, 404);
+    return c.json({
+      thread,
+      messages: app.threads.messages(id).map(viewMessage),
+      actions: app.actions.forThread(id),
+      related: app.threads.related(id),
+      files: app.files.forThread(id),
+      procedures: app.db.all("SELECT * FROM procedures WHERE source_thread_id = ?", id),
+    });
+  });
+
+  api.patch("/api/threads/:id", async (c) => {
+    const id = c.req.param("id");
+    const body = await c.req.json<{ title?: string; temporary?: boolean }>();
+    if (body.title) app.threads.update(id, { title: body.title.slice(0, 80), titled: 1 });
+    if (body.temporary !== undefined && id !== OVERVIEW_ID) app.threads.update(id, { temporary: body.temporary ? 1 : 0 });
+    return c.json({ thread: app.threads.get(id) });
+  });
+
+  api.delete("/api/threads/:id", (c) => {
+    app.threads.delete(c.req.param("id"));
+    return c.json({ ok: true });
+  });
+
+  api.post("/api/threads/:id/messages", async (c) => {
+    const id = c.req.param("id");
+    const body = await c.req.json<{ text: string; fileIds?: string[] }>();
+    const images: ImageContent[] = [];
+    for (const fid of body.fileIds ?? []) {
+      const f = app.files.read(fid);
+      if (f && f.info.mime.startsWith("image/") && f.data.length < 5_000_000) {
+        images.push({ type: "image", data: f.data.toString("base64"), mimeType: f.info.mime });
+      }
+    }
+    const msg = app.runner.send(id, body.text ?? "", { fileIds: body.fileIds, images });
+    return c.json({ message: viewMessage(msg) });
+  });
+
+  api.post("/api/threads/:id/done", async (c) => {
+    await app.runner.complete(c.req.param("id"));
+    return c.json({ thread: app.threads.get(c.req.param("id")) });
+  });
+  api.post("/api/threads/:id/reopen", (c) => {
+    app.runner.reopen(c.req.param("id"));
+    return c.json({ thread: app.threads.get(c.req.param("id")) });
+  });
+  api.post("/api/threads/:id/stop", (c) => {
+    app.runner.stop(c.req.param("id"));
+    return c.json({ ok: true });
+  });
+  api.post("/api/threads/:id/retry", (c) => {
+    app.runner.schedule(c.req.param("id"));
+    return c.json({ ok: true });
+  });
+
+  api.get("/api/threads/:id/audit", (c) => {
+    const id = c.req.param("id");
+    return c.json({
+      toolCalls: app.db.all("SELECT * FROM tool_calls WHERE thread_id = ? ORDER BY id", id),
+      llmCalls: app.db.all("SELECT * FROM llm_calls WHERE thread_id = ? ORDER BY id", id),
+    });
+  });
+
+  api.post("/api/threads/:id/files", async (c) => {
+    const id = c.req.param("id");
+    if (!app.threads.get(id)) return c.json({ error: "Not found" }, 404);
+    const form = await c.req.formData();
+    const out = [];
+    for (const value of form.getAll("file")) {
+      if (typeof value === "string") continue;
+      const data = Buffer.from(await value.arrayBuffer());
+      if (data.length > 20_000_000) return c.json({ error: `${value.name} is larger than 20 MB` }, 413);
+      out.push(app.files.save({ threadId: id, name: value.name, mime: value.type || "application/octet-stream", data, origin: "upload" }));
+    }
+    return c.json({ files: out });
+  });
+
+  api.get("/api/files/:id", (c) => {
+    const f = app.files.read(c.req.param("id"));
+    if (!f) return c.json({ error: "Not found" }, 404);
+    const inline = f.info.mime.startsWith("image/") || c.req.query("inline") === "1";
+    return new Response(new Uint8Array(f.data), {
+      headers: {
+        "content-type": f.info.mime,
+        "content-disposition": `${inline ? "inline" : "attachment"}; filename*=UTF-8''${encodeURIComponent(f.info.name)}`,
+        "x-content-type-options": "nosniff",
+        "content-security-policy": "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'",
+      },
+    });
+  });
+
+  // ---- confirmations ----
+  api.get("/api/actions", (c) => c.json({ actions: app.actions.pending() }));
+  api.post("/api/actions/:id/confirm", async (c) => {
+    const body = await c.req.json<{ args?: Record<string, unknown> }>().catch(() => ({}) as { args?: Record<string, unknown> });
+    return c.json({ action: await app.actions.confirm(c.req.param("id"), body.args) });
+  });
+  api.post("/api/actions/:id/cancel", async (c) => {
+    const body = await c.req.json<{ reason?: string }>().catch(() => ({}) as { reason?: string });
+    return c.json({ action: app.actions.cancel(c.req.param("id"), body.reason) });
+  });
+
+  // ---- memory ----
+  api.get("/api/memory", (c) => {
+    const query = c.req.query("query") || undefined;
+    const history = c.req.query("history") === "1";
+    return c.json({
+      facts: app.memory.list({ query, includeHistory: history }),
+      entities: app.memory.entities(),
+      episodes: app.memory.episodes({ query, limit: 30 }),
+    });
+  });
+  api.get("/api/memory/facts/:id/history", (c) => c.json({ history: app.memory.history(c.req.param("id")) }));
+  api.patch("/api/memory/facts/:id", async (c) => {
+    const body = await c.req.json<{ statement: string }>();
+    return c.json({ fact: app.memory.correct(c.req.param("id"), body.statement) });
+  });
+  api.delete("/api/memory/facts/:id", (c) => c.json({ ok: app.memory.delete(c.req.param("id")) }));
+  api.delete("/api/memory/entities/:id", (c) => {
+    app.memory.deleteEntity(c.req.param("id"));
+    return c.json({ ok: true });
+  });
+  api.post("/api/memory/facts", async (c) => {
+    const body = await c.req.json<{ statement: string; key?: string; about?: string }>();
+    const episodeId = app.memory.addEpisode({ source: "owner_edit", content: `Owner added: ${body.statement}` });
+    return c.json({ fact: app.memory.addFact({ statement: body.statement, key: body.key, entity: body.about, episodeId }).fact });
+  });
+
+  // ---- procedures ----
+  api.get("/api/procedures", (c) => c.json({ procedures: app.db.all("SELECT * FROM procedures ORDER BY updated_at DESC") }));
+  api.post("/api/procedures/:id/:decision{approve|reject}", (c) => {
+    const status = c.req.param("decision") === "approve" ? "approved" : "rejected";
+    app.db.run("UPDATE procedures SET status = ?, updated_at = ? WHERE id = ?", status, now(), c.req.param("id"));
+    bus.publish({ type: "procedure.updated" });
+    return c.json({ ok: true });
+  });
+  api.patch("/api/procedures/:id", async (c) => {
+    const body = await c.req.json<{ name?: string; description?: string; steps?: string }>();
+    const cur = app.db.get<{ name: string; description: string; steps: string }>("SELECT * FROM procedures WHERE id = ?", c.req.param("id"));
+    if (!cur) return c.json({ error: "Not found" }, 404);
+    app.db.run(
+      "UPDATE procedures SET name = ?, description = ?, steps = ?, updated_at = ? WHERE id = ?",
+      body.name ?? cur.name,
+      body.description ?? cur.description,
+      body.steps ?? cur.steps,
+      now(),
+      c.req.param("id"),
+    );
+    bus.publish({ type: "procedure.updated" });
+    return c.json({ ok: true });
+  });
+  api.delete("/api/procedures/:id", (c) => {
+    app.db.run("DELETE FROM procedures WHERE id = ?", c.req.param("id"));
+    bus.publish({ type: "procedure.updated" });
+    return c.json({ ok: true });
+  });
+
+  // ---- settings ----
+  api.get("/api/settings", (c) => c.json(app.settings.get()));
+  api.patch("/api/settings", async (c) => c.json(app.settings.update(await c.req.json())));
+
+  // ---- models (pi) ----
+  api.get("/api/models", (c) => c.json({ ...app.models.status(), choice: app.models.getChoice(), oauth: app.models.oauthProviders() }));
+  api.put("/api/models", async (c) => {
+    app.models.setChoice(await c.req.json());
+    return c.json(app.models.status());
+  });
+  api.post("/api/models/login", async (c) => {
+    const { provider } = await c.req.json<{ provider: string }>();
+    const s = app.models.startLogin(provider);
+    return c.json({ id: s.id });
+  });
+  api.get("/api/models/login/:id", (c) => {
+    const s = app.models.getLogin(c.req.param("id"));
+    return s ? c.json(s) : c.json({ error: "Not found" }, 404);
+  });
+  api.post("/api/models/login/:id/answer", async (c) => {
+    const { value } = await c.req.json<{ value?: string }>();
+    return c.json({ ok: app.models.answerLogin(c.req.param("id"), value) });
+  });
+  api.post("/api/models/apikey", async (c) => {
+    const { provider, key } = await c.req.json<{ provider: string; key: string }>();
+    app.models.setApiKey(provider, key);
+    return c.json(app.models.status());
+  });
+  api.delete("/api/models/providers/:id", (c) => {
+    app.models.logout(c.req.param("id"));
+    return c.json(app.models.status());
+  });
+
+  // ---- Google ----
+  api.put("/api/google/client", async (c) => {
+    const body = await c.req.json<{ clientId: string; clientSecret: string }>();
+    app.integrations.google.setClient({ clientId: body.clientId.trim(), clientSecret: body.clientSecret.trim() });
+    return c.json(app.integrations.status());
+  });
+  api.post("/api/google/connect", (c) => {
+    const origin = app.config.publicUrl ?? new URL(c.req.url).origin.replace(/^http:/, c.req.header("x-forwarded-proto") === "https" ? "https:" : "http:");
+    const redirectUri = `${origin}/api/google/callback`;
+    const state = newId("g");
+    app.db.setKv("google.pending", { state, redirectUri });
+    return c.json({ url: app.integrations.google.authUrl(redirectUri, state), redirectUri });
+  });
+  api.delete("/api/google", (c) => {
+    app.integrations.google.disconnect();
+    return c.json(app.integrations.status());
+  });
+
+  // ---- credentials for browser work ----
+  api.get("/api/credentials", (c) => c.json({ credentials: app.vault.list() }));
+  api.post("/api/credentials", async (c) => {
+    const body = await c.req.json<{ domain: string; username: string; password: string }>();
+    return c.json({ credential: app.vault.add(body.domain, body.username, body.password) });
+  });
+  api.delete("/api/credentials/:id", (c) => {
+    app.vault.remove(c.req.param("id"));
+    return c.json({ ok: true });
+  });
+
+  // ---- push ----
+  api.post("/api/push/subscribe", async (c) => {
+    app.push.subscribe(await c.req.json());
+    return c.json({ ok: true });
+  });
+  api.post("/api/push/unsubscribe", async (c) => {
+    app.push.unsubscribe((await c.req.json<{ endpoint: string }>()).endpoint);
+    return c.json({ ok: true });
+  });
+  api.post("/api/push/test", async (c) => {
+    await app.push.notify({ title: "Vireo", body: "Notifications are working.", url: "/" });
+    return c.json({ ok: true });
+  });
+
+  // ---- proactive ----
+  api.post("/api/brief", async (c) => c.json({ text: await app.scheduler.morningBrief() }));
+  api.get("/api/reminders", (c) => c.json({ reminders: app.db.all("SELECT * FROM reminders WHERE status = 'scheduled' ORDER BY due_at") }));
+
+  // ---- observability (N7) ----
+  api.get("/api/usage", (c) =>
+    c.json({
+      byPurpose: app.db.all(
+        "SELECT purpose, provider, model, COUNT(*) AS calls, SUM(input_tokens) AS input, SUM(output_tokens) AS output, SUM(cost) AS cost, AVG(duration_ms) AS avg_ms FROM llm_calls GROUP BY purpose, provider, model ORDER BY cost DESC",
+      ),
+      last7days: app.db.get("SELECT COUNT(*) AS calls, SUM(cost) AS cost FROM llm_calls WHERE created_at > ?", now() - 7 * 864e5),
+    }),
+  );
+  api.get("/api/sessions", (c) => c.json({ sessions: app.auth.sessions() }));
+
+  if (app.config.testMode) mountTestRoutes(api, app);
+
+  // ---- web app ----
+  api.get("*", (c) => serveStatic(app, c.req.path));
+  return api;
+}
+
+function serveStatic(app: App, path: string): Response {
+  const root = app.config.webDir;
+  const clean = normalize(decodeURIComponent(path)).replace(/^(\.\.[/\\])+/, "");
+  let file = join(root, clean);
+  if (!file.startsWith(root) || !existsSync(file) || statSync(file).isDirectory()) file = join(root, "index.html");
+  if (!existsSync(file)) {
+    return new Response("Vireo's web app is not built. Run `npm run build`.", { status: 503, headers: { "content-type": "text/plain" } });
+  }
+  const ext = extname(file);
+  const immutable = clean.startsWith("/assets/");
+  return new Response(readFileSync(file), {
+    headers: {
+      "content-type": MIME[ext] ?? "application/octet-stream",
+      "cache-control": immutable ? "public, max-age=31536000, immutable" : "no-cache",
+      "x-content-type-options": "nosniff",
+      "referrer-policy": "same-origin",
+    },
+  });
+}
+
+/** Endpoints only available with VIREO_TEST_MODE=1, used by the end-to-end suite. */
+function mountTestRoutes(api: Hono<Env>, app: App): void {
+  api.post("/api/test/email", async (c) => {
+    const body = await c.req.json<{ from: string; subject: string; body: string }>();
+    const m = app.integrations.fakeMail?.deliver(body);
+    return c.json({ email: m });
+  });
+  api.get("/api/test/sent", (c) => c.json({ sent: app.integrations.fakeMail?.sent ?? [], drafts: app.integrations.fakeMail?.drafts ?? [] }));
+  api.post("/api/test/check-inbox", async (c) => c.json({ opened: await app.scheduler.checkInbox() }));
+  api.post("/api/test/check-calendar", async (c) => c.json({ opened: await app.scheduler.checkCalendar() }));
+  api.post("/api/test/reminders", async (c) => {
+    const body = await c.req.json<{ at?: number }>().catch(() => ({}) as { at?: number });
+    return c.json({ fired: await app.scheduler.fireReminders(body.at ?? Date.now() + 365 * 864e5) });
+  });
+  api.post("/api/test/idle", async (c) => {
+    for (let i = 0; i < 3; i++) {
+      await app.runner.idle();
+      await app.memoryWorker.flush();
+    }
+    return c.json({ ok: true });
+  });
+  api.get("/api/test/notifications", (c) => c.json({ notifications: app.push.recent }));
+  api.get("/api/test/llm-log", (c) => c.json({ calls: app.db.all("SELECT * FROM llm_calls ORDER BY id") }));
+  api.post("/api/test/event", async (c) => {
+    const body = await c.req.json<{ title: string; start: string; end: string; attendees?: string[] }>();
+    return c.json({ event: await app.integrations.localCalendar.createEvent(body) });
+  });
+  api.get("/api/test/events", async (c) =>
+    c.json({ events: await app.integrations.localCalendar.listEvents(new Date(0), new Date(8.64e15)) }),
+  );
+}
