@@ -1,6 +1,8 @@
 import { defineConfig, devices } from "@playwright/test";
 
 const PORT = 8797;
+/** The host runs headless; the app on PORT serves the UI and proxies /api to it. */
+const HOST_PORT = 8798;
 const FIXTURE_PORT = 8790;
 const DATA = ".vireo-test/data";
 
@@ -33,11 +35,11 @@ export default defineConfig({
     },
     {
       command: `rm -rf ${DATA} .vireo-test/server.log && node --disable-warning=ExperimentalWarning dist/server/index.js`,
-      port: PORT,
+      port: HOST_PORT,
       reuseExistingServer: false,
       stdout: "pipe",
       env: {
-        VIREO_PORT: String(PORT),
+        VIREO_PORT: String(HOST_PORT),
         VIREO_DATA_DIR: DATA,
         VIREO_FAKE_MODEL: "1",
         VIREO_FAKE_GOOGLE: "1",
@@ -47,6 +49,12 @@ export default defineConfig({
         VIREO_SEARCH_ENDPOINT: `http://localhost:${FIXTURE_PORT}/search`,
         VIREO_LOG_FILE: ".vireo-test/server.log",
       },
+    },
+    {
+      command: `node web/serve.mjs`,
+      port: PORT,
+      reuseExistingServer: false,
+      env: { VIREO_APP_PORT: String(PORT), VIREO_HOST_URL: `http://127.0.0.1:${HOST_PORT}` },
     },
   ],
 });

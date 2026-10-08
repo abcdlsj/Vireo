@@ -2,6 +2,7 @@ import { serve } from "@hono/node-server";
 import { createApp } from "./app.js";
 import { loadConfig } from "./config.js";
 import { createHttp } from "./http.js";
+import { hostName, pairingInstructions } from "./pairing.js";
 
 if (process.env.VIREO_LOG_FILE) {
   // Mirror console output to a file (used by the test suite to inspect logs).
@@ -27,13 +28,16 @@ const server = serve({ fetch: http.fetch, port: config.port, hostname: config.ho
   const status = app.models.status();
   const lines = [
     "",
-    `  Vireo is running on http://localhost:${info.port}`,
+    `  Vireo host "${hostName(config)}" is running on http://localhost:${info.port}`,
     `  Data: ${config.dataDir}`,
     status.ready
       ? `  Model: ${status.main} at ${status.baseUrl} (routine work: ${status.fast})`
       : `  Model: none yet. Set a base URL, API key and model in Settings, or set OPENAI_API_KEY.${status.error ? ` (${status.error})` : ""}`,
   ];
   if (!app.auth.hasOwner()) lines.push(`  First-run setup code: ${app.auth.setupCode} (not needed on localhost)`);
+  // A fresh host has no devices yet: hand out a code so one can pair right away.
+  if (app.auth.sessions().length === 0) lines.push("", ...pairingInstructions(config, app.pairing.create().code));
+  else lines.push("  Pair another device: npm run pair");
   console.log(lines.join("\n"), "\n");
   void app.plugins.start();
   app.runner.resumeInterrupted();

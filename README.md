@@ -13,7 +13,21 @@ npm run build
 OPENAI_API_KEY=sk-... npm start
 ```
 
-Open http://localhost:8787, choose a password, and start a thread.
+Open http://localhost:8780, choose a password, and start a thread.
+
+`npm start` runs two processes: the **host** (the agent, its data and the API, on :8787) and the **app** (the UI, on :8780). They are separate on purpose, so one app can drive several hosts.
+
+## Hosts: Vireo on a VPS or another machine
+
+A host is a headless Vireo with its own threads, memory, plugins and model settings. Run one wherever the agent should live, and pair the app with it:
+
+1. On the VPS or machine: `npm install && npm run build && OPENAI_API_KEY=sk-... npm run host` (or `docker compose up -d vireo`).
+2. The host prints a pairing code and a link, for example `http://203.0.113.5:8787#pair=K7QM2XPA`.
+3. In the app, open the host name at the top of the sidebar → **Add host**, and paste the link (or the address plus the code).
+
+Codes are single use and expire after 15 minutes. For another code, run `npm run pair` on the host (Docker: `docker compose exec vireo npm run pair`), or open **Settings → Hosts → Get a pairing code** on a device already paired with it. Switch hosts from the same sidebar menu; **Settings → Hosts** renames and removes them.
+
+The app reaches remote hosts directly from the browser, so the host's port must be reachable from your device. An app served over HTTPS can only use HTTPS hosts; `tailscale serve --bg 8787` on the host is the simplest way to get one.
 
 - **Model:** with only an OpenAI key, Vireo lists the endpoint's models and picks a strong one for conversations and a cheaper one for routine work such as titles and memory upkeep. You can change both in **Settings → Model**.
 - **Another provider or endpoint?** Enter a base URL, API key and model in **Settings → Model** (no restart needed), or set `VIREO_LLM_BASE_URL`, `VIREO_LLM_API_KEY` and `VIREO_MODEL`. **Test connection** checks it. The Docker setup below includes LiteLLM for providers that don't speak the OpenAI API.
@@ -31,7 +45,7 @@ cp .env.example .env   # add a provider key and pick your models
 docker compose up -d
 ```
 
-That starts two containers and stores everything in `./data`. Then open http://localhost:8787.
+That starts the host, the app and LiteLLM, and stores everything in `./data`. Then open http://localhost:8780.
 
 - **vireo** is the app, with Node and Chromium included.
 - **litellm** is a [LiteLLM](https://docs.litellm.ai/) proxy configured by `litellm.config.yaml`. It routes `openai/*`, `anthropic/*`, `gemini/*`, `openrouter/*`, `deepseek/*` and `ollama/*` model names to their providers, using the keys in `.env`. Set `VIREO_MODEL` and `VIREO_FAST_MODEL` to names like `anthropic/claude-sonnet-4-5`.
@@ -44,19 +58,21 @@ docker run -d --name vireo -p 8787:8787 -v "$PWD/data:/data" \
   -e OPENAI_API_KEY=sk-... vireo
 ```
 
+That runs the host only; pair with the code in `docker logs vireo`. Add the app with `docker run -d -p 8780:8780 -e VIREO_HOST_URL=none vireo node web/serve.mjs`, or use an app elsewhere.
+
 ### Reaching it from your phone
 
 Installing the PWA, push notifications, and Google sign-in need HTTPS. Two easy options:
 
-- **Tailscale:** `tailscale serve --bg 8787` gives you `https://<machine>.<tailnet>.ts.net`, reachable only from your own devices.
+- **Tailscale:** `tailscale serve --bg 8780` gives you `https://<machine>.<tailnet>.ts.net`, reachable only from your own devices.
 - **Caddy:** put a reverse proxy in front with a domain you own:
   ```
   vireo.example.com {
-    reverse_proxy localhost:8787
+    reverse_proxy localhost:8780
   }
   ```
 
-On first run from a non-local address, Vireo asks for the **setup code** printed in the server log. This stops someone else from claiming the instance before you do. Then, on iPhone, open the URL in Safari and choose **Share → Add to Home Screen**. On a Mac, use Safari's **File → Add to Dock**, or Chrome's install button.
+On first run from a non-local address, Vireo asks for the **setup code** printed in the host's log (a pairing code works too). This stops someone else from claiming the instance before you do. Then, on iPhone, open the URL in Safari and choose **Share → Add to Home Screen**. On a Mac, use Safari's **File → Add to Dock**, or Chrome's install button.
 
 ## Configuration
 
@@ -69,7 +85,10 @@ Only model access needs setting up, either here or in **Settings → Model**, wh
 | `VIREO_MODEL` | picked from the endpoint's list | Main model |
 | `VIREO_FAST_MODEL` | a cheaper sibling of the main model | Model for routine work |
 | `VIREO_LLM_API` | `chat` | `chat` (Chat Completions, works everywhere) or `responses` (OpenAI only) |
-| `VIREO_PORT` | `8787` | HTTP port |
+| `VIREO_PORT` | `8787` | Host port (API) |
+| `VIREO_NAME` | the machine's hostname | Name paired apps show for this host |
+| `VIREO_APP_PORT` | `8780` | App (UI) port |
+| `VIREO_HOST_URL` | `http://127.0.0.1:8787` | Host the app proxies as "This machine"; `none` for an app with only remote hosts |
 | `VIREO_HOST` | `0.0.0.0` | Bind address |
 | `VIREO_DATA_DIR` | `./data` | Database, files, browser profile, keys |
 | `VIREO_PASSWORD` | – | Fixed owner password (skips the setup screen) |
@@ -100,9 +119,9 @@ Preferences such as time zone, morning brief time, working hours and which proac
 - **Audit:** every tool call, confirmation and model call is recorded per thread, in **Activity** in the side panel.
 
 ```
-server/src     Hono HTTP + SSE, runner, agents, memory, scheduler, tools
+server/src     The host: Hono HTTP + SSE, runner, agents, memory, scheduler, tools, pairing
 server/src/plugins  Community plugins (Google, Tailscale): tools, agents, settings
-web/src        React PWA
+web/src        The app: React PWA for one host at a time; web/serve.mjs serves it
 tests/unit     Vitest: memory, time, vault, context, confirmations
 tests/e2e      Playwright: one test per PRD acceptance criterion
 ```
@@ -116,7 +135,7 @@ tests/e2e      Playwright: one test per PRD acceptance criterion
 ## Development and testing
 
 ```bash
-npm run dev          # server with reload on :8787, Vite on :5173
+npm run dev          # host with reload on :8787, the app (Vite) on :5173
 npm run typecheck
 npm test             # unit and integration tests
 npm run test:e2e     # end-to-end suite (needs Chromium)

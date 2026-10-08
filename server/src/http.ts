@@ -3,11 +3,10 @@ import { Hono, type Context, type Next } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { streamSSE } from "hono/streaming";
 import type { IncomingMessage } from "node:http";
-import { existsSync, readFileSync, statSync } from "node:fs";
-import { extname, join, normalize } from "node:path";
 import type { App } from "./app.js";
 import { seenContexts } from "./fake-model.js";
 import { bus, type BusEvent } from "./bus.js";
+import { hostName, hostUrls, pairingInstructions } from "./pairing.js";
 import { OVERVIEW_ID, type StoredMessage } from "./threads.js";
 import { errorMessage, newId, now, truncate } from "./util.js";
 
@@ -15,22 +14,23 @@ type Env = { Bindings: { incoming: IncomingMessage } };
 
 const COOKIE = "vireo_session";
 
-const MIME: Record<string, string> = {
-  ".html": "text/html; charset=utf-8",
-  ".js": "text/javascript; charset=utf-8",
-  ".css": "text/css; charset=utf-8",
-  ".json": "application/json",
-  ".webmanifest": "application/manifest+json",
-  ".png": "image/png",
-  ".svg": "image/svg+xml",
-  ".ico": "image/x-icon",
-  ".woff2": "font/woff2",
-};
+const LOOPBACK = new Set(["127.0.0.1", "::1", "::ffff:127.0.0.1", "localhost"]);
+
+/**
+ * The address of the person making the request. Proxies on this machine (the
+ * Vireo app, Caddy) append the address they saw to X-Forwarded-For, so the
+ * right-most entry that is not loopback is the real client; entries further
+ * left are client-supplied and ignored.
+ */
+function clientIp(c: Context<Env>): string {
+  const addr = c.env?.incoming?.socket?.remoteAddress ?? "?";
+  if (!LOOPBACK.has(addr)) return addr;
+  const hops = (c.req.header("x-forwarded-for") ?? "").split(",").map((h) => h.trim()).filter(Boolean);
+  return hops.reverse().find((h) => !LOOPBACK.has(h)) ?? addr;
+}
 
 function isLoopback(c: Context<Env>): boolean {
-  const addr = c.env?.incoming?.socket?.remoteAddress ?? "";
-  const forwarded = c.req.header("x-forwarded-for");
-  return !forwarded && (addr === "127.0.0.1" || addr === "::1" || addr === "::ffff:127.0.0.1");
+  return LOOPBACK.has(clientIp(c));
 }
 
 function tokenOf(c: Context): string | undefined {
@@ -88,6 +88,28 @@ export function createHttp(app: App): Hono<Env> {
     return c.json({ error: errorMessage(err) }, 400);
   });
 
+  // Vireo apps on other origins reach this host with a Bearer token from
+  // pairing. Cross-origin requests carry no cookies, so this opens no CSRF path.
+  api.use("/api/*", async (c, next) => {
+    const origin = c.req.header("origin");
+    if (!origin) return next();
+    if (c.req.method === "OPTIONS") {
+      return new Response(null, {
+        status: 204,
+        headers: {
+          "access-control-allow-origin": origin,
+          "access-control-allow-methods": "GET, POST, PUT, PATCH, DELETE",
+          "access-control-allow-headers": "authorization, content-type",
+          "access-control-max-age": "86400",
+          vary: "origin",
+        },
+      });
+    }
+    await next();
+    c.res.headers.set("access-control-allow-origin", origin);
+    c.res.headers.append("vary", "origin");
+  });
+
   // ---- public ----
   api.get("/api/health", (c) => c.json({ ok: true, version: "0.1.0" }));
 
@@ -96,6 +118,7 @@ export function createHttp(app: App): Hono<Env> {
       hasOwner: app.auth.hasOwner(),
       authenticated: app.auth.check(tokenOf(c)),
       setupNeedsCode: !isLoopback(c) && !app.config.testMode,
+      name: hostName(app.config),
     }),
   );
 
@@ -124,19 +147,45 @@ export function createHttp(app: App): Hono<Env> {
   });
 
   const attempts = new Map<string, { n: number; at: number }>();
-  api.post("/api/auth/login", async (c) => {
-    const ip = c.env?.incoming?.socket?.remoteAddress ?? "?";
+  const throttle = (c: Context<Env>) => {
+    const ip = clientIp(c);
     const a = attempts.get(ip) ?? { n: 0, at: now() };
     if (now() - a.at > 15 * 60_000) Object.assign(a, { n: 0, at: now() });
-    if (a.n >= 10) return c.json({ error: "Too many attempts. Try again later." }, 429);
+    return {
+      blocked: a.n >= 10,
+      fail: () => {
+        a.n += 1;
+        attempts.set(ip, a);
+      },
+      ok: () => attempts.delete(ip),
+    };
+  };
+  api.post("/api/auth/login", async (c) => {
+    const a = throttle(c);
+    if (a.blocked) return c.json({ error: "Too many attempts. Try again later." }, 429);
     const body = await c.req.json<{ password: string; label?: string }>();
     if (!app.auth.verify(body.password ?? "")) {
-      a.n += 1;
-      attempts.set(ip, a);
+      a.fail();
       return c.json({ error: "Wrong password" }, 401);
     }
-    attempts.delete(ip);
+    a.ok();
     return c.json({ ok: true, token: startSession(c, body.label ?? "") });
+  });
+
+  // Trades a one-time pairing code for a session token (no password needed).
+  api.post("/api/auth/pair", async (c) => {
+    const a = throttle(c);
+    if (a.blocked) return c.json({ error: "Too many attempts. Try again later." }, 429);
+    const body = await c.req.json<{ code?: string; label?: string; timezone?: string }>();
+    if (!app.pairing.redeem(body.code ?? "")) {
+      a.fail();
+      return c.json({ error: "That pairing code is wrong or has expired. Run `npm run pair` on the host for a new one." }, 401);
+    }
+    a.ok();
+    if (body.timezone && !app.auth.hasOwner()) app.settings.update({ timezone: body.timezone });
+    const token = startSession(c, `Paired: ${body.label || c.req.header("user-agent") || "device"}`);
+    console.log(`[pairing] paired ${body.label || "a device"}`);
+    return c.json({ ok: true, token, name: hostName(app.config) });
   });
 
   api.post("/api/auth/logout", (c) => {
@@ -417,6 +466,7 @@ export function createHttp(app: App): Hono<Env> {
   // ---- plugins ----
   const requestInfo = (c: Context<Env>) => ({
     origin: app.config.publicUrl ?? new URL(c.req.url).origin.replace(/^http:/, c.req.header("x-forwarded-proto") === "https" ? "https:" : "http:"),
+    appOrigin: c.req.header("origin") ?? (c.req.header("referer") ? new URL(c.req.header("referer")!).origin : undefined),
   });
   api.get("/api/plugins", async (c) => c.json({ plugins: await app.plugins.list(requestInfo(c)) }));
   api.post("/api/plugins/:id", async (c) => {
@@ -473,31 +523,20 @@ export function createHttp(app: App): Hono<Env> {
   );
   api.get("/api/sessions", (c) => c.json({ sessions: app.auth.sessions() }));
 
+  // A paired device hands out a code so another device can pair with this host.
+  api.post("/api/pairing", (c) => {
+    const { code, expiresAt } = app.pairing.create();
+    for (const line of pairingInstructions(app.config, code)) console.log(line);
+    return c.json({ code, expiresAt, urls: hostUrls(app.config), name: hostName(app.config) });
+  });
+
   if (app.config.testMode) mountTestRoutes(api, app);
 
-  // ---- web app ----
-  api.get("*", (c) => serveStatic(app, c.req.path));
+  // The host has no UI; the Vireo app (web/) is served separately.
+  api.get("*", (c) =>
+    c.text(`${hostName(app.config)} is a Vireo host. Open the Vireo app and choose Add host, then enter this address and a pairing code from the host's log (or run \`npm run pair\` on it).\n`),
+  );
   return api;
-}
-
-function serveStatic(app: App, path: string): Response {
-  const root = app.config.webDir;
-  const clean = normalize(decodeURIComponent(path)).replace(/^(\.\.[/\\])+/, "");
-  let file = join(root, clean);
-  if (!file.startsWith(root) || !existsSync(file) || statSync(file).isDirectory()) file = join(root, "index.html");
-  if (!existsSync(file)) {
-    return new Response("Vireo's web app is not built. Run `npm run build`.", { status: 503, headers: { "content-type": "text/plain" } });
-  }
-  const ext = extname(file);
-  const immutable = clean.startsWith("/assets/");
-  return new Response(readFileSync(file), {
-    headers: {
-      "content-type": MIME[ext] ?? "application/octet-stream",
-      "cache-control": immutable ? "public, max-age=31536000, immutable" : "no-cache",
-      "x-content-type-options": "nosniff",
-      "referrer-policy": "same-origin",
-    },
-  });
 }
 
 /** Endpoints only available with VIREO_TEST_MODE=1, used by the end-to-end suite. */

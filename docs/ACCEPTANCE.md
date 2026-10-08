@@ -48,6 +48,11 @@ Vireo's milestones are done when every acceptance criterion holds in real use, n
 - [ ] **M5.2** Ask "Which of my tailnet machines are online?", then "Ping <machine>", then "Run `uptime` on <machine>". The last one waits for a card; after you confirm, the output comes back. With an API token saved, "Authorise <machine>" also waits for a card.
 - [ ] **M5.3** Add the Google plugin, connect it, and ask "In my drive, find <a document>". The answer quotes the document.
 
+## Milestone 6 — Hosts
+
+- [ ] **M6.1** On a VPS or another machine, run `npm run host`. In the app on your laptop, open the host name at the top of the sidebar → **Add host** and paste the pairing link the host printed. The sidebar now shows that host, with its own threads. Pasting the same code again is refused.
+- [ ] **M6.2** Switch back to **This machine** from the same menu; its threads return. In **Settings → Hosts**, **Get a pairing code** gives a code another device can pair with.
+
 ## Capabilities spot checks
 
 - [ ] **C1** In Overview, ask "Help me plan a trip to Kyoto". Vireo opens a dedicated thread and links to it.

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiError, closeEvents, onEvent, type Me, type Thread } from "./api";
+import { AddHostForm, HostSwitcher } from "./components/Hosts";
 import { Login } from "./components/Login";
+import { currentHost, hosts, switchHost } from "./hosts";
 import { MemoryPage } from "./components/MemoryPage";
 import { NewThread } from "./components/NewThread";
 import { SettingsPage } from "./components/SettingsPage";
@@ -9,24 +11,64 @@ import { ThreadView } from "./components/ThreadView";
 import { MemoryIcon, PlusIcon, SettingsIcon } from "./icons";
 import { go, useRoute } from "./route";
 
-type AuthState = { loading: true } | { loading: false; hasOwner: boolean; authenticated: boolean; setupNeedsCode: boolean };
+type AuthState =
+  | { loading: true }
+  | { loading: false; unreachable: string }
+  | { loading: false; hasOwner: boolean; authenticated: boolean; setupNeedsCode: boolean };
 
 export function App() {
   const [auth, setAuth] = useState<AuthState>({ loading: true });
+  const host = currentHost();
   const refreshAuth = useCallback(async () => {
     try {
       const s = await api.get<{ hasOwner: boolean; authenticated: boolean; setupNeedsCode: boolean }>("/api/auth/status");
       setAuth({ loading: false, ...s });
-    } catch {
-      setAuth({ loading: false, hasOwner: true, authenticated: false, setupNeedsCode: true });
+    } catch (err) {
+      setAuth({ loading: false, unreachable: err instanceof Error ? err.message : String(err) });
     }
   }, []);
   useEffect(() => {
-    void refreshAuth();
-  }, [refreshAuth]);
+    if (host) void refreshAuth();
+  }, [refreshAuth, host]);
 
+  if (!host) {
+    return (
+      <div className="login">
+        <div className="login-card">
+          <img src="/icon.svg" alt="" width={56} height={56} />
+          <h1>Add a host</h1>
+          <p className="muted">Vireo runs on a host: a VPS or a machine of yours. Pair this app with it using the code the host printed.</p>
+          <AddHostForm />
+        </div>
+      </div>
+    );
+  }
   if (auth.loading) return <div className="splash">Vireo</div>;
-  if (!auth.authenticated) return <Login hasOwner={auth.hasOwner} needsCode={auth.setupNeedsCode} onDone={refreshAuth} />;
+  if ("unreachable" in auth && auth.unreachable) {
+    return (
+      <div className="login">
+        <div className="login-card">
+          <img src="/icon.svg" alt="" width={56} height={56} />
+          <h1>{host.name} is unreachable</h1>
+          <p className="muted">{auth.unreachable} Check that it is running and that its address{host.url ? ` (${host.url})` : ""} is reachable from here.</p>
+          <div className="row-buttons center">
+            <button className="btn primary" onClick={() => void refreshAuth()}>
+              Try again
+            </button>
+            {hosts()
+              .filter((h) => h.id !== host.id)
+              .map((h) => (
+                <button key={h.id} className="btn" onClick={() => switchHost(h.id)}>
+                  Use {h.name}
+                </button>
+              ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+  if ("unreachable" in auth) return null;
+  if (!auth.authenticated) return <Login host={host} hasOwner={auth.hasOwner} needsCode={auth.setupNeedsCode} onDone={refreshAuth} />;
   return (
     <Shell
       onSignedOut={() => {
@@ -90,10 +132,12 @@ function Shell({ onSignedOut }: { onSignedOut: () => void }) {
     <div className={`shell ${showList ? "show-list" : "show-main"}`}>
       <aside className="sidebar">
         <header className="sidebar-head">
-          <a className="brand" href="#thread/overview">
-            <img src="/icon.svg" alt="" width={24} height={24} />
-            <span>Vireo</span>
-          </a>
+          <div className="brand">
+            <a href="#thread/overview" aria-label="Vireo overview">
+              <img src="/icon.svg" alt="" width={24} height={24} />
+            </a>
+            <HostSwitcher />
+          </div>
           <button className="icon-btn" onClick={() => go("new")} aria-label="New thread" title="New thread" data-testid="new-thread">
             <PlusIcon />
           </button>
@@ -119,7 +163,7 @@ function Shell({ onSignedOut }: { onSignedOut: () => void }) {
         ) : route.name === "memory" ? (
           <MemoryPage />
         ) : route.name === "settings" ? (
-          <SettingsPage me={me} reload={loadMe} onSignedOut={onSignedOut} />
+          <SettingsPage section={route.section} me={me} reload={loadMe} onSignedOut={onSignedOut} />
         ) : (
           <div className="empty-main">
             <ThreadView id="overview" />

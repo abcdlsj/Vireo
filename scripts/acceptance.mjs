@@ -36,6 +36,10 @@ const CRITERIA = [
     ["M5.2", "Tailscale lists, reaches and runs commands on the owner's tailnet machines, with confirmation."],
     ["M5.3", "Google (Calendar, Gmail, Drive) is a plugin."],
   ]],
+  ["Milestone 6 — Hosts", [
+    ["M6.1", "The app pairs with a remote host by a one-time code and switches between hosts."],
+    ["M6.2", "The host is headless; the UI is a separate app."],
+  ]],
   ["Capabilities", [
     ["C1", "Overview answers quick things and opens threads for multi-step matters."],
     ["C7", "Calendar conflicts and invitations open their own threads."],

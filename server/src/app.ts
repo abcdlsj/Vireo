@@ -10,6 +10,7 @@ import { Integrations } from "./integrations/index.js";
 import { MemoryStore } from "./memory.js";
 import { MemoryWorker } from "./memory-worker.js";
 import { ModelService } from "./models.js";
+import { Pairing } from "./pairing.js";
 import { Plugins } from "./plugins/index.js";
 import { Pricing } from "./pricing.js";
 import { Push } from "./push.js";
@@ -27,6 +28,7 @@ export interface App {
   db: Db;
   settings: Settings;
   auth: Auth;
+  pairing: Pairing;
   threads: ThreadStore;
   memory: MemoryStore;
   memoryWorker: MemoryWorker;
@@ -52,6 +54,7 @@ export function createApp(config: Config): App {
   const app = { config, db } as App;
   app.settings = new Settings(db);
   app.auth = new Auth(db, config);
+  app.pairing = new Pairing(db);
   app.threads = new ThreadStore(db);
   app.memory = new MemoryStore(db);
   app.integrations = new Integrations(config, db);

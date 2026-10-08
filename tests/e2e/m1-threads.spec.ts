@@ -16,7 +16,7 @@ test.describe("Milestone 1 — Threads that think", () => {
     await page.goto("/");
     await expect(page.locator('link[rel="manifest"]')).toHaveAttribute("href", "/manifest.webmanifest");
     await expect(page.locator('meta[name="apple-mobile-web-app-capable"]')).toHaveAttribute("content", "yes");
-    await expect(page.getByText("Welcome back")).toBeVisible();
+    await expect(page.getByText("Sign in to This machine")).toBeVisible();
     await page.locator("input[type=password]").fill("wrong-password");
     await page.getByRole("button", { name: "Sign in" }).click();
     await expect(page.getByText("Wrong password")).toBeVisible();
@@ -104,7 +104,7 @@ test.describe("Milestone 1 — Threads that think", () => {
     await request.put("/api/models", { data: { fastModel: "" } });
     expect((await (await request.get("/api/models")).json()).fast).toBe("fake-fast");
 
-    await page.goto("/#settings");
+    await page.goto("/#settings/model");
     const card = page.getByTestId("models-card");
     await expect(card).toContainText("fake-main");
     await card.getByTestId("llm-test").click();

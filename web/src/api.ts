@@ -1,4 +1,6 @@
-/** Typed client for Vireo's HTTP API. */
+/** Typed client for Vireo's HTTP API, talking to the current host. */
+
+import { authedUrl, currentHost, hostUrl } from "./hosts";
 
 export interface Thread {
   id: string;
@@ -173,12 +175,22 @@ export class ApiError extends Error {
 }
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
-  const res = await fetch(path, {
-    method,
-    credentials: "same-origin",
-    headers: body instanceof FormData || body === undefined ? undefined : { "content-type": "application/json" },
-    body: body instanceof FormData ? body : body === undefined ? undefined : JSON.stringify(body),
-  });
+  const host = currentHost();
+  if (!host) throw new ApiError("No host yet. Add one first.", 0);
+  const headers: Record<string, string> = {};
+  if (!(body instanceof FormData) && body !== undefined) headers["content-type"] = "application/json";
+  if (host.token) headers.authorization = `Bearer ${host.token}`;
+  let res: Response;
+  try {
+    res = await fetch(hostUrl(path, host), {
+      method,
+      credentials: host.url ? "omit" : "same-origin",
+      headers,
+      body: body instanceof FormData ? body : body === undefined ? undefined : JSON.stringify(body),
+    });
+  } catch {
+    throw new ApiError(`Can't reach ${host.name}.`, 0);
+  }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new ApiError((data as { error?: string }).error ?? res.statusText, res.status);
   return data as T;
@@ -218,7 +230,7 @@ let source: EventSource | undefined;
 export function onEvent(fn: Listener): () => void {
   listeners.add(fn);
   if (!source) {
-    source = new EventSource("/api/events");
+    source = new EventSource(authedUrl("/api/events"));
     source.addEventListener("message", (ev) => {
       const e = JSON.parse((ev as MessageEvent).data) as BusEvent;
       for (const l of listeners) l(e);
@@ -231,6 +243,9 @@ export function onEvent(fn: Listener): () => void {
     listeners.delete(fn);
   };
 }
+
+/** A file or image on the current host, loadable by the browser. */
+export const fileUrl = (id: string) => authedUrl(`/api/files/${id}`);
 
 export function closeEvents(): void {
   source?.close();

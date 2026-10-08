@@ -2,6 +2,9 @@ import { mkdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 /**
+ * Host configuration. The host is headless: it runs the agent and serves the
+ * API; the Vireo app (web/) is the UI and can talk to several hosts.
+ *
  * Runtime configuration. Every value has a working default so Vireo starts
  * without any configuration; environment variables only override defaults.
  */
@@ -9,8 +12,6 @@ export interface Config {
   port: number;
   host: string;
   dataDir: string;
-  /** Directory with the built web app. */
-  webDir: string;
   /** Use the deterministic scripted model instead of a real one (tests, demos). */
   fakeModel: boolean;
   /** Use in-memory Google Calendar / Gmail (tests, demos). */
@@ -33,6 +34,8 @@ export interface Config {
   browserHeadless: boolean;
   /** Enables test-only endpoints. Never set in production. */
   testMode: boolean;
+  /** Name paired devices show for this host. Defaults to the machine's hostname. */
+  hostName?: string;
 }
 
 function bool(v: string | undefined, fallback: boolean): boolean {
@@ -47,7 +50,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     port: Number(env.VIREO_PORT ?? env.PORT ?? 8787),
     host: env.VIREO_HOST ?? "0.0.0.0",
     dataDir,
-    webDir: resolve(env.VIREO_WEB_DIR ?? join(process.cwd(), "dist", "web")),
     fakeModel: bool(env.VIREO_FAKE_MODEL, false),
     fakeGoogle: bool(env.VIREO_FAKE_GOOGLE, false),
     searchEndpoint: env.VIREO_SEARCH_ENDPOINT || undefined,
@@ -59,5 +61,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     chromiumPath: env.VIREO_CHROMIUM_PATH || undefined,
     browserHeadless: bool(env.VIREO_BROWSER_HEADLESS, true),
     testMode: bool(env.VIREO_TEST_MODE, false),
+    hostName: env.VIREO_NAME?.trim() || undefined,
   };
 }

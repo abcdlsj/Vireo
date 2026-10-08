@@ -2,10 +2,15 @@
 # OpenAI-compatible endpoint.
 #
 #   cp .env.example .env    # add at least one provider key and pick a model
-#   docker compose up -d    # then open http://localhost:8787
+#   docker compose up -d    # then open http://localhost:8780
+#
+# vireo is the host (agent + API, :8787); app is the UI (:8780). On a VPS that
+# you reach from the Vireo app on another machine, run only the host:
+#   docker compose up -d vireo litellm
+# and pair with the code in `docker compose logs vireo`.
 #
 # Using OpenAI (or any compatible endpoint) directly? Set VIREO_LLM_BASE_URL
-# and VIREO_LLM_API_KEY in .env and run only Vireo: docker compose up -d vireo
+# and VIREO_LLM_API_KEY in .env and skip LiteLLM: docker compose up -d vireo app
 services:
   vireo:
     build: .
@@ -21,9 +26,21 @@ services:
       VIREO_LLM_API_KEY: ${VIREO_LLM_API_KEY:-${LITELLM_MASTER_KEY:-sk-vireo-local}}
       VIREO_MODEL: ${VIREO_MODEL:-}
       VIREO_FAST_MODEL: ${VIREO_FAST_MODEL:-}
+      VIREO_NAME: ${VIREO_NAME:-}
       TZ: ${TZ:-UTC}
     depends_on:
       - litellm
+
+  app:
+    image: vireo:latest
+    restart: unless-stopped
+    command: ["node", "web/serve.mjs"]
+    ports:
+      - "8780:8780"
+    environment:
+      VIREO_HOST_URL: http://vireo:8787
+    depends_on:
+      - vireo
 
   litellm:
     image: ghcr.io/berriai/litellm:main-v1.83.14-stable

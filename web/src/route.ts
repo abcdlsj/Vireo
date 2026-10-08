@@ -4,7 +4,7 @@ export type Route =
   | { name: "thread"; id: string }
   | { name: "new" }
   | { name: "memory" }
-  | { name: "settings" }
+  | { name: "settings"; section: string }
   | { name: "home" };
 
 export function parseRoute(hash: string): Route {
@@ -12,7 +12,7 @@ export function parseRoute(hash: string): Route {
   if (h.startsWith("thread/")) return { name: "thread", id: decodeURIComponent(h.slice(7)) };
   if (h === "new") return { name: "new" };
   if (h === "memory") return { name: "memory" };
-  if (h === "settings") return { name: "settings" };
+  if (h === "settings" || h.startsWith("settings/")) return { name: "settings", section: h.slice(9) || "general" };
   return { name: "home" };
 }
 

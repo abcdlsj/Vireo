@@ -6,7 +6,7 @@ const FAKE_TS = resolve("tests/fixtures/fake-tailscale");
 
 test.describe("Milestone 5 — Plugins", () => {
   test("[M5.1] a community plugin is added from Settings and configured there", async ({ page }) => {
-    await page.goto("/#settings");
+    await page.goto("/#settings/plugins");
     const card = page.getByTestId("plugins-card");
     await card.getByTestId("community-plugins").click();
     await expect(page.getByTestId("plugin-catalog")).toContainText("Tailscale");
@@ -33,7 +33,7 @@ test.describe("Milestone 5 — Plugins", () => {
   });
 
   test("[M5.3] Google is a plugin and brings Drive", async ({ page, request }) => {
-    await page.goto("/#settings");
+    await page.goto("/#settings/plugins");
     await page.getByTestId("community-plugins").click();
     await page.getByTestId("add-plugin-google").click();
     await expect(page.getByTestId("plugin-google-status")).toContainText("Demo mode");

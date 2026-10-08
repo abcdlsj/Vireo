@@ -47,6 +47,8 @@ export interface ActionResult {
 export interface RequestInfo {
   /** Public origin, used for OAuth redirect URIs. */
   origin: string;
+  /** Origin of the Vireo app that made the request, to return to after OAuth. */
+  appOrigin?: string;
 }
 
 export interface PluginContext {

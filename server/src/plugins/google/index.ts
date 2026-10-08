@@ -125,7 +125,7 @@ export const googlePlugin: PluginDef = {
         if (id === "connect") {
           const state = newId("g");
           const uri = redirectUri(req);
-          app.db.setKv("google.pending", { state, redirectUri: uri });
+          app.db.setKv("google.pending", { state, redirectUri: uri, returnTo: req.appOrigin ?? "" });
           return { redirect: auth().authUrl(uri, state) };
         }
         throw new Error(`Unknown action: ${id}`);
@@ -135,13 +135,15 @@ export const googlePlugin: PluginDef = {
       publicRoutes(api) {
         api.get(CALLBACK, async (c) => {
           const state = c.req.query("state");
-          const expected = app.db.getKv<{ state: string; redirectUri: string }>("google.pending");
+          const expected = app.db.getKv<{ state: string; redirectUri: string; returnTo?: string }>("google.pending");
           if (!state || !expected || expected.state !== state) return c.text("Invalid or expired sign-in request.", 400);
           app.db.deleteKv("google.pending");
           const error = c.req.query("error");
-          if (error) return c.redirect(`/#settings?google=${encodeURIComponent(error)}`);
+          // Back to the Vireo app that started the sign-in.
+          const back = `${expected.returnTo ?? ""}/#settings/plugins`;
+          if (error) return c.redirect(`${back}?google=${encodeURIComponent(error)}`);
           await auth().exchange(c.req.query("code") ?? "", expected.redirectUri);
-          return c.redirect("/#settings?google=connected");
+          return c.redirect(`${back}?google=connected`);
         });
       },
 

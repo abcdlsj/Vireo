@@ -1,11 +1,25 @@
 import { useEffect, useState } from "react";
 import { ChevronLeft } from "../icons";
+import { currentHost } from "../hosts";
+import { HostsSettings } from "./Hosts";
 import { PluginsCard } from "./PluginsCard";
 import { api, type Me, type ModelStatus, type OwnerSettings } from "../api";
 import { setThemeChoice, themeChoice, type ThemeChoice } from "../theme";
 
-export function SettingsPage({ me, reload, onSignedOut }: { me: Me | null; reload: () => Promise<void>; onSignedOut: () => void }) {
+const SECTIONS = [
+  { id: "general", label: "General" },
+  { id: "model", label: "Model" },
+  { id: "plugins", label: "Plugins" },
+  { id: "hosts", label: "Hosts" },
+  { id: "notifications", label: "Notifications" },
+  { id: "sign-ins", label: "Website sign-ins" },
+  { id: "usage", label: "Usage" },
+  { id: "device", label: "This device" },
+];
+
+export function SettingsPage({ section, me, reload, onSignedOut }: { section: string; me: Me | null; reload: () => Promise<void>; onSignedOut: () => void }) {
   if (!me) return <div className="page" />;
+  const cur = SECTIONS.find((s) => s.id === section) ?? SECTIONS[0]!;
   return (
     <div className="page" data-testid="settings-page">
       <header className="topbar">
@@ -13,42 +27,94 @@ export function SettingsPage({ me, reload, onSignedOut }: { me: Me | null; reloa
           <ChevronLeft />
         </a>
         <span className="crumbs">
-          <span className="crumb-root">Vireo</span>
+          <span className="crumb-root">Settings</span>
           <span className="crumb-sep">/</span>
-          <span className="crumb-here">Settings</span>
+          <span className="crumb-here">{cur.label}</span>
         </span>
       </header>
-      <div className="page-body settings">
-        <h1 className="page-title">Settings</h1>
-        <Models reload={reload} />
-        <PluginsCard reload={reload} />
-        <Notifications me={me} reload={reload} />
-        <Preferences settings={me.settings} reload={reload} />
-        <Appearance />
-        <SignIns />
-        <Usage />
-        <section className="card">
-          <h3>Install</h3>
-          <p className="muted">
-            On iPhone: open Vireo in Safari, tap Share, then <b>Add to Home Screen</b>. On Mac: in Safari choose File → <b>Add to Dock</b>, or use the install
-            button in Chrome's address bar. Notifications on iPhone work once Vireo is installed to the home screen and served over HTTPS.
-          </p>
-        </section>
-        <section className="card">
-          <h3>Session</h3>
-          <button
-            className="btn"
-            onClick={() =>
-              void api.post("/api/auth/logout").then(() => {
-                onSignedOut();
-              })
-            }
-          >
-            Sign out of this device
-          </button>
-        </section>
+      <div className="settings-layout">
+        <nav className="settings-nav" aria-label="Settings sections">
+          {SECTIONS.map((s) => (
+            <a key={s.id} href={`#settings/${s.id}`} className={`settings-nav-item ${s.id === cur.id ? "active" : ""}`} aria-current={s.id === cur.id ? "page" : undefined} data-testid={`settings-nav-${s.id}`}>
+              {s.label}
+              {s.id === "model" && !me.models.ready ? <span className="dot warn" title="No model configured" /> : null}
+            </a>
+          ))}
+        </nav>
+        <div className="page-body settings">
+          <h1 className="page-title">{cur.label}</h1>
+          {cur.id === "general" ? (
+            <>
+              <Preferences settings={me.settings} reload={reload} />
+              <Appearance />
+            </>
+          ) : cur.id === "model" ? (
+            <Models reload={reload} />
+          ) : cur.id === "plugins" ? (
+            <PluginsCard reload={reload} />
+          ) : cur.id === "hosts" ? (
+            <HostsSettings />
+          ) : cur.id === "notifications" ? (
+            <>
+              <Notifications me={me} reload={reload} />
+              <Install />
+            </>
+          ) : cur.id === "sign-ins" ? (
+            <SignIns />
+          ) : cur.id === "usage" ? (
+            <Usage />
+          ) : (
+            <Device onSignedOut={onSignedOut} />
+          )}
+        </div>
       </div>
     </div>
+  );
+}
+
+function Install() {
+  return (
+    <section className="card">
+      <h3>Install</h3>
+      <p className="muted">
+        On iPhone: open Vireo in Safari, tap Share, then <b>Add to Home Screen</b>. On Mac: in Safari choose File → <b>Add to Dock</b>, or use the install
+        button in Chrome's address bar. Notifications on iPhone work once Vireo is installed to the home screen and served over HTTPS.
+      </p>
+    </section>
+  );
+}
+
+function Device({ onSignedOut }: { onSignedOut: () => void }) {
+  const [sessions, setSessions] = useState<{ label: string; createdAt: number; lastSeenAt: number }[]>([]);
+  useEffect(() => {
+    void api.get<{ sessions: typeof sessions }>("/api/sessions").then((r) => setSessions(r.sessions));
+  }, []);
+  return (
+    <>
+      <section className="card">
+        <h3>Signed-in devices</h3>
+        <p className="muted small">Every device and app signed in to {currentHost()?.name ?? "this host"}, most recent first.</p>
+        <ul className="rows">
+          {sessions.map((s, i) => (
+            <li key={i} className="row">
+              <div className="row-main">
+                <span className="row-title">{s.label}</span>
+                <span className="muted small">
+                  Signed in {new Date(s.createdAt).toLocaleDateString()} · last seen {new Date(s.lastSeenAt).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}
+                </span>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </section>
+      <section className="card">
+        <h3>Sign out</h3>
+        <p className="muted small">Signs this device out of {currentHost()?.name ?? "this host"}. Other devices stay signed in.</p>
+        <button className="btn" onClick={() => void api.post("/api/auth/logout").then(onSignedOut)}>
+          Sign out of this device
+        </button>
+      </section>
+    </>
   );
 }
 
@@ -353,7 +419,8 @@ function Usage() {
   useEffect(() => {
     void api.get<typeof u>("/api/usage").then(setU);
   }, []);
-  if (!u || u.byPurpose.length === 0) return null;
+  if (!u) return null;
+  if (u.byPurpose.length === 0) return <p className="muted">No model calls yet.</p>;
   return (
     <section className="card">
       <h3>Usage</h3>

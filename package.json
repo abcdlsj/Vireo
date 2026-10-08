@@ -15,11 +15,14 @@
     "build": "npm run build:web && npm run build:server",
     "build:web": "vite build --config web/vite.config.ts",
     "build:server": "tsc -p server/tsconfig.json",
-    "start": "node --env-file-if-exists=.env --disable-warning=ExperimentalWarning dist/server/index.js",
+    "start": "node scripts/start.mjs",
     "typecheck": "tsc -p server/tsconfig.json --noEmit && tsc -p web/tsconfig.json --noEmit",
     "test": "vitest run",
     "test:e2e": "playwright test",
-    "acceptance": "npm run build && node scripts/acceptance.mjs"
+    "acceptance": "npm run build && node scripts/acceptance.mjs",
+    "host": "node --env-file-if-exists=.env --disable-warning=ExperimentalWarning dist/server/index.js",
+    "app": "node web/serve.mjs",
+    "pair": "node --env-file-if-exists=.env --disable-warning=ExperimentalWarning dist/server/pair.js"
   },
   "dependencies": {
     "@hono/node-server": "^2.1.4",

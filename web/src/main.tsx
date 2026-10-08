@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import "@fontsource-variable/inter/wght.css";
 import "./styles.css";
+import { initHosts } from "./hosts";
 import { initTheme } from "./theme";
 
 initTheme();
@@ -16,6 +17,8 @@ if ("serviceWorker" in navigator && location.protocol !== "file:") {
     }
   });
 }
+
+await initHosts();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

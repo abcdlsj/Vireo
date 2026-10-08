@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { api, type ThreadDetail } from "../api";
+import { api, fileUrl, type ThreadDetail } from "../api";
+import { authedUrl } from "../hosts";
 import { bytes, dateTime, tokens, toolLabel, usd } from "../format";
 import { CloseIcon } from "../icons";
 
@@ -71,8 +72,8 @@ export function SidePanel({ detail, running, browsing, onClose }: { detail: Thre
             <section>
               <h4>Files</h4>
               {detail.files.map((f) => (
-                <a key={f.id} className="related-item" href={`/api/files/${f.id}`} target="_blank" rel="noreferrer">
-                  {f.mime.startsWith("image/") ? <img src={`/api/files/${f.id}`} alt="" className="thumb" /> : <span className="kind">{f.origin === "produced" ? "📄" : "📎"}</span>}
+                <a key={f.id} className="related-item" href={fileUrl(f.id)} target="_blank" rel="noreferrer">
+                  {f.mime.startsWith("image/") ? <img src={fileUrl(f.id)} alt="" className="thumb" /> : <span className="kind">{f.origin === "produced" ? "📄" : "📎"}</span>}
                   <span>
                     {f.name}
                     <small className="muted"> · {bytes(f.size)}</small>
@@ -299,7 +300,7 @@ function BrowserView({ threadId, running }: { threadId: string; running: boolean
       {state === "none" ? <p className="muted">When Vireo browses the web for this thread, the page shows up here.</p> : null}
       <img
         key={threadId}
-        src={`/api/threads/${threadId}/browser?t=${tick}`}
+        src={authedUrl(`/api/threads/${threadId}/browser?t=${tick}`)}
         alt="The page Vireo is looking at"
         hidden={state !== "shown"}
         onLoad={() => {
