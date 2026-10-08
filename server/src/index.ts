@@ -35,6 +35,7 @@ const server = serve({ fetch: http.fetch, port: config.port, hostname: config.ho
   ];
   if (!app.auth.hasOwner()) lines.push(`  First-run setup code: ${app.auth.setupCode} (not needed on localhost)`);
   console.log(lines.join("\n"), "\n");
+  void app.plugins.start();
   app.runner.resumeInterrupted();
   app.scheduler.start();
 });
@@ -47,6 +48,7 @@ async function shutdown(): Promise<void> {
   server.close();
   await Promise.race([app.runner.idle(), new Promise((r) => setTimeout(r, 5000))]);
   await app.browser.shutdown();
+  await app.plugins.stop();
   app.db.close();
   process.exit(0);
 }

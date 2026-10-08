@@ -1,3 +1,5 @@
+import type { App } from "./app.js";
+
 /**
  * Agents follow the Swarm model: a triage agent understands each request and
  * hands off to a specialist; specialists can hand off to each other. Each
@@ -146,6 +148,30 @@ export const AGENTS: Record<string, AgentDef> = {
   },
 };
 
-export function agentDef(name: string): AgentDef {
-  return AGENTS[name] ?? AGENTS.general!;
+/**
+ * Built-in agents plus those from installed plugins. Plugin tools granted to
+ * a built-in agent are added to its list; triage and general can hand off to
+ * every plugin agent.
+ */
+export function activeAgents(app: App): Record<string, AgentDef> {
+  const extra = app.plugins.agents();
+  const out: Record<string, AgentDef> = {};
+  for (const def of Object.values(AGENTS)) {
+    const grants = app.plugins.grants(def.name);
+    out[def.name] = {
+      ...def,
+      tools: [...def.tools, ...grants],
+      handoffs: def.name === "triage" || def.name === "general" ? [...def.handoffs, ...extra.map((a) => a.name)] : def.handoffs,
+      instructions:
+        def.name === "triage" && extra.length
+          ? def.instructions.replace("\nOnly answer directly", `\n${app.plugins.routing().join("\n")}\nOnly answer directly`)
+          : def.instructions,
+    };
+  }
+  for (const a of extra) out[a.name] = { ...a, tools: [...COMMON, ...a.tools] };
+  return out;
+}
+
+export function agentDef(name: string, agents: Record<string, AgentDef> = AGENTS): AgentDef {
+  return agents[name] ?? agents.general!;
 }

@@ -1818,6 +1818,96 @@ table.usage th {
   font-weight: 500;
 }
 
+/* ---------- plugins ---------- */
+.card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.card-head h3 {
+  margin: 0;
+}
+
+.plugin {
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+}
+
+.plugin:first-of-type {
+  margin-top: 10px;
+}
+
+.plugin-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.plugin-row p {
+  margin: 2px 0 0;
+}
+
+.plugin-catalog {
+  margin: 10px 0;
+  padding: 4px 12px;
+  border-radius: var(--radius);
+  background: var(--block);
+}
+
+.plugin-catalog .plugin-row {
+  padding: 10px 0;
+  align-items: center;
+}
+
+.plugin-catalog .plugin-row + .plugin-row {
+  border-top: 1px solid var(--line);
+}
+
+.plugin-state {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 12px;
+  background: var(--orange-tag);
+  color: var(--orange-text);
+}
+
+.plugin-state.ready {
+  background: var(--accent-tag);
+  color: var(--accent-tag-text);
+}
+
+.plugin-state.error {
+  background: var(--red-tag);
+  color: var(--red-text);
+}
+
+.plugin-details {
+  display: grid;
+  gap: 2px;
+  margin: 6px 0 8px;
+  font-size: 13px;
+}
+
+.plugin-details div {
+  display: flex;
+  gap: 8px;
+}
+
+.plugin-details dt {
+  min-width: 110px;
+  color: var(--muted);
+}
+
+.plugin-details dd {
+  margin: 0;
+  word-break: break-all;
+}
+
 /* ---------- phone ---------- */
 @media (max-width: 760px) {
   .shell {

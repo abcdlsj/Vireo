@@ -10,6 +10,10 @@ RUN npm run build && npm prune --omit=dev
 
 FROM mcr.microsoft.com/playwright:v1.56.1-noble
 WORKDIR /app
+# Tailscale plugin: Vireo runs its own tailscaled (userspace networking) and
+# reaches tailnet machines over SSH.
+COPY --from=tailscale/tailscale:v1.102.5 /usr/local/bin/tailscale /usr/local/bin/tailscaled /usr/local/bin/
+RUN apt-get update && apt-get install -y --no-install-recommends openssh-client && rm -rf /var/lib/apt/lists/*
 ENV NODE_ENV=production \
     PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
     VIREO_PORT=8787 \

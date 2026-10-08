@@ -17,7 +17,8 @@ Open http://localhost:8787, choose a password, and start a thread.
 
 - **Model:** with only an OpenAI key, Vireo lists the endpoint's models and picks a strong one for conversations and a cheaper one for routine work such as titles and memory upkeep. You can change both in **Settings → Model**.
 - **Another provider or endpoint?** Enter a base URL, API key and model in **Settings → Model** (no restart needed), or set `VIREO_LLM_BASE_URL`, `VIREO_LLM_API_KEY` and `VIREO_MODEL`. **Test connection** checks it. The Docker setup below includes LiteLLM for providers that don't speak the OpenAI API.
-- **Calendar and email:** these work immediately with a built-in local calendar. Connect Google Calendar and Gmail from Settings whenever you like.
+- **Calendar and email:** these work immediately with a built-in local calendar. For Google Calendar, Gmail and Drive, add the **Google** plugin in **Settings → Plugins → Community plugins**.
+- **Plugins:** **Settings → Plugins → Community plugins** lists the plugins that ship with Vireo. **Tailscale** joins your tailnet so Vireo can list, ping, call services on and run SSH commands on your other machines; with an API token it can also authorise, remove and tag them. Outward or changing actions wait for your confirmation.
 - **Web search** works without a key. Vireo uses DuckDuckGo's HTML endpoint by default; set `VIREO_SEARXNG_URL` or `BRAVE_API_KEY` to use something else.
 - **Browser actions** use Playwright's Chromium. If it is missing, run `npx playwright install chromium`. The Docker image already includes it.
 
@@ -100,6 +101,7 @@ Preferences such as time zone, morning brief time, working hours and which proac
 
 ```
 server/src     Hono HTTP + SSE, runner, agents, memory, scheduler, tools
+server/src/plugins  Community plugins (Google, Tailscale): tools, agents, settings
 web/src        React PWA
 tests/unit     Vitest: memory, time, vault, context, confirmations
 tests/e2e      Playwright: one test per PRD acceptance criterion
@@ -109,7 +111,7 @@ tests/e2e      Playwright: one test per PRD acceptance criterion
 
 - **LiteLLM is optional.** It ships in the Docker Compose setup for multi-provider access. Vireo itself only needs an OpenAI-compatible endpoint.
 - **Built-in memory graph instead of Graphiti.** It follows the same bi-temporal model (episodes, entities, facts with validity and supersession) but lives in SQLite. That means no Neo4j and no extra service.
-- **Native Google REST instead of an MCP server.** You connect with your own OAuth client from Settings. Until then, a local calendar keeps everything working.
+- **Native Google REST instead of an MCP server.** You connect with your own OAuth client in the Google plugin. Until then, a local calendar keeps everything working.
 
 ## Development and testing
 

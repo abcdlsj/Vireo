@@ -10,6 +10,7 @@ import { Integrations } from "./integrations/index.js";
 import { MemoryStore } from "./memory.js";
 import { MemoryWorker } from "./memory-worker.js";
 import { ModelService } from "./models.js";
+import { Plugins } from "./plugins/index.js";
 import { Pricing } from "./pricing.js";
 import { Push } from "./push.js";
 import { Runner } from "./runner.js";
@@ -39,7 +40,10 @@ export interface App {
   actions: Actions;
   runner: Runner;
   scheduler: Scheduler;
+  plugins: Plugins;
+  /** Built-in tools plus those of installed plugins; rebuilt when plugins change. */
   tools: Map<string, ToolDef>;
+  buildTools(): Map<string, ToolDef>;
 }
 
 export function createApp(config: Config): App {
@@ -57,7 +61,10 @@ export function createApp(config: Config): App {
   app.push = new Push(db);
   app.files = new Files(db, config.dataDir);
   app.browser = new BrowserService(app);
-  app.tools = buildTools();
+  app.plugins = new Plugins(app);
+  app.vault.extraSecrets = () => app.plugins.secrets();
+  app.buildTools = () => buildTools(app.plugins.tools());
+  app.tools = app.buildTools();
   app.actions = new Actions(app);
   app.memoryWorker = new MemoryWorker(app);
   app.runner = new Runner(app);

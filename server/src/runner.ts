@@ -1,5 +1,5 @@
 import { Agent, handoff, MaxTurnsExceededError, tool, type AgentInputItem, type FunctionTool, type RunStreamEvent } from "@openai/agents";
-import { AGENTS, agentDef, type AgentDef } from "./agents.js";
+import { activeAgents, agentDef, type AgentDef } from "./agents.js";
 import type { App } from "./app.js";
 import { bus } from "./bus.js";
 import type { AgentMessage, ImageContent, ToolCall } from "./messages.js";
@@ -137,25 +137,26 @@ export class Runner {
 
   /** Builds every agent for this run, wired together with native handoffs. */
   private buildAgents(ctx: ToolContext, recentOwner: string): Map<string, Agent<ToolContext>> {
+    const defs = activeAgents(this.app);
     const agents = new Map<string, Agent<ToolContext>>();
-    for (const def of Object.values(AGENTS)) {
+    for (const def of Object.values(defs)) {
       agents.set(
         def.name,
         new Agent<ToolContext>({
           name: def.name,
-          instructions: () => buildSystemPrompt(this.app, def, ctx.thread, recentOwner),
+          instructions: () => buildSystemPrompt(this.app, def, ctx.thread, recentOwner, defs),
           model: (def.tier === "fast" ? this.app.models.fastModel() : this.app.models.mainModel())!,
           tools: this.toolsFor(def, ctx),
         }),
       );
     }
-    for (const def of Object.values(AGENTS)) {
+    for (const def of Object.values(defs)) {
       agents.get(def.name)!.handoffs = def.handoffs
         .filter((h) => agents.has(h))
         .map((h) =>
           handoff(agents.get(h)!, {
             toolNameOverride: `transfer_to_${h}`,
-            toolDescriptionOverride: `Hand this conversation to the ${AGENTS[h]!.title} specialist: ${AGENTS[h]!.description}`,
+            toolDescriptionOverride: `Hand this conversation to the ${defs[h]!.title} specialist: ${defs[h]!.description}`,
           }),
         );
     }
@@ -170,7 +171,7 @@ export class Runner {
       .slice(-3)
       .map((m) => messageText(m.body))
       .join(" ");
-    const startName = thread.agent in AGENTS ? thread.agent : agentDef("triage").name;
+    const startName = thread.agent in activeAgents(this.app) ? thread.agent : agentDef("triage").name;
     const ctx: ToolContext = { app: this.app, thread, agent: startName };
     const agents = this.buildAgents(ctx, recentOwner);
     const input = toInputItems(fitContext(stored.map((m) => m.body)));

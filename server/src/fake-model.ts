@@ -175,6 +175,8 @@ function agentTurn(context: FakeContext): AssistantMessage {
       return email(t);
     case "Browser":
       return browser(t);
+    case "Tailnet":
+      return tailnet(t);
     default:
       return general(t);
   }
@@ -202,6 +204,7 @@ function triage(t: Turn): AssistantMessage {
   if (/https?:\/\/|website|book a table|fill (in|out)|form|log ?in to|网站|表单|订座/.test(m)) to = "browser";
   else if (/email|e-mail|inbox|mail from|reply to|邮件|回信/.test(m)) to = "email";
   else if (/schedule|meeting|calendar|free time|free slot|invite|appointment|会议|日程|约/.test(m)) to = "calendar";
+  else if (t.tools.has("transfer_to_tailnet") && /tailnet|tailscale|my machines|my servers|\bssh\b|\bping\b|服务器|机器/.test(m)) to = "tailnet";
   else if (/research|search|look up|find out|sources|latest|news|compare|调研|搜索|查一下|研究/.test(m)) to = "research";
   if (/^(hi|hello|hey|thanks|thank you|你好|谢谢)[.!！ ]*$/i.test(t.owner.trim())) {
     return reply(isCjk(t.owner) ? "你好！有什么可以帮你？" : "Hi! What can I do for you?");
@@ -222,6 +225,19 @@ function general(t: Turn): AssistantMessage {
   const lower = o.toLowerCase();
   const facts = memoryFacts(t.system);
   const cjk = isCjk(o);
+
+  // "In my Drive, find …"
+  const driveQ = o.match(/(?:in my (?:google )?drive|my drive|drive 里)[,:]?\s*(?:find|look for|找)?\s*(?:the )?(.+?)[?？.]?$/i);
+  if (driveQ && t.tools.has("drive_search")) {
+    const found = t.results.find((r) => r.name === "drive_search");
+    if (!found) return call("drive_search", { query: driveQ[1]!.replace(/\b(doc|document|file|plan)s?\b/gi, "").trim() || driveQ[1]! });
+    const id = found.text.match(/^- (\S+) \|/m)?.[1];
+    if (!id) return reply("I couldn't find that in your Drive.");
+    const read = t.results.find((r) => r.name === "drive_read");
+    if (!read) return call("drive_read", { file_id: id });
+    const body = read.text.split("\n").slice(1, -2).join(" ").trim();
+    return reply(`From your Drive: ${body}`);
+  }
 
   // "What do you remember about X?"
   const rememberQ = o.match(/what do you (?:remember|know) about (.+?)[?？]?$/i) ?? o.match(/你(?:还)?记得(.+?)(?:吗|的什么)?[?？]?$/);
@@ -359,6 +375,34 @@ function calendar(t: Turn): AssistantMessage {
   if (!listed) return call("list_events", { from: `${today}T00:00:00${offset}`, to: `${addDays(today, 7)}T23:59:00${offset}` });
   const events = listed.text.split("\n").filter((l) => l.startsWith("- "));
   return reply(events.length ? `Here's what's coming up:\n${events.map((e) => e.replace(/^- \S+: /, "- ")).join("\n")}` : "Your calendar is clear for the next week.");
+}
+
+function tailnet(t: Turn): AssistantMessage {
+  const o = t.owner;
+  const ssh = o.match(/run [`'"](.+?)[`'"] on ([\w.-]+)/i);
+  if (ssh) {
+    const r = t.results.find((x) => x.name === "tailnet_ssh");
+    if (!r) return call("tailnet_ssh", { machine: ssh[2], command: ssh[1] });
+    return reply(/awaiting|confirm/i.test(r.text) ? `Confirm on the card and I'll run \`${ssh[1]}\` on ${ssh[2]}.` : `Ran it on ${ssh[2]}:\n\n${r.text}`);
+  }
+  const http = o.match(/(?:open|call|get) (?:http:\/\/)?([\w-]+):(\d+)(\/\S*)?/i);
+  if (http) {
+    const r = t.results.find((x) => x.name === "tailnet_http");
+    if (!r) return call("tailnet_http", { machine: http[1], port: Number(http[2]), path: http[3] ?? "/" });
+    return reply(`${http[1]} answered: ${r.text.match(/HTTP \d+[^\n]*/)?.[0] ?? r.text.slice(0, 200)}`);
+  }
+  const ping = o.match(/ping ([\w.-]+)/i);
+  if (ping) {
+    const r = t.results.find((x) => x.name === "tailnet_ping");
+    if (!r) return call("tailnet_ping", { machine: ping[1] });
+    return reply(r.text);
+  }
+  const r = t.results.find((x) => x.name === "tailnet_machines");
+  if (!r) return call("tailnet_machines", {});
+  const lines = r.text.split("\n").filter((l) => l.startsWith("- "));
+  const online = lines.filter((l) => /\| online/.test(l)).map((l) => l.slice(2).split(" | ")[0]);
+  const offline = lines.filter((l) => /\| offline/.test(l)).map((l) => l.slice(2).split(" | ")[0]);
+  return reply(`Your tailnet has ${lines.length} machine(s). Online: ${online.join(", ") || "none"}. Offline: ${offline.join(", ") || "none"}.`);
 }
 
 function email(t: Turn): AssistantMessage {

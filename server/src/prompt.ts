@@ -1,4 +1,4 @@
-import { AGENTS, type AgentDef } from "./agents.js";
+import type { AgentDef } from "./agents.js";
 import type { App } from "./app.js";
 import { OVERVIEW_ID, type Thread } from "./threads.js";
 import { toZonedIso } from "./time.js";
@@ -6,14 +6,14 @@ import { describeFact } from "./tools/memory.js";
 import { scoreText, searchTerms } from "./util.js";
 
 /** Builds the system prompt for one agent in one thread. */
-export function buildSystemPrompt(app: App, agent: AgentDef, thread: Thread, recentOwnerText: string): string {
+export function buildSystemPrompt(app: App, agent: AgentDef, thread: Thread, recentOwnerText: string, agents: Record<string, AgentDef>): string {
   const s = app.settings.get();
   const integrations = app.integrations.status();
   const lines: string[] = [
     "You are Vireo, a personal agent working for exactly one person, the owner. You get real things done — scheduling, email, research and actions on websites — rather than only giving advice.",
     "",
     `Current time: ${toZonedIso(Date.now(), s.timezone)} (${s.timezone}). The owner's working hours are ${s.workdayStart}–${s.workdayEnd}.`,
-    `Calendar: ${integrations.calendar}. Email: ${integrations.mail ?? "not connected (the owner can connect Google in Settings)"}.`,
+    `Calendar: ${integrations.calendar}. Email: ${integrations.mail ?? "not connected (the owner can add the Google plugin in Settings → Plugins)"}.`,
     "",
     "## This thread",
     thread.id === OVERVIEW_ID
@@ -35,7 +35,7 @@ export function buildSystemPrompt(app: App, agent: AgentDef, thread: Thread, rec
     agent.instructions,
   ];
 
-  const handoffs = agent.handoffs.map((h) => AGENTS[h]).filter(Boolean) as AgentDef[];
+  const handoffs = agent.handoffs.map((h) => agents[h]).filter(Boolean) as AgentDef[];
   if (handoffs.length) {
     lines.push("", "When the request is better handled by another specialist, call its transfer tool:");
     for (const h of handoffs) lines.push(`- transfer_to_${h.name}: ${h.description}`);

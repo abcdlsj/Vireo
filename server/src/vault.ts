@@ -18,6 +18,8 @@ export interface CredentialInfo {
 
 export class Vault {
   private readonly key: Buffer;
+  /** More secrets to scrub, e.g. plugin tokens. */
+  extraSecrets: () => string[] = () => [];
 
   constructor(
     private readonly db: Db,
@@ -84,7 +86,7 @@ export class Vault {
         // ignore undecryptable rows
       }
     }
-    return out.filter((s) => s.length >= 4);
+    return [...out, ...this.extraSecrets()].filter((s) => s.length >= 4);
   }
 
   redact(text: string): string {

@@ -9,7 +9,8 @@ Vireo's milestones are done when every acceptance criterion holds in real use, n
 
 - Run `npm run build && npm start`, or use `docker compose up -d`.
 - In **Settings → Model**, set your endpoint, key and models (or use `.env` with Docker Compose), and check that **Test connection** succeeds.
-- For Milestone 3, connect Google in **Settings → Google Calendar & Gmail**. The local calendar is enough for the calendar parts.
+- For Milestone 3, add and connect the Google plugin in **Settings → Plugins**. The local calendar is enough for the calendar parts.
+- For Milestone 5, have a tailnet with at least one other machine, and either an auth key or a browser to sign in.
 - For notifications, open Vireo over HTTPS on your phone, install it to the home screen, and enable **Settings → Notifications**.
 
 ## Milestone 1 — Threads that think
@@ -40,6 +41,12 @@ Vireo's milestones are done when every acceptance criterion holds in real use, n
 - [ ] **M4.2** Save a site sign-in under **Settings → Sign-ins for websites**, then ask Vireo to do something on that site that ends in a submit (for example a booking or a form). It signs in, fills the form, and stops at a card before submitting.
 - [ ] **M4.3** Search for the saved password in `data/vireo.db`, the server log and the thread's **Activity**, for example with `grep -a`. It appears nowhere. Vireo's own tests also check every prompt sent to the model.
 - [ ] **M4.4** Open **Activity** for the M4.2 thread. Every page opened, field typed (shown as `{{password}}`), click, confirmation and model call is listed with its arguments.
+
+## Milestone 5 — Plugins
+
+- [ ] **M5.1** In **Settings → Plugins**, open **Community plugins** and add Tailscale. Leave **Connection** on “Vireo runs its own Tailscale node”, then either save an auth key or open the sign-in link. The status turns **Ready** and the machine shows up in the Tailscale admin console.
+- [ ] **M5.2** Ask "Which of my tailnet machines are online?", then "Ping <machine>", then "Run `uptime` on <machine>". The last one waits for a card; after you confirm, the output comes back. With an API token saved, "Authorise <machine>" also waits for a card.
+- [ ] **M5.3** Add the Google plugin, connect it, and ask "In my drive, find <a document>". The answer quotes the document.
 
 ## Capabilities spot checks
 

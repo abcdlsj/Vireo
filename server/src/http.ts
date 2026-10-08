@@ -146,17 +146,8 @@ export function createHttp(app: App): Hono<Env> {
     return c.json({ ok: true });
   });
 
-  // Google redirects here; the state parameter ties it to an authenticated request.
-  api.get("/api/google/callback", async (c) => {
-    const state = c.req.query("state");
-    const expected = app.db.getKv<{ state: string; redirectUri: string }>("google.pending");
-    if (!state || !expected || expected.state !== state) return c.text("Invalid or expired sign-in request.", 400);
-    app.db.deleteKv("google.pending");
-    const error = c.req.query("error");
-    if (error) return c.redirect(`/#settings?google=${encodeURIComponent(error)}`);
-    await app.integrations.google.exchange(c.req.query("code") ?? "", expected.redirectUri);
-    return c.redirect("/#settings?google=connected");
-  });
+  // Plugin callbacks (OAuth); each checks its own state parameter.
+  app.plugins.publicRoutes(api as unknown as Hono);
 
   // ---- everything below requires the owner ----
   const requireOwner = async (c: Context<Env>, next: Next) => {
@@ -423,23 +414,24 @@ export function createHttp(app: App): Hono<Env> {
   api.put("/api/models", async (c) => c.json(await app.models.save(await c.req.json())));
   api.post("/api/models/test", async (c) => c.json(await app.models.test()));
 
-  // ---- Google ----
-  api.put("/api/google/client", async (c) => {
-    const body = await c.req.json<{ clientId: string; clientSecret: string }>();
-    app.integrations.google.setClient({ clientId: body.clientId.trim(), clientSecret: body.clientSecret.trim() });
-    return c.json(app.integrations.status());
+  // ---- plugins ----
+  const requestInfo = (c: Context<Env>) => ({
+    origin: app.config.publicUrl ?? new URL(c.req.url).origin.replace(/^http:/, c.req.header("x-forwarded-proto") === "https" ? "https:" : "http:"),
   });
-  api.post("/api/google/connect", (c) => {
-    const origin = app.config.publicUrl ?? new URL(c.req.url).origin.replace(/^http:/, c.req.header("x-forwarded-proto") === "https" ? "https:" : "http:");
-    const redirectUri = `${origin}/api/google/callback`;
-    const state = newId("g");
-    app.db.setKv("google.pending", { state, redirectUri });
-    return c.json({ url: app.integrations.google.authUrl(redirectUri, state), redirectUri });
+  api.get("/api/plugins", async (c) => c.json({ plugins: await app.plugins.list(requestInfo(c)) }));
+  api.post("/api/plugins/:id", async (c) => {
+    await app.plugins.install(c.req.param("id"), (await c.req.json<{ config?: Record<string, unknown> }>().catch(() => ({ config: {} }))).config ?? {});
+    return c.json({ ok: true });
   });
-  api.delete("/api/google", (c) => {
-    app.integrations.google.disconnect();
-    return c.json(app.integrations.status());
+  api.patch("/api/plugins/:id", async (c) => {
+    await app.plugins.configure(c.req.param("id"), await c.req.json());
+    return c.json({ ok: true });
   });
+  api.delete("/api/plugins/:id", async (c) => {
+    await app.plugins.uninstall(c.req.param("id"));
+    return c.json({ ok: true });
+  });
+  api.post("/api/plugins/:id/actions/:action", async (c) => c.json(await app.plugins.action(c.req.param("id"), c.req.param("action"), requestInfo(c))));
 
   // ---- credentials for browser work ----
   api.get("/api/credentials", (c) => c.json({ credentials: app.vault.list() }));

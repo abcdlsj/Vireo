@@ -1,0 +1,36 @@
+#!/usr/bin/env node
+// A stand-in for the tailscale CLI used by tests: a two-machine tailnet where
+// every machine's ports are served by 127.0.0.1.
+import net from "node:net";
+const args = process.argv.slice(2).filter((a) => !a.startsWith("--socket="));
+const peers = {
+  n1: { ID: "n1", HostName: "nas", DNSName: "nas.tail-test.ts.net.", OS: "linux", TailscaleIPs: ["100.64.0.2"], Online: true, Tags: ["tag:server"] },
+  n2: { ID: "n2", HostName: "old-laptop", DNSName: "old-laptop.tail-test.ts.net.", OS: "windows", TailscaleIPs: ["100.64.0.3"], Online: false, LastSeen: "2026-09-01T10:00:00Z" },
+};
+switch (args[0]) {
+  case "status":
+    process.stdout.write(
+      JSON.stringify({
+        BackendState: "Running",
+        Self: { ID: "n0", HostName: "vireo", DNSName: "vireo.tail-test.ts.net.", OS: "linux", TailscaleIPs: ["100.64.0.1"], Online: true },
+        Peer: peers,
+        CurrentTailnet: { Name: "owner@example.com" },
+      }),
+    );
+    break;
+  case "ping":
+    console.log(`pong from nas (${args.at(-1)}) via 192.168.1.5:41641 in 2ms`);
+    break;
+  case "nc": {
+    const sock = net.connect(Number(args[2]), "127.0.0.1");
+    process.stdin.pipe(sock).pipe(process.stdout);
+    sock.on("error", (e) => {
+      console.error(e.message);
+      process.exit(1);
+    });
+    sock.on("close", () => process.exit(0));
+    break;
+  }
+  default:
+    break;
+}

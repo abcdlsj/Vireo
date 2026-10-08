@@ -7,8 +7,8 @@ import { researchTools } from "./research.js";
 import { threadTools } from "./threads.js";
 import type { ToolDef } from "./types.js";
 
-/** Every tool Vireo knows. New services plug in by adding a module here. */
-export function buildTools(): Map<string, ToolDef> {
-  const all = [...memoryTools, ...threadTools, ...researchTools, ...calendarTools, ...emailTools, ...browserTools, ...fileTools] as ToolDef[];
+/** Every built-in tool, plus tools from installed plugins. */
+export function buildTools(extra: ToolDef[] = []): Map<string, ToolDef> {
+  const all = [...extra, ...memoryTools, ...threadTools, ...researchTools, ...calendarTools, ...emailTools, ...browserTools, ...fileTools] as ToolDef[];
   return new Map(all.map((t) => [t.name, t]));
 }

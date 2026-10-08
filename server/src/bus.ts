@@ -11,7 +11,8 @@ export type BusEvent =
   | { type: "step"; threadId: string; step: { tool: string; label: string; status: string; toolCallId?: string } }
   | { type: "action.updated"; threadId: string; actionId: string }
   | { type: "memory.updated" }
-  | { type: "procedure.updated" };
+  | { type: "procedure.updated" }
+  | { type: "plugins.updated" };
 
 class Bus extends EventEmitter {
   publish(event: BusEvent): void {

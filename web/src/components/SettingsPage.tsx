@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { ChevronLeft } from "../icons";
+import { PluginsCard } from "./PluginsCard";
 import { api, type Me, type ModelStatus, type OwnerSettings } from "../api";
 import { setThemeChoice, themeChoice, type ThemeChoice } from "../theme";
 
@@ -20,7 +21,7 @@ export function SettingsPage({ me, reload, onSignedOut }: { me: Me | null; reloa
       <div className="page-body settings">
         <h1 className="page-title">Settings</h1>
         <Models reload={reload} />
-        <Google me={me} reload={reload} />
+        <PluginsCard reload={reload} />
         <Notifications me={me} reload={reload} />
         <Preferences settings={me.settings} reload={reload} />
         <Appearance />
@@ -162,57 +163,6 @@ function Models({ reload }: { reload: () => Promise<void> }) {
         </div>
         {test ? <p className={test.ok ? "ok small" : "error small"} data-testid="llm-test-result">{test.message}</p> : null}
       </form>
-    </section>
-  );
-}
-
-function Google({ me, reload }: { me: Me; reload: () => Promise<void> }) {
-  const [clientId, setClientId] = useState("");
-  const [secret, setSecret] = useState("");
-  const g = me.integrations.google;
-  const redirect = `${location.origin}/api/google/callback`;
-  return (
-    <section className="card">
-      <h3>Google Calendar & Gmail</h3>
-      <p>
-        Calendar: <b>{me.integrations.calendar}</b> · Email: <b>{me.integrations.mail ?? "not connected"}</b>
-      </p>
-      {g.connected ? (
-        <>
-          <p>
-            Connected{g.email ? ` as ${g.email}` : ""}.{" "}
-            <button className="btn small ghost" onClick={() => void api.del("/api/google").then(reload)}>
-              Disconnect
-            </button>
-          </p>
-        </>
-      ) : (
-        <>
-          <p className="muted small">
-            Until Google is connected, Vireo keeps events in its own calendar. To connect: create an OAuth client (type “Web application”) in Google Cloud
-            Console, enable the Calendar and Gmail APIs, and add this redirect URI: <code>{redirect}</code>
-          </p>
-          {!g.configured ? (
-            <form
-              className="inline-form"
-              onSubmit={(e) => {
-                e.preventDefault();
-                void api.put("/api/google/client", { clientId, clientSecret: secret }).then(reload);
-              }}
-            >
-              <input placeholder="Client ID" value={clientId} onChange={(e) => setClientId(e.target.value)} />
-              <input type="password" placeholder="Client secret" value={secret} onChange={(e) => setSecret(e.target.value)} />
-              <button className="btn small" disabled={!clientId || !secret}>
-                Save
-              </button>
-            </form>
-          ) : (
-            <button className="btn primary" onClick={() => void api.post<{ url: string }>("/api/google/connect").then((r) => (location.href = r.url))}>
-              Connect Google
-            </button>
-          )}
-        </>
-      )}
     </section>
   );
 }

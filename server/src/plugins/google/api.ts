@@ -1,5 +1,5 @@
-import type { Db } from "../db.js";
-import { now } from "../util.js";
+import type { Db } from "../../db.js";
+import { now } from "../../util.js";
 import type {
   CalendarEvent,
   CalendarProvider,
@@ -8,22 +8,25 @@ import type {
   MailProvider,
   NewEvent,
   OutgoingEmail,
-} from "./types.js";
+} from "../../integrations/types.js";
 
 /**
- * Google Calendar and Gmail over Google's REST APIs, using an OAuth client
- * the owner creates once in Google Cloud Console. Tokens stay in Vireo's
- * database and are never passed to a model.
+ * Google Calendar, Gmail and Drive over Google's REST APIs, using an OAuth
+ * client the owner creates once in Google Cloud Console. Tokens stay in
+ * Vireo's database and are never passed to a model.
  */
+
+export const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.readonly";
 
 const SCOPES = [
   "openid",
   "email",
   "https://www.googleapis.com/auth/calendar",
   "https://www.googleapis.com/auth/gmail.modify",
+  DRIVE_SCOPE,
 ];
 
-interface GoogleClient {
+export interface GoogleClient {
   clientId: string;
   clientSecret: string;
 }
@@ -33,21 +36,28 @@ interface GoogleTokens {
   refresh_token?: string;
   expires_at: number;
   email?: string;
+  /** Space-separated scopes Google granted. */
+  scope?: string;
 }
 
 export class GoogleAuth {
-  constructor(private readonly db: Db) {}
+  constructor(
+    private readonly db: Db,
+    /** The OAuth client from the Google plugin's settings. */
+    private readonly stored: () => GoogleClient | undefined,
+  ) {}
 
   client(): GoogleClient | undefined {
-    const stored = this.db.getKv<GoogleClient>("google.client");
+    const stored = this.stored();
     if (stored?.clientId && stored.clientSecret) return stored;
     const id = process.env.GOOGLE_CLIENT_ID;
     const secret = process.env.GOOGLE_CLIENT_SECRET;
     return id && secret ? { clientId: id, clientSecret: secret } : undefined;
   }
 
-  setClient(client: GoogleClient): void {
-    this.db.setKv("google.client", client);
+  granted(scope: string): boolean {
+    const s = this.tokens()?.scope;
+    return s === undefined ? false : s.split(" ").includes(scope);
   }
 
   tokens(): GoogleTokens | undefined {
@@ -92,7 +102,7 @@ export class GoogleAuth {
       }),
     });
     if (!res.ok) throw new Error(`Google token exchange failed: ${res.status} ${await res.text()}`);
-    const body = (await res.json()) as { access_token: string; refresh_token?: string; expires_in: number; id_token?: string };
+    const body = (await res.json()) as { access_token: string; refresh_token?: string; expires_in: number; id_token?: string; scope?: string };
     let email: string | undefined;
     if (body.id_token) {
       try {
@@ -106,6 +116,7 @@ export class GoogleAuth {
       refresh_token: body.refresh_token,
       expires_at: now() + body.expires_in * 1000,
       email,
+      scope: body.scope,
     } satisfies GoogleTokens);
   }
 
@@ -347,5 +358,95 @@ export class GoogleMail implements MailProvider {
 
   async ownerAddress(): Promise<string | undefined> {
     return this.auth.tokens()?.email;
+  }
+}
+
+const DRIVE = "https://www.googleapis.com/drive/v3/files";
+
+export interface DriveFile {
+  id: string;
+  name: string;
+  mimeType: string;
+  modifiedTime?: string;
+  webViewLink?: string;
+  owners?: { emailAddress?: string; displayName?: string }[];
+}
+
+/** Export formats for Google's own document types. */
+const EXPORT: Record<string, string> = {
+  "application/vnd.google-apps.document": "text/plain",
+  "application/vnd.google-apps.spreadsheet": "text/csv",
+  "application/vnd.google-apps.presentation": "text/plain",
+};
+
+export interface DriveProvider {
+  search(query: string, max: number): Promise<DriveFile[]>;
+  read(id: string): Promise<{ file: DriveFile; text: string }>;
+}
+
+export class GoogleDrive implements DriveProvider {
+  constructor(private readonly auth: GoogleAuth) {}
+
+  async search(query: string, max: number): Promise<DriveFile[]> {
+    const escaped = query.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+    const params = new URLSearchParams({
+      q: `(name contains '${escaped}' or fullText contains '${escaped}') and trashed = false`,
+      pageSize: String(Math.min(max, 25)),
+      fields: "files(id,name,mimeType,modifiedTime,webViewLink,owners(emailAddress,displayName))",
+      orderBy: "modifiedTime desc",
+      supportsAllDrives: "true",
+      includeItemsFromAllDrives: "true",
+    });
+    return (await this.auth.api<{ files: DriveFile[] }>(`${DRIVE}?${params}`)).files;
+  }
+
+  async read(id: string): Promise<{ file: DriveFile; text: string }> {
+    const fid = encodeURIComponent(id);
+    const file = await this.auth.api<DriveFile>(`${DRIVE}/${fid}?fields=id,name,mimeType,modifiedTime,webViewLink&supportsAllDrives=true`);
+    const exportAs = EXPORT[file.mimeType];
+    let url: string;
+    if (exportAs) url = `${DRIVE}/${fid}/export?mimeType=${encodeURIComponent(exportAs)}`;
+    else if (/^text\/|json|xml|csv|markdown/.test(file.mimeType)) url = `${DRIVE}/${fid}?alt=media&supportsAllDrives=true`;
+    else return { file, text: `(${file.mimeType} files cannot be read as text. Open it at ${file.webViewLink ?? "Google Drive"}.)` };
+    const res = await fetch(url, { headers: { authorization: `Bearer ${await this.auth.accessToken()}` } });
+    if (!res.ok) throw new Error(`Google Drive ${res.status}: ${(await res.text()).slice(0, 300)}`);
+    return { file, text: (await res.text()).slice(0, 40_000) };
+  }
+}
+
+/** In-memory Drive for tests and demos (VIREO_FAKE_GOOGLE=1). */
+export class FakeDrive implements DriveProvider {
+  readonly files: (DriveFile & { text: string })[] = [
+    {
+      id: "doc_trip",
+      name: "Lisbon trip plan",
+      mimeType: "application/vnd.google-apps.document",
+      modifiedTime: "2026-09-30T10:00:00Z",
+      webViewLink: "https://docs.google.com/document/d/doc_trip",
+      text: "Lisbon, 12–16 November. Hotel: Casa do Rio, confirmation LX-4821. Dinner booked at Taberna on the 13th.",
+    },
+    {
+      id: "sheet_budget",
+      name: "2026 budget",
+      mimeType: "application/vnd.google-apps.spreadsheet",
+      modifiedTime: "2026-09-12T08:00:00Z",
+      webViewLink: "https://docs.google.com/spreadsheets/d/sheet_budget",
+      text: "Category,Amount\nTravel,2400\nBooks,300",
+    },
+  ];
+
+  async search(query: string, max: number): Promise<DriveFile[]> {
+    const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+    return this.files
+      .filter((f) => terms.some((t) => `${f.name} ${f.text}`.toLowerCase().includes(t)))
+      .slice(0, max)
+      .map(({ text: _text, ...rest }) => rest);
+  }
+
+  async read(id: string): Promise<{ file: DriveFile; text: string }> {
+    const f = this.files.find((x) => x.id === id);
+    if (!f) throw new Error(`No Drive file ${id}`);
+    const { text, ...file } = f;
+    return { file, text };
   }
 }

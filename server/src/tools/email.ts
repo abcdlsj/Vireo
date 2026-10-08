@@ -4,7 +4,7 @@ import { defineTool, untrustedBlock, type ToolContext } from "./types.js";
 
 function mail(ctx: ToolContext) {
   const m = ctx.app.integrations.mail();
-  if (!m) throw new Error("Email is not connected. Ask the owner to connect Google in Settings.");
+  if (!m) throw new Error("Email is not connected. Ask the owner to add the Google plugin in Settings → Plugins.");
   return m;
 }
 

@@ -31,6 +31,11 @@ const CRITERIA = [
     ["M4.3", "Credentials never appear in prompts or logs."],
     ["M4.4", "Every action in a thread can be inspected in its audit trail."],
   ]],
+  ["Milestone 5 — Plugins", [
+    ["M5.1", "A community plugin is added from Settings and configured there; secrets never return to the browser."],
+    ["M5.2", "Tailscale lists, reaches and runs commands on the owner's tailnet machines, with confirmation."],
+    ["M5.3", "Google (Calendar, Gmail, Drive) is a plugin."],
+  ]],
   ["Capabilities", [
     ["C1", "Overview answers quick things and opens threads for multi-step matters."],
     ["C7", "Calendar conflicts and invitations open their own threads."],

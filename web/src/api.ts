@@ -132,9 +132,35 @@ export interface OwnerSettings {
 export interface Me {
   settings: OwnerSettings;
   models: ModelStatus;
-  integrations: { calendar: string; mail: string | null; google: { configured: boolean; connected: boolean; email?: string } };
+  integrations: { calendar: string; mail: string | null; google: { installed: boolean; configured: boolean; connected: boolean; email?: string } };
   push: { publicKey: string; subscriptions: number };
   testMode: boolean;
+}
+
+export interface PluginField {
+  key: string;
+  label: string;
+  type: "text" | "secret" | "boolean" | "select";
+  options?: { value: string; label: string }[];
+  default?: string | boolean;
+  placeholder?: string;
+  help?: string;
+  multiline?: boolean;
+  /** Secret fields: a value is stored. */
+  set?: boolean;
+}
+
+export interface PluginView {
+  id: string;
+  name: string;
+  description: string;
+  author: string;
+  homepage?: string;
+  installed: boolean;
+  fields: PluginField[];
+  config: Record<string, unknown>;
+  status?: { state: string; message: string; details?: { label: string; value: string }[]; link?: { label: string; href: string } };
+  actions: { id: string; label: string; primary?: boolean }[];
 }
 
 export class ApiError extends Error {
@@ -181,7 +207,8 @@ export type BusEvent =
   | { type: "step"; threadId: string; step: { tool: string; label: string; status: string; toolCallId?: string } }
   | { type: "action.updated"; threadId: string; actionId: string }
   | { type: "memory.updated" }
-  | { type: "procedure.updated" };
+  | { type: "procedure.updated" }
+  | { type: "plugins.updated" };
 
 type Listener = (e: BusEvent) => void;
 const listeners = new Set<Listener>();
