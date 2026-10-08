@@ -41,6 +41,10 @@ test.describe("Milestone 4 — Proactive and hands-on", () => {
     expect(submissions).toEqual([{ name: "Lisa", guests: "2", date: "2026-10-15" }]);
     const detail = await threadDetail(request, id);
     expect(detail.related.some((r: { kind: string; url: string }) => r.kind === "page" && r.url.includes("/booking"))).toBeTruthy();
+    // The browser tab's live view shows the page the agent worked on.
+    await page.getByTestId("toggle-panel").click();
+    await page.getByTestId("tab-browser").click();
+    await expect(page.getByTestId("browser-view").locator("img")).toBeVisible();
   });
 
   test("[M4.3] credentials never appear in prompts or logs", async ({ request }) => {
