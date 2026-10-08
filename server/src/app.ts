@@ -10,6 +10,7 @@ import { Integrations } from "./integrations/index.js";
 import { MemoryStore } from "./memory.js";
 import { MemoryWorker } from "./memory-worker.js";
 import { ModelService } from "./models.js";
+import { Pricing } from "./pricing.js";
 import { Push } from "./push.js";
 import { Runner } from "./runner.js";
 import { Scheduler } from "./scheduler.js";
@@ -29,6 +30,7 @@ export interface App {
   memory: MemoryStore;
   memoryWorker: MemoryWorker;
   models: ModelService;
+  pricing: Pricing;
   integrations: Integrations;
   vault: Vault;
   push: Push;
@@ -51,6 +53,7 @@ export function createApp(config: Config): App {
   app.integrations = new Integrations(config, db);
   app.vault = new Vault(db, config.dataDir);
   app.models = new ModelService(config, db, app.vault);
+  app.pricing = new Pricing(config);
   app.push = new Push(db);
   app.files = new Files(db, config.dataDir);
   app.browser = new BrowserService(app);

@@ -262,7 +262,7 @@ export class ModelService {
     try {
       const result = await (await this.runner()).run(agent, opts.prompt, { maxTurns: 1 });
       const u = result.state.usage;
-      this.recordUsage({ threadId: opts.threadId, purpose: opts.task, model, input: u.inputTokens, output: u.outputTokens, durationMs: now() - started });
+      this.recordUsage({ threadId: opts.threadId, purpose: opts.task, model, input: u.inputTokens, output: u.outputTokens, ...cacheTokens(u.inputTokensDetails), durationMs: now() - started });
       return String(result.finalOutput ?? "").trim();
     } catch (err) {
       this.recordUsage({ threadId: opts.threadId, purpose: opts.task, model, durationMs: now() - started, error: errorMessage(err) });
@@ -283,12 +283,14 @@ export class ModelService {
     model: string;
     input?: number;
     output?: number;
+    cached?: number;
+    cacheWrite?: number;
     durationMs?: number;
     error?: string;
   }): void {
     this.db.run(
-      `INSERT INTO llm_calls (thread_id, purpose, agent, provider, model, input_tokens, output_tokens, cost, duration_ms, error, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO llm_calls (thread_id, purpose, agent, provider, model, input_tokens, output_tokens, cached_tokens, cache_write_tokens, cost, duration_ms, error, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       opts.threadId ?? null,
       opts.purpose,
       opts.agent ?? null,
@@ -296,12 +298,30 @@ export class ModelService {
       opts.model,
       opts.input ?? 0,
       opts.output ?? 0,
+      opts.cached ?? 0,
+      opts.cacheWrite ?? 0,
       0,
       opts.durationMs ?? null,
       opts.error ?? null,
       now(),
     );
   }
+}
+
+/**
+ * Cache read/write counts from a usage record's input details. Read is
+ * "cached_tokens" everywhere; write has no standard name, so the spellings
+ * LiteLLM and providers use are all accepted.
+ */
+export function cacheTokens(details: Record<string, number> | Array<Record<string, number>> | undefined): { cached: number; cacheWrite: number } {
+  const list = Array.isArray(details) ? details : details ? [details] : [];
+  let cached = 0;
+  let cacheWrite = 0;
+  for (const d of list) {
+    cached += Number(d.cached_tokens ?? 0) || 0;
+    cacheWrite += Number(d.cache_creation_tokens ?? d.cache_creation_input_tokens ?? d.cache_write_tokens ?? 0) || 0;
+  }
+  return { cached, cacheWrite };
 }
 
 function newestFirst(a: string, b: string): number {

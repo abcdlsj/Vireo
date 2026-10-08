@@ -88,7 +88,6 @@ test.describe("Milestone 1 — Threads that think", () => {
     const links = page.getByTestId("msg-assistant").last().locator("a[href^='http://localhost:8790/pages/']");
     expect(await links.count()).toBeGreaterThanOrEqual(2);
     // The pages read are listed in the side panel.
-    await page.getByTestId("toggle-panel").click();
     await expect(page.getByTestId("side-panel")).toContainText("Vireo — Bird Encyclopedia");
     const detail = await threadDetail(request, id);
     expect(detail.related.filter((r: { kind: string }) => r.kind === "page").length).toBeGreaterThanOrEqual(2);

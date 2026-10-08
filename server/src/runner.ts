@@ -3,6 +3,7 @@ import { AGENTS, agentDef, type AgentDef } from "./agents.js";
 import type { App } from "./app.js";
 import { bus } from "./bus.js";
 import type { AgentMessage, ImageContent, ToolCall } from "./messages.js";
+import { cacheTokens } from "./models.js";
 import { buildSystemPrompt } from "./prompt.js";
 import { messageText, OVERVIEW_ID, type StoredMessage, type Thread } from "./threads.js";
 import type { ToolContext, ToolDef } from "./tools/types.js";
@@ -187,7 +188,7 @@ export class Runner {
           ctx.agent = current;
           this.app.threads.update(thread.id, { agent: current });
         } else if (ev.type === "raw_model_stream_event") {
-          const data = ev.data as { type: string; delta?: string; response?: { usage?: { inputTokens?: number; outputTokens?: number } } };
+          const data = ev.data as { type: string; delta?: string; response?: { usage?: { inputTokens?: number; outputTokens?: number; inputTokensDetails?: Record<string, number> } } };
           if (data.type === "response_started") {
             streamId = newId("s");
             streamStart = now();
@@ -197,7 +198,7 @@ export class Runner {
           } else if (data.type === "response_done") {
             const u = data.response?.usage;
             const model = agents.get(current)!.model as string;
-            this.app.models.recordUsage({ threadId: thread.id, purpose: "agent", agent: current, model, input: u?.inputTokens, output: u?.outputTokens, durationMs: now() - streamStart });
+            this.app.models.recordUsage({ threadId: thread.id, purpose: "agent", agent: current, model, input: u?.inputTokens, output: u?.outputTokens, ...cacheTokens(u?.inputTokensDetails), durationMs: now() - streamStart });
             bus.publish({ type: "message.stream_end", threadId: thread.id, streamId });
           }
         } else if (ev.type === "run_item_stream_event") {

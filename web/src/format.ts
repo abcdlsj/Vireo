@@ -54,6 +54,14 @@ const TOOL_LABELS: Record<string, string> = {
   browser_type: "Typed",
   browser_select: "Chose an option",
   browser_screenshot: "Took a screenshot",
+  browser_read: "Read the page",
+  browser_press: "Pressed a key",
+  browser_check: "Ticked a box",
+  browser_hover: "Hovered",
+  browser_scroll: "Scrolled",
+  browser_wait: "Waited for the page",
+  browser_back: "Went back",
+  browser_tab: "Switched tab",
   list_credentials: "Checked sign-ins",
   read_file: "Read a file",
   create_file: "Created a file",
@@ -73,4 +81,18 @@ export function prettyDates(text: string): string {
       ? iso
       : new Date(ms).toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
   });
+}
+
+/** Token counts in millions or billions only ("0.41M", "70.3M", "1.2B"). */
+export function tokens(n: number): string {
+  if (n >= 1e9) return `${(n / 1e9).toFixed(n >= 1e10 ? 1 : 2)}B`;
+  if (n === 0) return "0M";
+  if (n < 1e4) return "<0.01M";
+  return `${(n / 1e6).toFixed(n >= 1e7 ? 1 : 2)}M`;
+}
+
+export function usd(n: number | null | undefined): string {
+  if (n === null || n === undefined) return "—";
+  if (n > 0 && n < 0.01) return "<$0.01";
+  return `$${n.toFixed(2)}`;
 }

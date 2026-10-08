@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api, type ThreadDetail } from "../api";
-import { bytes, dateTime, toolLabel } from "../format";
+import { bytes, dateTime, tokens, toolLabel, usd } from "../format";
 import { CloseIcon } from "../icons";
 
 interface ToolCallRow {
@@ -22,15 +22,19 @@ interface LlmRow {
   model: string;
   input_tokens: number;
   output_tokens: number;
-  cost: number;
+  cached_tokens: number;
+  cost: number | null;
   duration_ms: number | null;
   error: string | null;
   created_at: number;
 }
 
 /** Everything related to the thread: pages, emails, events, files, and the full audit trail (S6, N7). */
-export function SidePanel({ detail, running, onClose }: { detail: ThreadDetail; running: boolean; onClose: () => void }) {
-  const [tab, setTab] = useState<"related" | "browser" | "activity">("related");
+export function SidePanel({ detail, running, browsing, onClose }: { detail: ThreadDetail; running: boolean; browsing: boolean; onClose: () => void }) {
+  const [tab, setTab] = useState<"related" | "browser" | "activity" | "usage">(browsing ? "browser" : "related");
+  useEffect(() => {
+    if (browsing) setTab("browser");
+  }, [browsing]);
   const [audit, setAudit] = useState<{ toolCalls: ToolCallRow[]; llmCalls: LlmRow[] } | null>(null);
   const tid = detail.thread.id;
 
@@ -38,7 +42,7 @@ export function SidePanel({ detail, running, onClose }: { detail: ThreadDetail; 
     if (tab === "activity") void api.get<{ toolCalls: ToolCallRow[]; llmCalls: LlmRow[] }>(`/api/threads/${tid}/audit`).then(setAudit);
   }, [tab, tid, detail]);
 
-  const totalCost = audit?.llmCalls.reduce((n, c) => n + (c.cost || 0), 0) ?? 0;
+  const totalCost = audit?.llmCalls.reduce((n, c) => n + (c.cost ?? 0), 0) ?? 0;
   const totalTokens = audit?.llmCalls.reduce((n, c) => n + c.input_tokens + c.output_tokens, 0) ?? 0;
 
   return (
@@ -52,6 +56,9 @@ export function SidePanel({ detail, running, onClose }: { detail: ThreadDetail; 
         </button>
         <button className={tab === "activity" ? "on" : ""} onClick={() => setTab("activity")} data-testid="tab-activity">
           Activity
+        </button>
+        <button className={tab === "usage" ? "on" : ""} onClick={() => setTab("usage")} data-testid="tab-usage">
+          Usage
         </button>
         <button className="close" onClick={onClose} aria-label="Close">
           <CloseIcon />
@@ -96,6 +103,8 @@ export function SidePanel({ detail, running, onClose }: { detail: ThreadDetail; 
         </div>
       ) : tab === "browser" ? (
         <BrowserView threadId={tid} running={running} />
+      ) : tab === "usage" ? (
+        <UsageView threadId={tid} detail={detail} />
       ) : (
         <div className="panel-body" data-testid="audit">
           {!audit ? (
@@ -103,39 +112,166 @@ export function SidePanel({ detail, running, onClose }: { detail: ThreadDetail; 
           ) : (
             <>
               <p className="muted">
-                {audit.toolCalls.length} actions · {audit.llmCalls.length} model calls · {totalTokens.toLocaleString()} tokens · ${totalCost.toFixed(4)}
+                {audit.toolCalls.length} actions · {audit.llmCalls.length} model calls · {tokens(totalTokens)} tokens · {usd(totalCost)}
               </p>
-              <h4>Actions</h4>
-              {audit.toolCalls.map((c) => (
-                <details key={c.id} className={`audit-row ${c.status}`} data-testid="audit-row">
-                  <summary>
-                    <span>{c.tool.startsWith("transfer_to_") ? `Handed to ${c.tool.slice(12)}` : toolLabel(c.tool)}</span>
+              <h4>
+                Actions <span className="count">{audit.toolCalls.length}</span>
+              </h4>
+              <div className="audit-list">
+                {[...audit.toolCalls].reverse().map((c) => (
+                  <details key={c.id} className={`audit-row ${c.status}`} data-testid="audit-row">
+                    <summary>
+                      <span>{c.tool.startsWith("transfer_to_") ? `Handed to ${c.tool.slice(12)}` : toolLabel(c.tool)}</span>
+                      <small className="muted">
+                        {c.status.replace(/_/g, " ")} · {c.agent} · {c.duration_ms ?? "…"} ms · {dateTime(c.started_at)}
+                      </small>
+                    </summary>
+                    <pre>{c.args}</pre>
+                    {c.result ? <pre>{c.result}</pre> : null}
+                  </details>
+                ))}
+              </div>
+              <h4>
+                Model calls <span className="count">{audit.llmCalls.length}</span>
+              </h4>
+              <div className="audit-list">
+                {[...audit.llmCalls].reverse().map((c) => (
+                  <div key={c.id} className="audit-llm">
+                    <span>
+                      {c.purpose}
+                      {c.agent ? ` · ${c.agent}` : ""}
+                    </span>
                     <small className="muted">
-                      {c.status.replace(/_/g, " ")} · {c.agent} · {c.duration_ms ?? "…"} ms · {dateTime(c.started_at)}
+                      {c.model} · {c.input_tokens.toLocaleString()}→{c.output_tokens.toLocaleString()} tok · {c.cost === null ? "no price" : `$${c.cost.toFixed(4)}`} · {c.duration_ms ?? "?"} ms
+                      {c.error ? ` · ${c.error}` : ""}
                     </small>
-                  </summary>
-                  <pre>{c.args}</pre>
-                  {c.result ? <pre>{c.result}</pre> : null}
-                </details>
-              ))}
-              <h4>Model calls</h4>
-              {audit.llmCalls.map((c) => (
-                <div key={c.id} className="audit-llm">
-                  <span>
-                    {c.purpose}
-                    {c.agent ? ` · ${c.agent}` : ""}
-                  </span>
-                  <small className="muted">
-                    {c.provider}/{c.model} · {c.input_tokens}→{c.output_tokens} tok · ${c.cost.toFixed(4)} · {c.duration_ms ?? "?"} ms
-                    {c.error ? ` · ${c.error}` : ""}
-                  </small>
-                </div>
-              ))}
+                  </div>
+                ))}
+              </div>
             </>
           )}
         </div>
       )}
     </aside>
+  );
+}
+
+interface ModelUsage {
+  model: string;
+  calls: number;
+  /** Prompt tokens, cached ones included. */
+  input: number;
+  cached: number;
+  cacheWrite: number;
+  output: number;
+  cost: number | null;
+}
+
+interface Usage {
+  scope: "thread" | "all";
+  models: ModelUsage[];
+  context: { model: string; used: number; limit: number | null } | null;
+}
+
+/** Context window fill for this thread, then tokens and cost per model; the overview totals every thread. */
+function UsageView({ threadId, detail }: { threadId: string; detail: ThreadDetail }) {
+  const [usage, setUsage] = useState<Usage | null>(null);
+  useEffect(() => {
+    void api.get<Usage>(`/api/threads/${threadId}/usage`).then(setUsage);
+  }, [threadId, detail]);
+  if (!usage) return <div className="panel-body muted">Loading…</div>;
+
+  const sum = (f: (m: ModelUsage) => number) => usage.models.reduce((n, m) => n + f(m), 0);
+  const input = sum((m) => m.input);
+  const cached = sum((m) => m.cached);
+  const cacheWrite = sum((m) => m.cacheWrite);
+  const output = sum((m) => m.output);
+  const total = input + output;
+  const priced = usage.models.filter((m) => m.cost !== null);
+  const cost = priced.length ? priced.reduce((n, m) => n + (m.cost ?? 0), 0) : null;
+  const parts = [
+    { key: "fresh", label: "Input", value: Math.max(0, input - cached - cacheWrite) },
+    { key: "write", label: "Cache write", value: cacheWrite },
+    { key: "read", label: "Cache read", value: cached },
+    { key: "output", label: "Output", value: output },
+  ];
+  const ctx = usage.context;
+  const ctxShare = ctx?.limit ? Math.min(1, ctx.used / ctx.limit) : null;
+
+  return (
+    <div className="panel-body usage" data-testid="usage">
+      {ctx ? (
+        <section className="usage-context" data-testid="usage-context">
+          <h4>Context window</h4>
+          <div className="meter" role="meter" aria-label="Context window used" aria-valuemin={0} aria-valuemax={100} aria-valuenow={ctxShare === null ? undefined : Math.round(ctxShare * 100)}>
+            <span className={ctxShare !== null && ctxShare > 0.8 ? "high" : ""} style={{ width: `${(ctxShare ?? 0) * 100}%` }} />
+          </div>
+          <div className="usage-line">
+            <span>
+              {tokens(ctx.used)} / {ctx.limit ? tokens(ctx.limit) : "unknown"}
+            </span>
+            <span className="muted">{ctxShare === null ? "" : `${Math.round(ctxShare * 100)}%`}</span>
+          </div>
+          <small className="muted">{ctx.model}</small>
+        </section>
+      ) : null}
+
+      <section>
+        <h4>{usage.scope === "all" ? "Usage across all threads" : "Usage in this thread"}</h4>
+        <div className="usage-stats">
+          <div>
+            <small className="muted">Tokens</small>
+            <strong data-testid="usage-tokens">{tokens(total)}</strong>
+          </div>
+          <div>
+            <small className="muted">Cost</small>
+            <strong data-testid="usage-cost">{usd(cost)}</strong>
+          </div>
+          <div>
+            <small className="muted">Cache hit</small>
+            <strong>{input ? `${Math.round((cached / input) * 100)}%` : "—"}</strong>
+          </div>
+        </div>
+        {total ? (
+          <>
+            <div className="usage-bar" aria-hidden="true">
+              {parts.map((p) => (p.value ? <span key={p.key} className={p.key} style={{ flexGrow: p.value }} /> : null))}
+            </div>
+            <ul className="usage-legend">
+              {parts.map((p) => (
+                <li key={p.key}>
+                  <span className={`swatch ${p.key}`} />
+                  {p.label}
+                  <span className="muted">{tokens(p.value)}</span>
+                </li>
+              ))}
+            </ul>
+          </>
+        ) : (
+          <p className="muted">No model calls yet.</p>
+        )}
+      </section>
+
+      {usage.models.length ? (
+        <section>
+          <h4>By model</h4>
+          {usage.models.map((m) => (
+            <div key={m.model} className="usage-model" data-testid="usage-model">
+              <div className="usage-line">
+                <span className="name" title={m.model}>
+                  {m.model}
+                </span>
+                <span>{m.cost === null ? <span className="muted">no price</span> : usd(m.cost)}</span>
+              </div>
+              <small className="muted">
+                {tokens(m.input + m.output)} · in {tokens(m.input)} ({m.input ? Math.round((m.cached / m.input) * 100) : 0}% cached) · out {tokens(m.output)} · {m.calls} calls
+              </small>
+            </div>
+          ))}
+          <p className="muted fine">Prices from models.dev.</p>
+        </section>
+      ) : null}
+    </div>
   );
 }
 
@@ -151,7 +287,7 @@ function BrowserView({ threadId, running }: { threadId: string; running: boolean
 
   const next = () => {
     window.clearTimeout(timer.current);
-    if (running) timer.current = window.setTimeout(() => setTick((n) => n + 1), 800);
+    if (running) timer.current = window.setTimeout(() => setTick((n) => n + 1), 250);
   };
 
   return (

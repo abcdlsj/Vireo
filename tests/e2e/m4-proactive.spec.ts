@@ -42,7 +42,6 @@ test.describe("Milestone 4 — Proactive and hands-on", () => {
     const detail = await threadDetail(request, id);
     expect(detail.related.some((r: { kind: string; url: string }) => r.kind === "page" && r.url.includes("/booking"))).toBeTruthy();
     // The browser tab's live view shows the page the agent worked on.
-    await page.getByTestId("toggle-panel").click();
     await page.getByTestId("tab-browser").click();
     await expect(page.getByTestId("browser-view").locator("img")).toBeVisible();
   });
@@ -69,7 +68,6 @@ test.describe("Milestone 4 — Proactive and hands-on", () => {
   test("[M4.4] every action in a thread can be inspected in its audit trail", async ({ page }) => {
     await page.goto("/");
     await page.getByTestId("thread-row").filter({ hasText: /table/i }).first().click();
-    await page.getByTestId("toggle-panel").click();
     await page.getByTestId("tab-activity").click();
     const audit = page.getByTestId("audit");
     await expect(audit).toContainText("Opened a page");
@@ -79,8 +77,15 @@ test.describe("Milestone 4 — Proactive and hands-on", () => {
     await expect(audit).toContainText("Model calls");
     const rows = page.getByTestId("audit-row");
     expect(await rows.count()).toBeGreaterThanOrEqual(6);
-    await rows.filter({ hasText: "Typed" }).first().click();
-    await expect(rows.filter({ hasText: "Typed" }).first()).toContainText("{{");
+    // The sign-in step shows the placeholder, never the stored password.
+    const signIn = rows.filter({ hasText: "Typed" }).filter({ hasText: "{{password}}" });
+    await signIn.click();
+    await expect(signIn).toContainText('"text":"{{password}}"');
+    // Usage: the thread's context window and tokens by model.
+    await page.getByTestId("tab-usage").click();
+    await expect(page.getByTestId("usage-context")).toContainText("Context window");
+    await expect(page.getByTestId("usage-model").first()).toBeVisible();
+    await expect(page.getByTestId("usage-tokens")).toHaveText(/M$/);
   });
 
   test("[C8] reminders fire in their thread and notify the owner", async ({ page, request }) => {
@@ -115,7 +120,6 @@ test.describe("Milestone 4 — Proactive and hands-on", () => {
     await finalReply(page, request);
     const detail = await threadDetail(request, id);
     expect(detail.files.map((f: { name: string }) => f.name)).toContain("packing.txt");
-    await page.getByTestId("toggle-panel").click();
     await expect(page.getByTestId("side-panel")).toContainText("packing.txt");
     const file = await request.get(`/api/files/${detail.files[0].id}`);
     expect(await file.text()).toContain("passport");

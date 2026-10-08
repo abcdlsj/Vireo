@@ -277,7 +277,37 @@ export function createHttp(app: App): Hono<Env> {
     const id = c.req.param("id");
     return c.json({
       toolCalls: app.db.all("SELECT * FROM tool_calls WHERE thread_id = ? ORDER BY id", id),
-      llmCalls: app.db.all("SELECT * FROM llm_calls WHERE thread_id = ? ORDER BY id", id),
+      llmCalls: app.db
+        .all<{ model: string; input_tokens: number; cached_tokens: number; cache_write_tokens: number; output_tokens: number }>("SELECT * FROM llm_calls WHERE thread_id = ? ORDER BY id", id)
+        .map((r) => ({
+          ...r,
+          cost: app.pricing.cost(r.model, { input: r.input_tokens, cached: r.cached_tokens, cacheWrite: r.cache_write_tokens, output: r.output_tokens }) ?? null,
+        })),
+    });
+  });
+
+  // Token use and cost by model; the overview reports every thread. Context is the thread's latest prompt size.
+  api.get("/api/threads/:id/usage", (c) => {
+    const id = c.req.param("id");
+    const all = id === OVERVIEW_ID;
+    const rows = app.db.all<{ model: string; calls: number; input: number; cached: number; cache_write: number; output: number }>(
+      `SELECT model, COUNT(*) AS calls, SUM(input_tokens) AS input, SUM(cached_tokens) AS cached, SUM(cache_write_tokens) AS cache_write, SUM(output_tokens) AS output
+       FROM llm_calls ${all ? "" : "WHERE thread_id = ?"} GROUP BY model ORDER BY SUM(input_tokens + output_tokens) DESC`,
+      ...(all ? [] : [id]),
+    );
+    const models = rows.map((r) => {
+      const t = { input: r.input ?? 0, cached: r.cached ?? 0, cacheWrite: r.cache_write ?? 0, output: r.output ?? 0 };
+      return { model: r.model ?? "unknown", calls: r.calls, ...t, cost: app.pricing.cost(r.model, t) ?? null };
+    });
+    const last = app.db.get<{ model: string; input_tokens: number; output_tokens: number }>(
+      "SELECT model, input_tokens, output_tokens FROM llm_calls WHERE thread_id = ? AND purpose = 'agent' AND error IS NULL AND input_tokens > 0 ORDER BY id DESC LIMIT 1",
+      id,
+    );
+    const ctxModel = last?.model ?? app.models.mainModel();
+    return c.json({
+      scope: all ? "all" : "thread",
+      models,
+      context: ctxModel ? { model: ctxModel, used: last ? last.input_tokens + last.output_tokens : 0, limit: app.pricing.lookup(ctxModel)?.context ?? null } : null,
     });
   });
 

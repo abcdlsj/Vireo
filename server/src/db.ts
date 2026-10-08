@@ -256,6 +256,11 @@ const MIGRATIONS: string[] = [
     created_at INTEGER NOT NULL
   );
   `,
+  // Prompt-cache usage, for cost and cache-hit reporting.
+  `
+  ALTER TABLE llm_calls ADD COLUMN cached_tokens INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE llm_calls ADD COLUMN cache_write_tokens INTEGER NOT NULL DEFAULT 0;
+  `,
 ];
 
 function migrate(db: Db): void {

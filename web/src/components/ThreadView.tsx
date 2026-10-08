@@ -54,11 +54,22 @@ export function ThreadView({ id }: { id: string }) {
   const [error, setError] = useState("");
   const [live, setLive] = useState<Live | null>(null);
   const [liveSteps, setLiveSteps] = useState<{ tool: string; status: string }[]>([]);
-  const [panel, setPanel] = useState(false);
+  const [panel, setPanelState] = useState(panelDefault);
   const [editingTitle, setEditingTitle] = useState(false);
   const scroller = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
   const reloadTimer = useRef<number | undefined>(undefined);
+
+  // While the agent works in the browser, show the live view (without changing the saved panel choice).
+  const browsing = Boolean(detail?.thread.running) && liveSteps.some((s) => s.tool.startsWith("browser_"));
+  useEffect(() => {
+    if (browsing) setPanelState(true);
+  }, [browsing]);
+
+  const setPanel = (open: boolean) => {
+    setPanelState(open);
+    localStorage.setItem(PANEL_KEY, open ? "open" : "closed");
+  };
 
   const load = useCallback(async () => {
     try {
@@ -178,89 +189,98 @@ export function ThreadView({ id }: { id: string }) {
       </header>
 
       <div className="thread-body">
-        <div
-          className="conversation"
-          ref={scroller}
-          onScroll={(e) => {
-            const el = e.currentTarget;
-            stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
-          }}
-        >
-          <div className="conversation-inner">
-            <div className="page-head">
-              {editingTitle ? (
-                <input
-                  className="title-input"
-                  defaultValue={t.title}
-                  autoFocus
-                  onBlur={(e) => void rename(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") void rename((e.target as HTMLInputElement).value);
-                    if (e.key === "Escape") setEditingTitle(false);
-                  }}
-                />
-              ) : (
-                <h1 onClick={() => !isOverview && setEditingTitle(true)} title={isOverview ? undefined : "Rename"} data-testid="thread-title">
-                  {t.title}
-                </h1>
-              )}
-              {isOverview ? (
-                <p className="page-sub">Quick questions and your morning brief.</p>
-              ) : (
-                <dl className="props">
-                  <div>
-                    <dt>
-                      <StatusIcon />
-                      Status
-                    </dt>
-                    <dd>
-                      <StatusTag t={t} />
-                      {t.temporary ? <span className="tag">Temporary</span> : null}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>
-                      <ClockIcon />
-                      Started
-                    </dt>
-                    <dd>{dateTime(t.createdAt)}</dd>
-                  </div>
-                </dl>
-              )}
-            </div>
-            {items.length === 0 && !live ? (
-              <div className="empty">{isOverview ? "Ask anything. Your morning brief lands here too." : "No messages yet."}</div>
-            ) : null}
-            {items.map((it) => (
-              <ItemView key={it.kind === "steps" ? it.key : `${it.kind}${it.m.id}`} item={it} actions={actions} onChange={load} />
-            ))}
-            {t.running || live ? (
-              <div className="msg assistant live" data-testid="live">
-                {liveSteps.length ? (
-                  <div className="live-steps">
-                    {liveSteps.slice(-4).map((s, i) => (
-                      <span key={i} className={`live-step ${s.status}`}>
-                        {s.status === "running" ? "◌" : s.status === "error" ? "✕" : "✓"} {toolLabel(s.tool)}
-                      </span>
-                    ))}
-                  </div>
-                ) : null}
-                {live?.text ? <Markdown text={live.text} /> : <div className="typing">{t.statusLine || "Working…"}</div>}
+        <div className="thread-main">
+          <div
+            className="conversation"
+            ref={scroller}
+            onScroll={(e) => {
+              const el = e.currentTarget;
+              stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+            }}
+          >
+            <div className="conversation-inner">
+              <div className="page-head">
+                {editingTitle ? (
+                  <input
+                    className="title-input"
+                    defaultValue={t.title}
+                    autoFocus
+                    onBlur={(e) => void rename(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") void rename((e.target as HTMLInputElement).value);
+                      if (e.key === "Escape") setEditingTitle(false);
+                    }}
+                  />
+                ) : (
+                  <h1 onClick={() => !isOverview && setEditingTitle(true)} title={isOverview ? undefined : "Rename"} data-testid="thread-title">
+                    {t.title}
+                  </h1>
+                )}
+                {isOverview ? (
+                  <p className="page-sub">Quick questions and your morning brief.</p>
+                ) : (
+                  <dl className="props">
+                    <div>
+                      <dt>
+                        <StatusIcon />
+                        Status
+                      </dt>
+                      <dd>
+                        <StatusTag t={t} />
+                        {t.temporary ? <span className="tag">Temporary</span> : null}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>
+                        <ClockIcon />
+                        Started
+                      </dt>
+                      <dd>{dateTime(t.createdAt)}</dd>
+                    </div>
+                  </dl>
+                )}
               </div>
-            ) : null}
+              {items.length === 0 && !live ? (
+                <div className="empty">{isOverview ? "Ask anything. Your morning brief lands here too." : "No messages yet."}</div>
+              ) : null}
+              {items.map((it) => (
+                <ItemView key={it.kind === "steps" ? it.key : `${it.kind}${it.m.id}`} item={it} actions={actions} onChange={load} />
+              ))}
+              {t.running || live ? (
+                <div className="msg assistant live" data-testid="live">
+                  {liveSteps.length ? (
+                    <div className="live-steps">
+                      {liveSteps.slice(-4).map((s, i) => (
+                        <span key={i} className={`live-step ${s.status}`}>
+                          {s.status === "running" ? "◌" : s.status === "error" ? "✕" : "✓"} {toolLabel(s.tool)}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
+                  {live?.text ? <Markdown text={live.text} /> : <div className="typing">{t.statusLine || "Working…"}</div>}
+                </div>
+              ) : null}
+            </div>
           </div>
+          <Composer
+            onSend={send}
+            running={t.running}
+            onStop={() => void api.post(`/api/threads/${t.id}/stop`)}
+            placeholder={t.state === "done" ? "Message to reopen this thread" : isOverview ? "Ask Vireo anything" : "Message Vireo"}
+          />
         </div>
-        {panel ? <SidePanel detail={detail} running={t.running} onClose={() => setPanel(false)} /> : null}
+        {panel ? <SidePanel detail={detail} running={t.running} browsing={browsing} onClose={() => setPanel(false)} /> : null}
       </div>
-
-      <Composer
-        onSend={send}
-        running={t.running}
-        onStop={() => void api.post(`/api/threads/${t.id}/stop`)}
-        placeholder={t.state === "done" ? "Message to reopen this thread" : isOverview ? "Ask Vireo anything" : "Message Vireo"}
-      />
     </div>
   );
+}
+
+const PANEL_KEY = "vireo.panel";
+
+/** The details panel starts open on wide screens unless the owner closed it; on phones it is a sheet and starts closed. */
+function panelDefault(): boolean {
+  if (window.matchMedia("(max-width: 760px)").matches) return false;
+  return localStorage.getItem(PANEL_KEY) !== "closed";
 }
 
 function StatusTag({ t }: { t: ThreadDetail["thread"] }) {
