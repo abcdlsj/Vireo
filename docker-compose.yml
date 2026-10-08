@@ -1,0 +1,16 @@
+# docker compose up -d   →   open http://localhost:8787
+services:
+  vireo:
+    build: .
+    image: vireo:latest
+    restart: unless-stopped
+    ports:
+      - "8787:8787"
+    volumes:
+      # Everything Vireo keeps: database, files, browser profile, keys.
+      - ./data:/data
+      # Your pi credentials, so Vireo uses your own pi model access.
+      # Vireo may refresh OAuth tokens here, so keep it writable.
+      - ${PI_CODING_AGENT_DIR:-~/.pi/agent}:/pi
+    environment:
+      - TZ=${TZ:-UTC}

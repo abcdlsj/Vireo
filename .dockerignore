@@ -1,0 +1,10 @@
+node_modules
+dist
+data
+.vireo-test
+test-results
+playwright-report
+acceptance-report.md
+.git
+*.log
+.env
