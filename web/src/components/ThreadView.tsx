@@ -7,7 +7,7 @@ import { ActionCard } from "./ActionCard";
 import { Composer } from "./Composer";
 import { ProcedureCard } from "./ProcedureCard";
 import { SidePanel } from "./SidePanel";
-import { AlertIcon, ArrowUpRightIcon, BellIcon, CheckIcon, ChevronLeft, ClockIcon, PanelIcon, StatusIcon, BriefIcon } from "../icons";
+import { AlertIcon, ArrowUpRightIcon, BellIcon, CheckIcon, ChevronLeft, ChevronRight, ClockIcon, PanelIcon, StatusIcon, BriefIcon } from "../icons";
 
 type Item =
   | { kind: "user"; m: Extract<Message, { role: "user" }> }
@@ -349,28 +349,33 @@ function ItemView({ item, actions, onChange }: { item: Item; actions: Map<string
 }
 
 /**
- * What the agent did between messages, one line per step: what it did, on
- * what (the query, the page, the command) and how it went. A step opens to
- * its full arguments and result.
+ * What the agent did between messages, folded to one quiet line: the process
+ * is not what the owner came for. Opening it lists each step with its
+ * subject and outcome; a step opens to its full arguments and result.
  */
 function Steps({ steps }: { steps: { name: string; args: Record<string, unknown>; result?: Extract<Message, { role: "tool" }> }[] }) {
-  const [all, setAll] = useState(false);
+  const [open, setOpen] = useState(false);
   const visible = steps.filter((s) => !s.name.startsWith("transfer_to_"));
   if (visible.length === 0) return null;
-  const LIMIT = 4;
-  const shown = all || visible.length <= LIMIT + 1 ? visible : visible.slice(-LIMIT);
+  const labels = [...new Set(visible.map((s) => toolLabel(s.name)))];
+  const failed = visible.some((s) => s.result?.isError);
   return (
     <div className="steps" data-testid="steps">
-      {shown.length < visible.length ? (
-        <button className="steps-more" onClick={() => setAll(true)}>
-          {visible.length - shown.length} earlier steps
-        </button>
+      <button className="steps-toggle" onClick={() => setOpen(!open)} aria-expanded={open}>
+        <span className={`chev ${open ? "open" : ""}`}>
+          <ChevronRight />
+        </span>
+        {labels.slice(0, 3).join(" · ")}
+        {labels.length > 3 ? ` · +${labels.length - 3}` : ""}
+        <span className={`count ${failed ? "error" : ""}`}>{visible.length}</span>
+      </button>
+      {open ? (
+        <ol className="step-list">
+          {visible.map((s, i) => (
+            <Step key={i} step={s} />
+          ))}
+        </ol>
       ) : null}
-      <ol className="step-list">
-        {shown.map((s, i) => (
-          <Step key={i} step={s} />
-        ))}
-      </ol>
     </div>
   );
 }

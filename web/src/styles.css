@@ -967,22 +967,55 @@ button.link.danger {
   margin: 2px 0;
 }
 
-.steps-more {
-  padding: 0 0 2px 22px;
-  border: none;
+.steps-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
   background: none;
+  border: none;
   color: var(--muted);
   font: inherit;
   cursor: pointer;
+  padding: 2px 6px 2px 2px;
+  margin-left: -2px;
+  border-radius: 4px;
+  text-align: left;
 }
 
-.steps-more:hover {
-  color: var(--text);
+.steps-toggle:hover {
+  background: var(--hover);
+}
+
+.steps-toggle .count {
+  margin-left: 6px;
+  font-size: 11px;
+  line-height: 16px;
+  padding: 0 5px;
+  border-radius: 3px;
+  background: var(--active);
+  color: var(--muted);
+}
+
+.steps-toggle .count.error {
+  background: var(--red-tag);
+  color: var(--red-text);
+}
+
+.steps-toggle .chev {
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  transition: transform 0.12s;
+}
+
+.steps-toggle .chev.open {
+  transform: rotate(90deg);
 }
 
 .step-list {
-  margin: 0;
-  padding: 0;
+  margin: 4px 0 0 9px;
+  padding: 0 0 0 10px;
+  border-left: 1px solid var(--line);
   list-style: none;
 }
 
