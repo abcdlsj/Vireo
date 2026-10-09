@@ -150,46 +150,49 @@ export function SidePanel({ detail, running, browsing, onClose }: { detail: Thre
                 Actions <span className="count">{audit.toolCalls.length}</span>
               </h4>
               <div className="audit-list">
-                {[...audit.toolCalls].reverse().map((c) => {
-                  const handoff = c.tool.startsWith("transfer_to_");
-                  const subject = handoff ? "" : stepSubject(c.args);
-                  const outcome = handoff ? "" : stepOutcome(c.result);
-                  return (
-                    <details key={c.id} className={`audit-row ${c.status}`} data-testid="audit-row">
-                      <summary>
-                        <span className="step-mark">{c.status === "running" ? "◌" : c.status === "error" ? "✕" : c.status === "awaiting_confirmation" ? "•" : handoff ? "→" : "✓"}</span>
-                        <span className="audit-main">
-                          <span className="audit-title">{handoff ? `Handed to ${c.tool.slice(12)}` : toolLabel(c.tool)}</span>
-                          {subject ? <span className="audit-subject">{subject}</span> : null}
-                          {outcome ? <span className="audit-outcome">{outcome}</span> : null}
-                          <span className="audit-meta">
-                            {c.status === "ok" ? "" : `${c.status.replace(/_/g, " ")} · `}
-                            {c.agent} · {duration(c.duration_ms)} · {shortTime(c.started_at)}
-                          </span>
-                        </span>
-                      </summary>
-                      <pre>{c.args}</pre>
-                      {c.result ? <pre>{c.result}</pre> : null}
-                    </details>
-                  );
-                })}
+                {[...audit.toolCalls].reverse().map((c) =>
+                  c.tool.startsWith("transfer_to_") ? (
+                    <div key={c.id} className="audit-handoff">
+                      {c.tool.slice(12)} agent took over · {shortTime(c.started_at)}
+                    </div>
+                  ) : (
+                    <ActionRow key={c.id} c={c} />
+                  ),
+                )}
               </div>
               <h4>
                 Model calls <span className="count">{audit.llmCalls.length}</span>
               </h4>
               <div className="audit-list">
-                {[...audit.llmCalls].reverse().map((c) => (
-                  <div key={c.id} className={`audit-llm ${c.error ? "error" : ""}`}>
-                    <span className="audit-title">{purposeLabel(c.purpose, c.agent)}</span>
-                    <span className="num">
-                      {compact(c.input_tokens)} → {compact(c.output_tokens)}
-                    </span>
-                    <span className="audit-meta">
-                      {c.model} · {duration(c.duration_ms)} · {c.cost === null ? "no price" : usd(c.cost)}
-                      {c.cached_tokens ? ` · ${compact(c.cached_tokens)} cached` : ""} · {shortTime(c.created_at)}
-                      {c.error ? ` · ${c.error}` : ""}
-                    </span>
-                  </div>
+                {groupCalls(audit.llmCalls).map((g) => (
+                  <details key={g.key} className={`audit-llm ${g.errors ? "error" : ""}`}>
+                    <summary>
+                      <span className="audit-title">
+                        {g.label}
+                        {g.calls.length > 1 ? <span className="times">×{g.calls.length}</span> : null}
+                      </span>
+                      <span className="num">
+                        {compact(g.input)} → {compact(g.output)}
+                      </span>
+                      <span className="audit-meta">
+                        {g.model} · {g.cost === null ? "no price" : usd(g.cost)}
+                        {g.errors ? ` · ${g.errors} failed` : ""}
+                      </span>
+                    </summary>
+                    <ol className="llm-calls">
+                      {g.calls.map((c) => (
+                        <li key={c.id}>
+                          <span>{shortTime(c.created_at)}</span>
+                          <span>
+                            {compact(c.input_tokens)} → {compact(c.output_tokens)}
+                            {c.cached_tokens ? ` · ${compact(c.cached_tokens)} cached` : ""}
+                          </span>
+                          <span>{duration(c.duration_ms)}</span>
+                          {c.error ? <span className="err">{c.error}</span> : null}
+                        </li>
+                      ))}
+                    </ol>
+                  </details>
                 ))}
               </div>
             </>
@@ -198,6 +201,54 @@ export function SidePanel({ detail, running, browsing, onClose }: { detail: Thre
       )}
     </aside>
   );
+}
+
+/** One action in the activity list: what it did and on what, with the full call one click away. */
+function ActionRow({ c }: { c: ToolCallRow }) {
+  const subject = stepSubject(c.args);
+  const outcome = stepOutcome(c.result).replace(/^URL:\s*/, "");
+  // The outcome often repeats the subject (a page's URL); show it only when it adds something.
+  // Page actions mostly echo the page's address; only opening or reading a page says something new.
+  const echoes = c.tool.startsWith("browser_") && c.tool !== "browser_open" && c.tool !== "browser_read" && c.status === "ok";
+  const extra = outcome && !echoes && !outcome.includes(subject) && !subject.includes(outcome) ? outcome : "";
+  const state = c.status === "running" ? "◌" : c.status === "error" ? "✕" : c.status === "awaiting_confirmation" ? "•" : "✓";
+  return (
+    <details className={`audit-row ${c.status}`} data-testid="audit-row">
+      <summary>
+        <span className="step-mark">{state}</span>
+        <span className="audit-main">
+          <span className="audit-title">{toolLabel(c.tool)}</span>
+          {subject ? <span className="audit-subject">{subject}</span> : null}
+          {extra ? <span className="audit-outcome">{extra}</span> : null}
+        </span>
+        <span className="audit-time">{c.status === "ok" ? duration(c.duration_ms) : c.status.replace(/_/g, " ")}</span>
+      </summary>
+      <div className="audit-detail">
+        <span className="audit-meta">
+          {c.agent} · {shortTime(c.started_at)}
+        </span>
+        <pre>{c.args}</pre>
+        {c.result ? <pre>{c.result}</pre> : null}
+      </div>
+    </details>
+  );
+}
+
+/** Model calls folded by what made them and on which model, newest group first. */
+function groupCalls(calls: LlmRow[]) {
+  const groups = new Map<string, { key: string; label: string; model: string; calls: LlmRow[]; input: number; output: number; cost: number | null; errors: number }>();
+  for (const c of [...calls].reverse()) {
+    const label = purposeLabel(c.purpose, c.agent);
+    const key = `${label}|${c.model}`;
+    const g = groups.get(key) ?? { key, label, model: c.model, calls: [], input: 0, output: 0, cost: null, errors: 0 };
+    g.calls.push(c);
+    g.input += c.input_tokens;
+    g.output += c.output_tokens;
+    if (c.cost !== null) g.cost = (g.cost ?? 0) + c.cost;
+    if (c.error) g.errors++;
+    groups.set(key, g);
+  }
+  return [...groups.values()];
 }
 
 interface ModelUsage {

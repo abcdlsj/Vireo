@@ -66,6 +66,7 @@ const TOOL_LABELS: Record<string, string> = {
   read_file: "Read a file",
   create_file: "Created a file",
   propose_procedure: "Proposed a procedure",
+  show_card: "Showed a card",
 };
 
 export function toolLabel(name: string): string {
@@ -98,7 +99,7 @@ export function usd(n: number | null | undefined): string {
 }
 
 /** Argument keys that say what a call was about, most telling first. */
-const KEY_ARGS = ["query", "url", "command", "to", "subject", "title", "text", "name", "machine", "file_id", "id", "date", "from"];
+const KEY_ARGS = ["query", "url", "command", "to", "subject", "title", "text", "description", "value", "values", "name", "machine", "file_id", "id", "date", "from"];
 
 function oneLine(v: unknown, max = 90): string {
   const s = (typeof v === "string" ? v : Array.isArray(v) ? v.join(", ") : JSON.stringify(v)).replace(/\s+/g, " ").trim();
@@ -120,7 +121,7 @@ export function stepSubject(args: Record<string, unknown> | string | null | unde
   if (obj.machine && obj.command) return `${oneLine(obj.command, 70)} on ${String(obj.machine)}`;
   const iso = (v: unknown) => typeof v === "string" && /^\d{4}-\d\d-\d\d/.test(v);
   if (iso(obj.from) && iso(obj.to)) return prettyDates(`${String(obj.from)} → ${String(obj.to)}`);
-  const key = KEY_ARGS.find((k) => obj[k] !== undefined && obj[k] !== "") ?? Object.keys(obj).find((k) => typeof obj[k] === "string" && obj[k] !== "");
+  const key = KEY_ARGS.find((k) => obj[k] !== undefined && obj[k] !== "") ?? Object.keys(obj).find((k) => k !== "ref" && typeof obj[k] === "string" && obj[k] !== "");
   return key ? prettyDates(oneLine(obj[key])) : "";
 }
 

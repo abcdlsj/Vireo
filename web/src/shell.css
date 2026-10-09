@@ -446,3 +446,228 @@
     background: var(--c-paper);
   }
 }
+
+/* ---------- what Vireo is doing: one line, folded once done ---------- */
+.shell .steps-toggle {
+  gap: 8px;
+  padding: 4px 10px 4px 6px;
+  border-radius: 14px;
+  color: var(--c-ink-3);
+  font-size: 13px;
+}
+
+.shell .steps-toggle:hover {
+  background: rgba(30, 30, 20, 0.05);
+  color: var(--c-ink-2);
+}
+
+.shell .steps-toggle .count {
+  background: transparent;
+  color: var(--c-ink-3);
+  padding: 0;
+  font-size: 12px;
+}
+
+.shell .steps.now .steps-toggle {
+  padding-left: 10px;
+  background: var(--c-paper);
+  box-shadow: var(--c-shadow);
+  color: var(--c-ink);
+  cursor: default;
+}
+
+.shell .steps.now .steps-toggle .count::before {
+  content: "· ";
+}
+
+.now-dot {
+  width: 7px;
+  height: 7px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--c-accent);
+  animation: c-pulse 1.2s ease-in-out infinite;
+}
+
+.steps-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shell .msg.assistant.live {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* ---------- activity ---------- */
+.shell .audit-stats {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+  margin-bottom: 6px;
+}
+
+.shell .audit-stats div {
+  padding: 8px 10px;
+  border-radius: 12px;
+}
+
+.shell .audit-stats b {
+  font-size: 15px;
+}
+
+.shell .audit-list {
+  border-top: none;
+  max-height: 42vh;
+}
+
+.shell .audit-row,
+.shell .audit-llm {
+  border-bottom: none;
+  border-radius: 12px;
+}
+
+.shell .audit-row summary,
+.shell .audit-llm summary {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.shell .audit-llm summary::-webkit-details-marker {
+  display: none;
+}
+
+.shell .audit-row summary:hover,
+.shell .audit-llm summary:hover,
+.shell .audit-row[open],
+.shell .audit-llm[open] {
+  background: var(--c-soft);
+}
+
+.shell .audit-row .step-mark {
+  width: 14px;
+  flex-shrink: 0;
+  color: var(--c-accent);
+  font-size: 12px;
+  padding-top: 1px;
+}
+
+.shell .audit-main {
+  flex: 1;
+  gap: 0;
+}
+
+.shell .audit-title {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--c-ink);
+}
+
+.shell .audit-subject,
+.shell .audit-outcome {
+  font-size: 12px;
+  line-height: 17px;
+  color: var(--c-ink-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+}
+
+.shell .audit-outcome {
+  color: var(--c-ink-3);
+}
+
+.audit-time {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--c-ink-3);
+  font-variant-numeric: tabular-nums;
+  padding-top: 1px;
+}
+
+.shell .audit-row.awaiting_confirmation .audit-time,
+.shell .audit-row.awaiting_confirmation .step-mark {
+  color: var(--c-needs-ink);
+}
+
+.shell .audit-row.error .audit-time,
+.shell .audit-row.error .step-mark {
+  color: var(--c-minus);
+}
+
+.audit-detail {
+  padding: 0 10px 10px 34px;
+}
+
+.shell .audit-detail pre {
+  margin: 6px 0 0;
+  border-radius: 8px;
+  background: var(--c-paper);
+}
+
+.audit-handoff {
+  margin: 4px 10px;
+  padding: 2px 0 2px 24px;
+  font-size: 12px;
+  color: var(--c-ink-3);
+}
+
+.shell .audit-llm {
+  display: block;
+  padding: 0;
+}
+
+.shell .audit-llm summary {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  row-gap: 1px;
+}
+
+.shell .audit-llm .num {
+  font-size: 13px;
+  color: var(--c-ink-2);
+}
+
+.shell .audit-llm .audit-meta {
+  grid-column: 1 / -1;
+  font-size: 12px;
+  color: var(--c-ink-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.audit-llm .times {
+  margin-left: 6px;
+  font-weight: 500;
+  color: var(--c-ink-3);
+}
+
+.llm-calls {
+  list-style: none;
+  margin: 0;
+  padding: 0 10px 8px;
+  font-size: 12px;
+  color: var(--c-ink-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.llm-calls li {
+  display: grid;
+  grid-template-columns: 70px 1fr auto;
+  gap: 8px;
+  padding: 3px 0;
+}
+
+.llm-calls .err {
+  grid-column: 1 / -1;
+  color: var(--c-minus);
+}

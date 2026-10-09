@@ -54,7 +54,7 @@ export function ThreadView({ id }: { id: string }) {
   const [detail, setDetail] = useState<ThreadDetail | null>(null);
   const [error, setError] = useState("");
   const [live, setLive] = useState<Live | null>(null);
-  const [liveSteps, setLiveSteps] = useState<{ tool: string; status: string }[]>([]);
+  const [liveSteps, setLiveSteps] = useState<{ tool: string; status: string }[]>([]); // only to notice browsing
   const [panel, setPanelState] = useState(panelDefault);
   const [editingTitle, setEditingTitle] = useState(false);
   const scroller = useRef<HTMLDivElement>(null);
@@ -123,6 +123,10 @@ export function ThreadView({ id }: { id: string }) {
   }, [id, load]);
 
   const items = useMemo(() => (detail ? buildItems(detail.messages) : []), [detail]);
+  // The steps of the turn in progress live in the "now" line instead of their own row.
+  const lastItem = items.at(-1);
+  const trailing = lastItem?.kind === "steps" ? lastItem.steps : [];
+  const shown = lastItem?.kind === "steps" ? items.slice(0, -1) : items;
   const actions = useMemo(() => new Map<string, Action>((detail?.actions ?? []).map((a) => [a.id, a])), [detail]);
 
   useLayoutEffect(() => {
@@ -251,21 +255,14 @@ export function ThreadView({ id }: { id: string }) {
               {items.length === 0 && !live ? (
                 <div className="empty">{isOverview ? "Ask anything. Your morning brief lands here too." : "No messages yet."}</div>
               ) : null}
-              {items.map((it) => (
+              {(t.running || live ? shown : items).map((it) => (
                 <ItemView key={it.kind === "steps" ? it.key : `${it.kind}${it.m.id}`} item={it} actions={actions} onChange={load} />
               ))}
               {t.running || live ? (
                 <div className="msg assistant live" data-testid="live">
-                  {liveSteps.length ? (
-                    <div className="live-steps">
-                      {liveSteps.slice(-4).map((s, i) => (
-                        <span key={i} className={`live-step ${s.status}`}>
-                          {s.status === "running" ? "◌" : s.status === "error" ? "✕" : "✓"} {toolLabel(s.tool)}
-                        </span>
-                      ))}
-                    </div>
-                  ) : null}
-                  {live?.text ? <Markdown text={live.text} /> : <div className="typing">{t.statusLine || "Working…"}</div>}
+                  {/* While working: one line saying what is happening now; when done it becomes the folded summary. */}
+                  <Steps steps={trailing} now={live?.text ? undefined : t.statusLine || "Working…"} />
+                  {live?.text ? <Markdown text={live.text} /> : null}
                 </div>
               ) : null}
             </div>
@@ -361,21 +358,25 @@ function ItemView({ item, actions, onChange }: { item: Item; actions: Map<string
  * is not what the owner came for. Opening it lists each step with its
  * subject and outcome; a step opens to its full arguments and result.
  */
-function Steps({ steps }: { steps: { name: string; args: Record<string, unknown>; result?: Extract<Message, { role: "tool" }> }[] }) {
+function Steps({ steps, now }: { steps: { name: string; args: Record<string, unknown>; result?: Extract<Message, { role: "tool" }> }[]; now?: string }) {
   const [open, setOpen] = useState(false);
-  const visible = steps.filter((s) => !s.name.startsWith("transfer_to_"));
-  if (visible.length === 0) return null;
+  // Handoffs are plumbing, and a shown card is already on the page above.
+  const visible = steps.filter((s) => !s.name.startsWith("transfer_to_") && s.name !== "show_card");
+  if (visible.length === 0 && !now) return null;
   const labels = [...new Set(visible.map((s) => toolLabel(s.name)))];
   const failed = visible.some((s) => s.result?.isError);
   return (
-    <div className="steps" data-testid="steps">
-      <button className="steps-toggle" onClick={() => setOpen(!open)} aria-expanded={open}>
-        <span className={`chev ${open ? "open" : ""}`}>
-          <ChevronRight />
-        </span>
-        {labels.slice(0, 3).join(" · ")}
-        {labels.length > 3 ? ` · +${labels.length - 3}` : ""}
-        <span className={`count ${failed ? "error" : ""}`}>{visible.length}</span>
+    <div className={`steps ${now ? "now" : ""}`} data-testid="steps">
+      <button className="steps-toggle" onClick={() => visible.length && setOpen(!open)} aria-expanded={open}>
+        {now ? (
+          <span className="now-dot" aria-hidden="true" />
+        ) : (
+          <span className={`chev ${open ? "open" : ""}`}>
+            <ChevronRight />
+          </span>
+        )}
+        <span className="steps-label">{now ?? `${labels.slice(0, 3).join(" · ")}${labels.length > 3 ? ` · +${labels.length - 3}` : ""}`}</span>
+        {visible.length ? <span className={`count ${failed ? "error" : ""}`}>{now ? `${visible.length} done` : visible.length}</span> : null}
       </button>
       {open ? (
         <ol className="step-list">
