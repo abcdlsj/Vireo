@@ -99,6 +99,13 @@ test.describe("Milestone 4 — Proactive and hands-on", () => {
     expect(notes.some((n: { body: string }) => n.body.includes("call mom"))).toBeTruthy();
   });
 
+  test("[C8] the daily nudge says what needs the owner", async ({ request }) => {
+    const r = await (await request.post("/api/test/nudge")).json();
+    expect(r.needs).toBeGreaterThanOrEqual(1); // the reminder above, at least
+    const notes = (await (await request.get("/api/test/notifications")).json()).notifications as { body: string; tag?: string }[];
+    expect(notes.some((n) => /needs? you/.test(n.body))).toBeTruthy();
+  });
+
   test("[C7] a calendar conflict opens its own thread with options", async ({ request, page }) => {
     const base = Date.now() + 2 * 864e5;
     const at = (h: number) => new Date(Math.floor(base / 864e5) * 864e5 + h * 3600_000).toISOString();

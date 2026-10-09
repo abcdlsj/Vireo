@@ -63,6 +63,9 @@ function respond(req: ChatRequest): AssistantMessage {
   return fakeResponse({ systemPrompt, messages, tools: (req.tools ?? []).map((t) => ({ name: t.function.name })) });
 }
 
+/** Owner messages that already failed once on purpose (see "simulate a model error"). */
+const failedOnce = new Set<string>();
+
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export async function startFakeLlmServer(listenPort = 0): Promise<{ url: string; server: Server }> {
@@ -82,6 +85,14 @@ export async function startFakeLlmServer(listenPort = 0): Promise<{ url: string;
     let raw = "";
     for await (const chunk of req) raw += chunk;
     const body = JSON.parse(raw) as ChatRequest;
+    // Lets tests see a run fail: the first agent turn on such a message errors, a retry goes through.
+    const lastOwner = partsText([...body.messages].reverse().find((m) => m.role === "user")?.content);
+    if (body.tools?.length && /simulate a model error/i.test(lastOwner) && !failedOnce.has(lastOwner)) {
+      failedOnce.add(lastOwner);
+      res.writeHead(400, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: { message: "Scripted failure", type: "invalid_request_error" } }));
+      return;
+    }
     const message = respond(body);
     const text = message.content.filter((b): b is TextContent => b.type === "text").map((b) => b.text).join("");
     const calls = message.content.filter((b): b is ToolCall => b.type === "toolCall");

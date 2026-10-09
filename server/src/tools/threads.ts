@@ -66,7 +66,7 @@ export const threadTools = [
   defineTool({
     name: "complete_thread",
     label: "Complete thread",
-    description: "Mark this matter as done when the owner says it is finished. Lasting conclusions are kept in memory.",
+    description: "Mark this matter as done when the owner says it is finished, or right after you fully answered a one-off question and nothing is left to do or watch. Lasting conclusions are kept in memory.",
     parameters: Type.Object({}),
     async run(_args, ctx) {
       if (ctx.thread.id === OVERVIEW_ID) throw new Error("Overview cannot be completed");

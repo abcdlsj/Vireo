@@ -120,7 +120,7 @@ function Shell({ onSignedOut }: { onSignedOut: () => void }) {
     });
   }, [loadThreads, loadMe]);
 
-  const current = route.name === "thread" ? route.id : route.name === "threads" ? "overview" : null;
+  const current = route.name === "thread" ? route.id : null;
   const showList = route.name === "threads";
   const needsYou = threads.filter((t) => t.group === "needs_you").length;
 
@@ -194,9 +194,7 @@ function Shell({ onSignedOut }: { onSignedOut: () => void }) {
         ) : route.name === "settings" ? (
           <SettingsPage section={route.section} me={me} reload={loadMe} onSignedOut={onSignedOut} />
         ) : (
-          <div className="empty-main">
-            <ThreadView id="overview" />
-          </div>
+          <Home me={me} onSignedOut={onSignedOut} onSearch={() => setJump(true)} />
         )}
       </main>
       {jump ? <QuickJump threads={threads} onClose={() => setJump(false)} /> : null}

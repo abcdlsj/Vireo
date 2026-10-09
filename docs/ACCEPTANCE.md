@@ -58,7 +58,7 @@ Vireo's milestones are done when every acceptance criterion holds in real use, n
 
 ## Capabilities spot checks
 
-- [ ] **C1** In Overview, ask "Help me plan a trip to Kyoto". Vireo opens a dedicated thread and links to it.
+- [ ] **C1** From a chat app (Overview), ask "Help me plan a trip to Kyoto". Vireo opens a dedicated thread and links to it.
 - [ ] **C7** Create two overlapping events. A thread opens about the conflict, with options.
 - [ ] **C8** Say "Remind me to call mom in 2 minutes". The reminder lands in the same thread and you get a notification.
 - [ ] **C9** Attach a file to a thread. It appears in the side panel and can be downloaded.

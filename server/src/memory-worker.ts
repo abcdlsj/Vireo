@@ -30,8 +30,12 @@ const EXTRACT_SYSTEM = [
  * after each run it extracts lasting facts from what the owner said, and
  * when a thread is done it distils the conclusions (M4).
  */
+type Learned = { id: string; statement: string };
+
 export class MemoryWorker {
   private timers = new Map<string, NodeJS.Timeout>();
+  /** Facts the agent stored with remember during a run, shown with the ones extracted after it. */
+  private noted = new Map<string, Learned[]>();
   private queue: Promise<void> = Promise.resolve();
 
   constructor(private readonly app: App) {}
@@ -42,7 +46,7 @@ export class MemoryWorker {
       threadId,
       setTimeout(() => {
         this.timers.delete(threadId);
-        this.enqueue(() => this.extractNew(threadId));
+        this.enqueue(async () => this.announce(threadId, await this.extractNew(threadId)));
       }, 500),
     );
   }
@@ -52,7 +56,7 @@ export class MemoryWorker {
     for (const [threadId, t] of this.timers) {
       clearTimeout(t);
       this.timers.delete(threadId);
-      this.enqueue(() => this.extractNew(threadId));
+      this.enqueue(async () => this.announce(threadId, await this.extractNew(threadId)));
     }
     await this.queue;
   }
@@ -62,22 +66,35 @@ export class MemoryWorker {
     return this.queue;
   }
 
-  private async extractNew(threadId: string): Promise<void> {
+  /** Records a fact the agent stored itself, to show the owner once the run is over. */
+  note(threadId: string, fact: Learned): void {
+    this.noted.set(threadId, [...(this.noted.get(threadId) ?? []), fact]);
+  }
+
+  /** Tells the owner, in the thread, what Vireo now remembers from it, so they can take it back. */
+  private announce(threadId: string, extracted: Learned[]): void {
+    const facts = [...(this.noted.get(threadId) ?? []), ...extracted].filter((f, i, all) => all.findIndex((g) => g.id === f.id) === i);
+    this.noted.delete(threadId);
+    if (facts.length === 0 || !this.app.threads.get(threadId)) return;
+    this.app.threads.addNotice(threadId, "remembered", `Remembered: ${facts.map((f) => f.statement).join(" · ")}`, { data: { facts } });
+  }
+
+  private async extractNew(threadId: string): Promise<Learned[]> {
     const thread = this.app.threads.get(threadId);
-    if (!thread || thread.temporary) return;
+    if (!thread || thread.temporary) return [];
     const cursorKey = `memory.cursor.${threadId}`;
     const cursor = this.app.db.getKv<number>(cursorKey) ?? 0;
     const msgs = this.app.threads.messages(threadId).filter((m) => m.id > cursor && m.role === "user" && m.agent !== "vireo");
-    if (msgs.length === 0) return;
+    if (msgs.length === 0) return [];
     const ownerText = msgs.map((m) => messageText(m.body)).filter(Boolean).join("\n");
     this.app.db.setKv(cursorKey, Math.max(...msgs.map((m) => m.id)));
-    if (!ownerText.trim()) return;
+    if (!ownerText.trim()) return [];
     const episodeId = this.app.memory.addEpisode({ threadId, source: "message", content: `Owner said in "${thread.title}": ${ownerText}` });
     const recent = this.app.threads.transcript(threadId, { maxChars: 3000 });
-    await this.extract(threadId, `Recent conversation for context:\n${recent}\n\nNew messages from the owner (extract from these):\n${ownerText}`, episodeId);
+    return this.extract(threadId, `Recent conversation for context:\n${recent}\n\nNew messages from the owner (extract from these):\n${ownerText}`, episodeId);
   }
 
-  private async extract(threadId: string, material: string, episodeId: string): Promise<number> {
+  private async extract(threadId: string, material: string, episodeId: string): Promise<Learned[]> {
     const owner = this.app.memory.profile(60);
     const known = this.app.memory.list({ limit: 60 });
     const keyList = [...new Set([...owner, ...known].map((f) => `${f.entityName}: ${f.key} = ${f.statement}`))].slice(0, 80);
@@ -88,7 +105,7 @@ export class MemoryWorker {
       prompt: `Existing facts (entity: key = statement):\n${keyList.join("\n") || "(none)"}\n\n${material}`,
       maxTokens: 1500,
     });
-    let added = 0;
+    const added: Learned[] = [];
     for (const f of result?.facts ?? []) {
       if (!f.statement || typeof f.statement !== "string") continue;
       const validUntil = f.valid_until ? Date.parse(f.valid_until) : NaN;
@@ -102,7 +119,7 @@ export class MemoryWorker {
         sourceThreadId: threadId === OVERVIEW_ID ? OVERVIEW_ID : threadId,
         episodeId,
       });
-      if (!r.unchanged) added += 1;
+      if (!r.unchanged) added.push({ id: r.fact.id, statement: r.fact.statement });
     }
     return added;
   }
@@ -112,7 +129,7 @@ export class MemoryWorker {
     await this.enqueue(async () => {
       const thread = this.app.threads.get(threadId);
       if (!thread || thread.temporary) return;
-      await this.extractNew(threadId);
+      const fromLast = await this.extractNew(threadId);
       const tz = this.app.settings.get().timezone;
       const episodeId = this.app.memory.addEpisode({
         threadId,
@@ -120,11 +137,12 @@ export class MemoryWorker {
         content: `${formatDate(now(), tz)}: finished "${thread.title}" — ${summary}`,
       });
       const transcript = this.app.threads.transcript(threadId, { maxChars: 12000 });
-      await this.extract(
+      const conclusions = await this.extract(
         threadId,
         `This matter is now finished. Keep only its lasting conclusions (decisions, bookings and their dates, outcomes, preferences learned).\nOutcome: ${summary}\n\nConversation:\n${transcript}`,
         episodeId,
       );
+      this.announce(threadId, [...fromLast, ...conclusions]);
       await this.maybeProposeProcedure(threadId, transcript);
     });
   }

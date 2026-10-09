@@ -67,6 +67,7 @@ export const memoryTools = [
         sourceThreadId: ctx.thread.id,
         episodeId,
       });
+      if (!r.unchanged) ctx.app.memoryWorker.note(ctx.thread.id, { id: r.fact.id, statement: r.fact.statement });
       const replaced = r.superseded.map((f) => `"${f.statement}"`).join(", ");
       return {
         text: r.unchanged

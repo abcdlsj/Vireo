@@ -51,6 +51,16 @@ test.describe("Milestone 2 — Vireo remembers", () => {
     await expect(stale).toContainText("replaced");
   });
 
+  test("[M2.1] the thread shows what Vireo remembered, and Forget takes it back", async ({ page, request }) => {
+    await startThread(page, "I prefer green tea in the morning.");
+    await finalReply(page, request);
+    const note = page.getByTestId("remembered");
+    await expect(note).toContainText("green tea");
+    await note.getByTestId("forget-fact").first().click();
+    await expect(note).toContainText("Forgotten");
+    expect(await facts(request, "green tea")).toHaveLength(0);
+  });
+
   test("[M2.3] 'what do you remember' returns facts with sources, and the owner can correct and delete them", async ({ page, request }) => {
     await startThread(page, "Anna is my sister. Anna's email is anna@example.com");
     await finalReply(page, request);

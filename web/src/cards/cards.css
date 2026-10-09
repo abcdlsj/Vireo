@@ -215,6 +215,113 @@
   animation: c-rise 0.32s cubic-bezier(0.2, 0.7, 0.2, 1) both;
 }
 
+/* What a new owner still has to connect. */
+.setup {
+  margin: 0 0 28px;
+  padding: 16px 18px 8px;
+  border-radius: var(--c-radius);
+  background: var(--c-paper);
+  box-shadow: var(--c-shadow);
+  animation: c-rise 0.32s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+.setup header {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 6px;
+  font-size: 14px;
+  color: var(--c-ink);
+}
+
+.setup header .count {
+  font-size: 13px;
+  color: var(--c-ink-3);
+}
+
+.setup header .link {
+  margin-left: auto;
+  font-size: 13px;
+  color: var(--c-ink-3);
+}
+
+.setup ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.setup li + li {
+  border-top: 1px solid var(--c-hairline);
+}
+
+.setup li a {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  color: inherit;
+  text-decoration: none;
+}
+
+.setup .mark {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1.5px solid var(--c-line);
+  color: var(--c-paper);
+}
+
+.setup li.done .mark {
+  border-color: var(--c-accent);
+  background: var(--c-accent);
+}
+
+.setup .mark svg {
+  width: 12px;
+  height: 12px;
+}
+
+.setup .text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.setup .label {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--c-ink);
+}
+
+.setup li.done .label {
+  color: var(--c-ink-3);
+  text-decoration: line-through;
+  text-decoration-color: var(--c-line);
+}
+
+.setup .why {
+  font-size: 13px;
+  color: var(--c-ink-2);
+}
+
+.setup li.done .why {
+  display: none;
+}
+
+.setup li a > svg {
+  flex: none;
+  color: var(--c-ink-3);
+}
+
+.setup li a:hover .label {
+  color: var(--c-accent);
+}
+
 /* Sections of the board: needs you, in hand, watching. */
 .boards {
   display: flex;
@@ -240,6 +347,11 @@
 
 .board-head .count {
   font-weight: 500;
+  color: var(--c-ink-3);
+}
+
+.board-head .hint {
+  font-weight: 400;
   color: var(--c-ink-3);
 }
 

@@ -18,6 +18,29 @@ export function parseRoute(hash: string): Route {
   return { name: "home" };
 }
 
+/**
+ * Text shared into the installed app from another app (the manifest's share
+ * target opens /share?title=…&text=…&url=…). Read once, then the address
+ * goes back to the board, where it waits in the ask box.
+ */
+let shared = (() => {
+  if (location.pathname !== "/share") return "";
+  const q = new URLSearchParams(location.search);
+  const parts = [q.get("title"), q.get("text"), q.get("url")].map((s) => s?.trim() ?? "").filter(Boolean);
+  // Apps often repeat the link inside the text; keep each piece once.
+  const text = parts.filter((p, i) => !parts.some((o, j) => j !== i && o.includes(p) && (o.length > p.length || j < i))).join("\n");
+  history.replaceState(null, "", "/#");
+  return text;
+})();
+
+export function sharedText(): string {
+  return shared;
+}
+
+export function clearShared(): void {
+  shared = "";
+}
+
 export function useRoute(): Route {
   const [route, setRoute] = useState(() => parseRoute(location.hash));
   useEffect(() => {

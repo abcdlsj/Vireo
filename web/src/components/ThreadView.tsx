@@ -10,7 +10,7 @@ import { SidePanel } from "./SidePanel";
 import { CardSlot } from "../cards/CardSlot";
 import { Status } from "../cards/Frame";
 import type { Card } from "../cards/types";
-import { AlertIcon, ArrowUpRightIcon, BellIcon, CheckIcon, ChevronLeft, ChevronRight, ClockIcon, PanelIcon, StatusIcon } from "../icons";
+import { AlertIcon, ArrowUpRightIcon, BellIcon, CheckIcon, ChevronLeft, ChevronRight, ClockIcon, MemoryIcon, PanelIcon, StatusIcon } from "../icons";
 
 type Item =
   | { kind: "user"; m: Extract<Message, { role: "user" }> }
@@ -312,7 +312,14 @@ export function ThreadView({ id }: { id: string }) {
                     <CardSlot card={it.card} expanded refresh={load} />
                   </div>
                 ) : (
-                  <ItemView key={it.kind === "steps" ? it.key : `${it.kind}${it.m.id}`} item={it} actions={actions} onChange={load} />
+                  <ItemView
+                    key={it.kind === "steps" ? it.key : `${it.kind}${it.m.id}`}
+                    item={it}
+                    actions={actions}
+                    onChange={load}
+                    // A run that ended in an error can be tried again, as long as nothing came after it.
+                    retry={!t.running && !live && it === items[items.length - 1] ? () => void api.post(`/api/threads/${t.id}/retry`).then(load) : undefined}
+                  />
                 ),
               )}
               {t.running || live ? (
@@ -358,7 +365,7 @@ function StatusTag({ t }: { t: ThreadDetail["thread"] }) {
   return <span className="tag">In hand</span>;
 }
 
-function ItemView({ item, actions, onChange }: { item: Item; actions: Map<string, Action>; onChange: () => void }) {
+function ItemView({ item, actions, onChange, retry }: { item: Item; actions: Map<string, Action>; onChange: () => void; retry?: () => void }) {
   switch (item.kind) {
     case "user":
       return item.m.fromVireo ? (
@@ -402,6 +409,7 @@ function ItemView({ item, actions, onChange }: { item: Item; actions: Map<string
           </div>
         );
       }
+      if (n.kind === "remembered") return <Remembered facts={(n.data?.facts as Learned[] | undefined) ?? []} onChange={onChange} />;
       if (n.kind === "action_result") {
         const short = n.text.replace(/\. Result:[\s\S]*$/, "").replace(/\. Do not retry[\s\S]*$/, "");
         return <div className="notice">{prettyDates(short.replace(/^The owner /, "You "))}</div>;
@@ -410,10 +418,50 @@ function ItemView({ item, actions, onChange }: { item: Item; actions: Map<string
         <div className={`notice ${n.kind}`} data-testid={`notice-${n.kind}`}>
           {n.kind === "reminder" ? <BellIcon /> : n.kind === "error" ? <AlertIcon /> : null}
           <span>{n.text}</span>
+          {n.kind === "error" && retry ? (
+            n.text.startsWith("No model is configured") ? (
+              <a className="btn ghost small" href="#settings/model">
+                Open settings
+              </a>
+            ) : (
+              <button className="btn ghost small" onClick={retry} data-testid="retry">
+                Try again
+              </button>
+            )
+          ) : null}
         </div>
       );
     }
   }
+}
+
+type Learned = { id: string; statement: string; forgotten?: boolean };
+
+/** What Vireo now remembers from this thread, each fact one tap from being taken back. */
+function Remembered({ facts, onChange }: { facts: Learned[]; onChange: () => void }) {
+  if (facts.length === 0) return null;
+  return (
+    <div className="remembered" data-testid="remembered">
+      <span className="remembered-head">
+        <MemoryIcon />
+        Remembered
+      </span>
+      <ul>
+        {facts.map((f) => (
+          <li key={f.id} className={f.forgotten ? "forgotten" : ""}>
+            <span className="statement">{f.statement}</span>
+            {f.forgotten ? (
+              <span className="state">Forgotten</span>
+            ) : (
+              <button className="link" onClick={() => void api.del(`/api/memory/facts/${f.id}`).then(onChange)} data-testid="forget-fact">
+                Forget
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
 }
 
 /**

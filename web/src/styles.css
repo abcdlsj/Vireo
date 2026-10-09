@@ -589,10 +589,6 @@ button.link.danger {
   background: var(--bg);
 }
 
-.empty-main {
-  display: contents;
-}
-
 /* ---------- top bar & page header ---------- */
 .thread-view,
 .page {
@@ -952,6 +948,12 @@ button.link.danger {
   padding: 9px 14px;
 }
 
+.notice.error .btn {
+  flex: none;
+  margin-left: auto;
+  color: inherit;
+}
+
 .notice.reminder {
   align-self: stretch;
   text-align: left;
@@ -960,6 +962,58 @@ button.link.danger {
   border-radius: var(--radius);
   padding: 9px 14px;
   font-weight: 500;
+}
+
+/* What Vireo remembered from the thread: quiet, but there to take back. */
+.remembered {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--muted);
+  margin: 2px 0;
+}
+
+.remembered-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 500;
+}
+
+.remembered-head svg {
+  width: 14px;
+  height: 14px;
+}
+
+.remembered ul {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.remembered li {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.remembered .statement {
+  color: var(--text);
+}
+
+.remembered li.forgotten .statement {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+.remembered .link,
+.remembered .state {
+  flex: none;
+  font-size: 12px;
 }
 
 .steps {

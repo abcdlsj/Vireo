@@ -55,9 +55,11 @@ export function QuickJump({ threads, onClose }: { threads: Thread[]; onClose: ()
     const cardOf = new Map<string, Card>();
     // A matter's own card names it best; derived cards (a confirmation, a reminder) don't name the matter.
     for (const c of cards) if (!cardOf.has(c.threadId) && !["proposal", "reminder", "thread"].includes(c.kind)) cardOf.set(c.threadId, c);
-    const rank = (t: Thread) => (t.needsYou ? 0 : t.running ? 1 : t.group === "in_progress" ? 2 : t.group === "overview" ? 3 : 4);
+    const rank = (t: Thread) => (t.needsYou ? 0 : t.running ? 1 : t.group === "in_progress" ? 2 : 3);
     const found = threads
       .filter((t) => {
+        // Overview only carries chat-app conversations; asking happens on the board.
+        if (t.group === "overview") return false;
         if (!q) return t.group !== "done";
         const card = cardOf.get(t.id);
         return matches([t.title, card?.title ?? "", t.statusLine, t.summary ?? ""].join(" "), q);

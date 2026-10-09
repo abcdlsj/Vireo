@@ -260,7 +260,7 @@ function Notifications({ me, reload }: { me: Me; reload: () => Promise<void> }) 
   };
   return (
     <section className="card">
-      <p className="muted small">Vireo notifies you when something needs you: confirmations, emails that need a reply and reminders.</p>
+      <p className="muted small">Vireo notifies you when something needs you: confirmations, emails that need a reply, reminders, and once a day what needs you.</p>
       {supported ? (
         <div className="row-buttons">
           <button className="btn" onClick={() => void enable()}>
@@ -297,6 +297,10 @@ function Preferences({ settings, reload }: { settings: OwnerSettings; reload: ()
         <label>
           Time zone
           <input value={s.timezone} onChange={(e) => setS({ ...s, timezone: e.target.value })} />
+        </label>
+        <label>
+          Daily nudge at
+          <input type="time" value={s.nudgeTime} onChange={(e) => setS({ ...s, nudgeTime: e.target.value })} data-testid="nudge-time" />
         </label>
         <label>
           Workday starts

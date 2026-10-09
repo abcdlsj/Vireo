@@ -123,6 +123,7 @@ export interface ModelStatus {
 
 export interface OwnerSettings {
   timezone: string;
+  nudgeTime: string;
   workdayStart: string;
   workdayEnd: string;
   watchInbox: boolean;

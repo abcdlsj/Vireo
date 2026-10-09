@@ -262,7 +262,15 @@ export function createHttp(app: App): Hono<Env> {
     if (!thread) return c.json({ error: "Not found" }, 404);
     return c.json({
       thread,
-      messages: app.threads.messages(id).map(viewMessage),
+      messages: app.threads.messages(id).map((m) => {
+        const v = viewMessage(m);
+        // What Vireo remembered from this thread, minus what the owner has since taken back.
+        if (m.role === "notice" && "kind" in v && v.kind === "remembered" && v.data) {
+          const facts = (v.data as { facts?: { id: string; statement: string }[] }).facts ?? [];
+          return { ...v, data: { facts: facts.map((f) => ({ ...f, forgotten: !app.memory.fact(f.id) })) } };
+        }
+        return v;
+      }),
       actions: app.actions.forThread(id),
       related: app.threads.related(id),
       files: app.files.forThread(id),
@@ -606,6 +614,7 @@ function mountTestRoutes(api: Hono<Env>, app: App): void {
     const body = await c.req.json<{ at?: number }>().catch(() => ({}) as { at?: number });
     return c.json({ fired: await app.scheduler.fireReminders(body.at ?? Date.now() + 365 * 864e5) });
   });
+  api.post("/api/test/nudge", async (c) => c.json(await app.scheduler.nudge()));
   api.post("/api/test/idle", async (c) => {
     for (let i = 0; i < 3; i++) {
       await app.runner.idle();

@@ -106,7 +106,7 @@ Preferences such as time zone, working hours and which proactive checks run are 
 
 ## How it works
 
-- **Threads:** each matter is a thread with its own context. A run is built only from that thread's messages plus relevant memory, so two threads never mix. **Overview** is pinned. It answers quick things and opens new threads for multi-step matters.
+- **Threads:** each matter is a thread with its own context. A run is built only from that thread's messages plus relevant memory, so two threads never mix. Everything is asked from the box on **Home** (or **+** for a new thread): each ask becomes a matter, opened in place, and a one-off question is closed once answered. Chat apps such as Telegram talk to an **Overview** thread that opens new threads for multi-step matters.
 - **Agents:** Swarm-style multi-agent routing on the OpenAI Agents SDK. A triage agent (on the cheaper model) hands each request to a specialist (general, research, calendar, email, browser) with the SDK's native handoffs, and specialists can hand off to each other. Each specialist has only its own tools. Runs stream to the PWA over server-sent events, and every handoff appears in the thread's audit trail.
 - **Memory:** a temporal knowledge graph in SQLite. It stores entities, facts with validity intervals, and the episodes they came from.
   - A fast model extracts facts after each turn. A changed fact replaces the old one, which is kept as history rather than deleted.

@@ -1,15 +1,17 @@
 import type { App } from "./app.js";
 import type { CalendarEvent } from "./integrations/types.js";
 import { OVERVIEW_ID } from "./threads.js";
-import { toZonedIso } from "./time.js";
+import { hhmm, toZonedIso, zonedDate, zonedToUtc } from "./time.js";
 import { errorMessage, now } from "./util.js";
 
 const INBOX_EVERY = 5 * 60_000;
 const CALENDAR_EVERY = 15 * 60_000;
+/** Days without news before an open matter counts as gone quiet. */
+const QUIET_DAYS = 7;
 
 /**
- * Proactive work (C7, C8): reminders and follow-ups, and inbox / calendar
- * checks that open threads when something needs the owner.
+ * Proactive work (C7, C8): reminders and follow-ups, a daily nudge, and
+ * inbox / calendar checks that open threads when something needs the owner.
  * All state lives in the database, so nothing is lost across restarts.
  */
 export class Scheduler {
@@ -34,6 +36,7 @@ export class Scheduler {
     this.ticking = true;
     try {
       await this.fireReminders();
+      await this.maybeNudge();
       await this.maybeCheckInbox();
       await this.maybeCheckCalendar();
     } catch (err) {
@@ -50,7 +53,11 @@ export class Scheduler {
     );
     for (const r of due) {
       this.app.db.run("UPDATE reminders SET status = 'fired', fired_at = ? WHERE id = ?", now(), r.id);
-      const threadId = r.thread_id && this.app.threads.get(r.thread_id) ? r.thread_id : OVERVIEW_ID;
+      // A reminder set outside a matter gets a matter of its own, so it lands on the board.
+      const threadId =
+        r.thread_id && r.thread_id !== OVERVIEW_ID && this.app.threads.get(r.thread_id)
+          ? r.thread_id
+          : this.app.threads.create({ title: `Reminder: ${r.text}`.slice(0, 80), origin: { kind: "reminder", reminderId: r.id } }).id;
       const thread = this.app.threads.get(threadId)!;
       if (thread.state === "done") this.app.runner.reopen(threadId);
       if (r.kind === "follow_up") {
@@ -60,11 +67,34 @@ export class Scheduler {
         this.app.runner.schedule(threadId);
       } else {
         this.app.threads.addNotice(threadId, "reminder", `Reminder: ${r.text}`, { llm: true });
-        if (threadId !== OVERVIEW_ID) this.app.threads.update(threadId, { needs_you: 1 });
+        this.app.threads.update(threadId, { needs_you: 1 });
       }
       await this.app.push.notify({ title: r.kind === "follow_up" ? `Following up: ${thread.title}` : "Reminder", body: r.text, url: `/#thread/${threadId}`, tag: r.id });
     }
     return due.length;
+  }
+
+  /** Once a day at the owner's chosen time: what needs them and what has gone quiet, if anything. */
+  private async maybeNudge(): Promise<void> {
+    const s = this.app.settings.get();
+    if (!s.nudgeTime || !this.app.auth.hasOwner()) return;
+    const d = zonedDate(now(), s.timezone);
+    const t = hhmm(s.nudgeTime);
+    const key = `${d.year}-${d.month}-${d.day}`;
+    if (now() < zonedToUtc(d.year, d.month, d.day, t.hour, t.minute, s.timezone) || this.app.db.getKv<string>("nudge.last") === key) return;
+    this.app.db.setKv("nudge.last", key);
+    await this.nudge();
+  }
+
+  async nudge(): Promise<{ needs: number; quiet: number }> {
+    const open = this.app.threads.list().filter((t) => t.id !== OVERVIEW_ID && t.state !== "done" && !t.temporary);
+    const needs = open.filter((t) => t.needsYou).length;
+    const quiet = open.filter((t) => !t.needsYou && !t.running && t.updatedAt < now() - QUIET_DAYS * 864e5).length;
+    if (needs || quiet) {
+      const parts = [needs ? `${needs} ${needs === 1 ? "thing needs" : "things need"} you` : "", quiet ? `${quiet} gone quiet for a week` : ""];
+      await this.app.push.notify({ title: "Vireo", body: parts.filter(Boolean).join(" · "), url: "/#", tag: "nudge" });
+    }
+    return { needs, quiet };
   }
 
   private async maybeCheckInbox(): Promise<void> {

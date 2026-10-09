@@ -108,17 +108,44 @@ test.describe("Milestone 1 — Threads that think", () => {
     await expect(page.getByTestId("thread-view")).toHaveAttribute("data-thread-id", id);
   });
 
-  test("[Home] each ask becomes a card on the board", async ({ page, request }) => {
+  test("[Errors] a failed run can be tried again from the thread", async ({ page, request }) => {
+    await startThread(page, "Please simulate a model error");
+    await settle(request);
+    await expect(page.getByTestId("notice-error")).toBeVisible();
+    await page.getByTestId("retry").click();
+    await settle(request);
+    await expect(page.getByTestId("msg-assistant")).toHaveCount(1);
+    await expect(page.getByTestId("retry")).toHaveCount(0);
+  });
+
+  test("[Home] what still needs setting up is listed until done or hidden", async ({ page }) => {
+    await page.goto("/");
+    const setup = page.getByTestId("setup");
+    await expect(setup).toContainText("Connect Google");
+    await setup.getByTestId("setup-hide").click();
+    await expect(setup).toHaveCount(0);
+    await page.reload();
+    await expect(page.getByTestId("board")).toBeVisible();
+    await expect(page.getByTestId("setup")).toHaveCount(0);
+  });
+
+  test("[Share] text shared from another app waits in the ask box", async ({ page }) => {
+    await page.goto("/share?title=Ramen%20place&text=Try%20this%20one%20https%3A%2F%2Fexample.com%2Framen&url=https%3A%2F%2Fexample.com%2Framen");
+    await expect(page).toHaveURL(/\/#$/);
+    await expect(page.getByTestId("ask-input")).toHaveValue("Ramen place\nTry this one https://example.com/ramen");
+  });
+
+  test("[Home] each ask becomes a card on the board, answered in place", async ({ page, request }) => {
     await page.goto("/");
     await page.getByTestId("ask-input").fill("What is a good name for a houseplant?");
     await page.getByTestId("ask-send").click();
     await settle(request);
+    // The ask opens in the peek sheet, so the answer is read without leaving the board.
+    await expect(page.getByTestId("peek")).toContainText("scripted demo model");
     const first = page.getByTestId("board").locator('[data-kind="thread"]').filter({ hasText: /houseplant/i });
-    await expect(first).toContainText("scripted demo model");
     const threadId = await first.getAttribute("data-thread-id");
     const card = page.getByTestId("board").locator(`[data-thread-id="${threadId}"]`);
     // Answering from the peek sheet keeps the owner on the board.
-    await card.click();
     await page.getByTestId("peek-input").fill("Something for a sunny window, please");
     await page.getByTestId("peek-send").click();
     await settle(request);

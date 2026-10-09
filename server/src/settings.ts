@@ -5,6 +5,8 @@ import { applyProxy } from "./net.js";
 export interface OwnerSettings {
   /** IANA time zone, detected from the owner's browser. */
   timezone: string;
+  /** Local time of the daily "things need you" notification, "HH:MM". Empty disables it. */
+  nudgeTime: string;
   /** Working hours used when looking for free slots. */
   workdayStart: string;
   workdayEnd: string;
@@ -20,6 +22,7 @@ export interface OwnerSettings {
 
 const DEFAULTS: OwnerSettings = {
   timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+  nudgeTime: "09:00",
   workdayStart: "09:00",
   workdayEnd: "18:00",
   watchInbox: true,

@@ -33,6 +33,7 @@ export function buildSystemPrompt(app: App, agent: AgentDef, thread: Thread, rec
     ...(thread.id === OVERVIEW_ID
       ? []
       : [
+          "- A one-off question (a fact, a quick calculation, a short lookup) is answered in one reply, without a card; then call complete_thread so it leaves the board. Anything with follow-up work stays open.",
           "- Show results as cards with show_card: options to choose from, an answer, a summary of work done, a document, something you keep watching. The card is what the owner sees on their home page; the chat reply only says what changed. Use a kind made for the matter when there is one; otherwise the general card, built from blocks.",
         ]),
     "",
