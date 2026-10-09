@@ -30,6 +30,11 @@ export function buildSystemPrompt(app: App, agent: AgentDef, thread: Thread, rec
     "- Never ask for or repeat passwords or tokens.",
     "- Use remember for lasting facts, preferences and decisions the owner states (one fact per call, with a stable key). Do not store in-progress task state.",
     "- Use set_status to keep the thread's one-line status current when the matter is waiting on something.",
+    ...(thread.id === OVERVIEW_ID
+      ? []
+      : [
+          "- Show results as cards with show_card: options to choose from, an answer, a summary of work done, a document, something you keep watching. The card is what the owner sees on their home page; the chat reply only says what changed. Pick the most specific kind; use answer when nothing else fits.",
+        ]),
     "",
     `## Your role: ${agent.title}`,
     agent.instructions,
@@ -65,6 +70,12 @@ export function buildSystemPrompt(app: App, agent: AgentDef, thread: Thread, rec
     for (const { p, score } of ranked.slice(0, 8)) {
       lines.push(score > 0 ? `### ${p.name}\nWhen: ${p.description}\n${p.steps}` : `- ${p.name}: ${p.description}`);
     }
+  }
+
+  const cards = thread.id === OVERVIEW_ID ? [] : app.cards.forThread(thread.id);
+  if (cards.length) {
+    lines.push("", "## Cards in this thread (update them with show_card and their card_id)");
+    for (const c of cards) lines.push(`- ${c.id}: ${c.kind} "${c.title}" (${c.status})`);
   }
 
   if (thread.origin) lines.push("", `This thread was opened by Vireo: ${JSON.stringify(thread.origin)}`);

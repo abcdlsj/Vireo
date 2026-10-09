@@ -22,7 +22,7 @@ test.describe("Milestone 1 — Threads that think", () => {
     await expect(page.getByText("Wrong password")).toBeVisible();
     await page.locator("input[type=password]").fill(OWNER_PASSWORD);
     await page.getByRole("button", { name: "Sign in" }).click();
-    await expect(page.getByTestId("thread-list")).toBeVisible();
+    await expect(page.getByTestId("home")).toBeVisible();
     expect(await page.evaluate(async () => (await navigator.serviceWorker.getRegistration()) !== undefined || "serviceWorker" in navigator)).toBeTruthy();
     await phone.close();
 
@@ -91,6 +91,26 @@ test.describe("Milestone 1 — Threads that think", () => {
     await expect(page.getByTestId("side-panel")).toContainText("Vireo — Bird Encyclopedia");
     const detail = await threadDetail(request, id);
     expect(detail.related.filter((r: { kind: string }) => r.kind === "page").length).toBeGreaterThanOrEqual(2);
+    // The answer is a card, on the thread and on the home board.
+    expect(detail.cards).toEqual([expect.objectContaining({ kind: "answer" })]);
+    await expect(page.getByTestId("thread-cards").locator('[data-kind="answer"]')).toContainText("vireo");
+    await page.goto("/");
+    const card = page.getByTestId("board").locator('[data-kind="answer"]').filter({ hasText: "Research the vireo bird" });
+    await expect(card).toBeVisible();
+    await card.click();
+    await expect(page.getByTestId("thread-view")).toHaveAttribute("data-thread-id", id);
+  });
+
+  test("[Home] each ask becomes a card on the board", async ({ page, request }) => {
+    await page.goto("/");
+    await page.getByTestId("ask-input").fill("What is a good name for a houseplant?");
+    await page.getByTestId("ask-send").click();
+    await settle(request);
+    const card = page.getByTestId("board").locator('[data-kind="thread"]').filter({ hasText: /houseplant/i });
+    await expect(card).toContainText("scripted demo model");
+    // History still lists every thread.
+    await page.getByTestId("nav-threads").click();
+    await expect(page.getByTestId("thread-list")).toContainText(/houseplant/i);
   });
 
   test("[M1.5] model access is configurable", async ({ page, request }) => {

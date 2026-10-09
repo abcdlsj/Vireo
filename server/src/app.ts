@@ -2,6 +2,7 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { Actions } from "./actions.js";
 import { Auth } from "./auth.js";
+import { Cards } from "./cards/store.js";
 import { BrowserService } from "./browser.js";
 import type { Config } from "./config.js";
 import { Db } from "./db.js";
@@ -40,6 +41,7 @@ export interface App {
   files: Files;
   browser: BrowserService;
   actions: Actions;
+  cards: Cards;
   runner: Runner;
   scheduler: Scheduler;
   plugins: Plugins;
@@ -70,6 +72,7 @@ export function createApp(config: Config): App {
   app.buildTools = () => buildTools(app.plugins.tools());
   app.tools = app.buildTools();
   app.actions = new Actions(app);
+  app.cards = new Cards(app);
   app.memoryWorker = new MemoryWorker(app);
   app.runner = new Runner(app);
   app.scheduler = new Scheduler(app);

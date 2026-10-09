@@ -1,5 +1,6 @@
 /** Typed client for Vireo's HTTP API, talking to the current host. */
 
+import type { Card } from "./cards/types";
 import { authedUrl, currentHost, hostUrl } from "./hosts";
 
 export interface Thread {
@@ -85,6 +86,7 @@ export interface ThreadDetail {
   related: Related[];
   files: FileInfo[];
   procedures: Procedure[];
+  cards: Card[];
 }
 
 export interface Fact {
@@ -218,6 +220,7 @@ export type BusEvent =
   | { type: "message.stream_end"; threadId: string; streamId: string }
   | { type: "step"; threadId: string; step: { tool: string; label: string; status: string; toolCallId?: string } }
   | { type: "action.updated"; threadId: string; actionId: string }
+  | { type: "card.updated"; threadId: string; cardId: string }
   | { type: "memory.updated" }
   | { type: "procedure.updated" }
   | { type: "plugins.updated" };

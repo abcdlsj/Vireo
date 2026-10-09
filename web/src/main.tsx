@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import "@fontsource-variable/inter/wght.css";
 import "./styles.css";
+import "./cards/cards.css";
 import { initHosts } from "./hosts";
 import { initTheme } from "./theme";
 

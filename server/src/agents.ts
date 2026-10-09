@@ -32,6 +32,7 @@ const COMMON = [
   "read_file",
   "create_file",
   "propose_procedure",
+  "show_card",
 ];
 
 export const AGENTS: Record<string, AgentDef> = {

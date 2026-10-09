@@ -101,9 +101,11 @@ test.describe("Milestone 3 — Calendar and email", () => {
     await p.goto("/");
     await p.locator("input[type=password]").fill(OWNER_PASSWORD);
     await p.getByRole("button", { name: "Sign in" }).click();
-    await p.locator(`[data-testid="group-needs_you"] [data-thread-id="${id}"]`).click();
-    await p.getByTestId("action-confirm").click();
-    await expect(p.getByTestId("action-card")).toHaveAttribute("data-status", "done");
+    // The invite waits on the home board, drawn as a calendar page; confirming it there sends it.
+    const proposal = p.getByTestId("board").locator('[data-kind="proposal"]').filter({ hasText: "carol@example.com" });
+    await expect(proposal).toBeVisible();
+    await proposal.getByTestId("card-confirm").click();
+    await expect(proposal).toHaveCount(0);
     await phone.close();
 
     // The desktop sees the work resume and finish live.
