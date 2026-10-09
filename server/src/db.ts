@@ -261,6 +261,22 @@ const MIGRATIONS: string[] = [
   ALTER TABLE llm_calls ADD COLUMN cached_tokens INTEGER NOT NULL DEFAULT 0;
   ALTER TABLE llm_calls ADD COLUMN cache_write_tokens INTEGER NOT NULL DEFAULT 0;
   `,
+  // Cards: the visible results of each matter (see cards/store.ts).
+  `
+  CREATE TABLE cards (
+    id TEXT PRIMARY KEY,
+    thread_id TEXT NOT NULL REFERENCES threads(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL,
+    title TEXT NOT NULL,
+    status TEXT NOT NULL,            -- working | needs_you | watching | ready | done
+    data TEXT NOT NULL,              -- JSON, shaped by the kind (cards/kinds.ts)
+    buttons TEXT NOT NULL DEFAULT '[]',
+    archived INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+  CREATE INDEX cards_thread ON cards(thread_id);
+  `,
 ];
 
 function migrate(db: Db): void {

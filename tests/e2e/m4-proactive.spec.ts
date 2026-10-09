@@ -83,7 +83,7 @@ test.describe("Milestone 4 — Proactive and hands-on", () => {
   });
 
   test("[M4.4] every action in a thread can be inspected in its audit trail", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("/#threads");
     await page.getByTestId("thread-row").filter({ hasText: /table/i }).first().click();
     await page.getByTestId("tab-activity").click();
     const audit = page.getByTestId("audit");

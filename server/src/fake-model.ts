@@ -320,6 +320,14 @@ function research(t: Turn): AssistantMessage {
     const sentence = body.replace(/\s+/g, " ").trim().split(/(?<=[.!?])\s/)[0] ?? "";
     return { title, url, sentence };
   });
+  // In a matter's thread, the result also goes on a card.
+  if (t.tools.has("show_card") && /Show results as cards/.test(t.system) && !t.results.some((r) => r.name === "show_card")) {
+    return call("show_card", {
+      kind: "answer",
+      title: t.owner.slice(0, 80),
+      data: { text: pages.map((p) => p.sentence).join("\n\n"), sources: pages.map((p) => ({ title: p.title, url: p.url })) },
+    });
+  }
   return reply(
     `Here's a short summary:\n\n${pages.map((p) => `- ${p.sentence} ([${p.title}](${p.url}))`).join("\n")}\n\n**Sources**\n${pages.map((p, i) => `${i + 1}. [${p.title}](${p.url})`).join("\n")}`,
   );

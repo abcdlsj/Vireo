@@ -10,6 +10,7 @@ export type BusEvent =
   | { type: "message.stream_end"; threadId: string; streamId: string }
   | { type: "step"; threadId: string; step: { tool: string; label: string; status: string; toolCallId?: string } }
   | { type: "action.updated"; threadId: string; actionId: string }
+  | { type: "card.updated"; threadId: string; cardId: string }
   | { type: "memory.updated" }
   | { type: "procedure.updated" }
   | { type: "plugins.updated" }

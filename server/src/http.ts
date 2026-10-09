@@ -267,6 +267,7 @@ export function createHttp(app: App): Hono<Env> {
       related: app.threads.related(id),
       files: app.files.forThread(id),
       procedures: app.db.all("SELECT * FROM procedures WHERE source_thread_id = ?", id),
+      cards: app.cards.forThread(id),
     });
   });
 
@@ -423,6 +424,13 @@ export function createHttp(app: App): Hono<Env> {
   });
 
   // ---- confirmations ----
+  // ---- cards ----
+  api.get("/api/cards", (c) => c.json({ cards: app.cards.feed() }));
+  api.post("/api/cards/:id/archive", (c) => {
+    const ok = app.cards.archive(c.req.param("id"));
+    return ok ? c.json({ ok }) : c.json({ error: "Not found" }, 404);
+  });
+
   api.get("/api/actions", (c) => c.json({ actions: app.actions.pending() }));
   api.post("/api/actions/:id/confirm", async (c) => {
     const body = await c.req.json<{ args?: Record<string, unknown> }>().catch(() => ({}) as { args?: Record<string, unknown> });
@@ -547,6 +555,15 @@ export function createHttp(app: App): Hono<Env> {
 
   // ---- proactive ----
   api.post("/api/brief", async (c) => c.json({ text: await app.scheduler.morningBrief() }));
+  api.post("/api/reminders/:id/cancel", (c) => {
+    const id = c.req.param("id");
+    const r = app.db.get<{ thread_id: string | null }>("SELECT thread_id FROM reminders WHERE id = ? AND status = 'scheduled'", id);
+    if (!r) return c.json({ error: "Not found" }, 404);
+    app.db.run("UPDATE reminders SET status = 'cancelled' WHERE id = ?", id);
+    if (r.thread_id) app.threads.changed(r.thread_id);
+    bus.publish({ type: "card.updated", threadId: r.thread_id ?? OVERVIEW_ID, cardId: `reminder:${id}` });
+    return c.json({ ok: true });
+  });
   api.get("/api/reminders", (c) => c.json({ reminders: app.db.all("SELECT * FROM reminders WHERE status = 'scheduled' ORDER BY due_at") }));
 
   // ---- observability (N7) ----

@@ -17,7 +17,7 @@ test.describe("Milestone 6 — Hosts", () => {
 
     // The app now talks to the host cross-origin with its paired token.
     await expect(page.getByTestId("host-switch")).toContainText(name);
-    await expect(page.getByTestId("thread-list")).toBeVisible();
+    await expect(page.getByTestId("home")).toBeVisible();
     const stored = await page.evaluate(() => JSON.parse(localStorage.getItem("vireo.hosts") ?? "[]"));
     expect(stored).toEqual([expect.objectContaining({ url: HOST, token: expect.any(String) })]);
 

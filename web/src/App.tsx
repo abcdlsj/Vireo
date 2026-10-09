@@ -3,6 +3,7 @@ import { api, ApiError, closeEvents, onEvent, type Me, type Thread } from "./api
 import { AddHostForm, HostSwitcher } from "./components/Hosts";
 import { Login } from "./components/Login";
 import { currentHost, hosts, switchHost } from "./hosts";
+import { Home } from "./components/Home";
 import { MemoryPage } from "./components/MemoryPage";
 import { NewThread } from "./components/NewThread";
 import { SettingsPage } from "./components/SettingsPage";
@@ -117,8 +118,8 @@ function Shell({ onSignedOut }: { onSignedOut: () => void }) {
     });
   }, [loadThreads, loadMe]);
 
-  const current = route.name === "thread" ? route.id : route.name === "home" ? "overview" : null;
-  const showList = route.name === "home";
+  const current = route.name === "thread" ? route.id : route.name === "threads" ? "overview" : null;
+  const showList = route.name === "threads";
   const needsYou = threads.filter((t) => t.group === "needs_you").length;
 
   useEffect(() => {
@@ -128,12 +129,14 @@ function Shell({ onSignedOut }: { onSignedOut: () => void }) {
     else void nav.clearAppBadge?.().catch(() => undefined);
   }, [needsYou]);
 
+  if (route.name === "home") return <Home me={me} onSignedOut={onSignedOut} />;
+
   return (
     <div className={`shell ${showList ? "show-list" : "show-main"}`}>
       <aside className="sidebar">
         <header className="sidebar-head">
           <div className="brand">
-            <a href="#thread/overview" aria-label="Vireo overview">
+            <a href="#" aria-label="Vireo home">
               <img src="/icon.svg" alt="" width={24} height={24} />
             </a>
             <HostSwitcher />

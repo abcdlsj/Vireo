@@ -7,6 +7,7 @@ import { ActionCard } from "./ActionCard";
 import { Composer } from "./Composer";
 import { ProcedureCard } from "./ProcedureCard";
 import { SidePanel } from "./SidePanel";
+import { CardSlot } from "../cards/CardSlot";
 import { AlertIcon, ArrowUpRightIcon, BellIcon, CheckIcon, ChevronLeft, ChevronRight, ClockIcon, PanelIcon, StatusIcon, BriefIcon } from "../icons";
 
 type Item =
@@ -240,6 +241,13 @@ export function ThreadView({ id }: { id: string }) {
                   </dl>
                 )}
               </div>
+              {detail.cards?.length ? (
+                <div className="thread-cards" data-testid="thread-cards">
+                  {detail.cards.map((c) => (
+                    <CardSlot key={c.id} card={c} expanded refresh={load} />
+                  ))}
+                </div>
+              ) : null}
               {items.length === 0 && !live ? (
                 <div className="empty">{isOverview ? "Ask anything. Your morning brief lands here too." : "No messages yet."}</div>
               ) : null}
