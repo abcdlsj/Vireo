@@ -9,7 +9,8 @@
 }
 
 .shell .main {
-  background: var(--c-canvas);
+  background: var(--c-main);
+  border-left: 1px solid var(--c-hairline);
 }
 
 /* ---------- left: the list of matters ---------- */
@@ -440,6 +441,10 @@
 @media (max-width: 760px) {
   .shell .sidebar {
     background: var(--c-canvas);
+  }
+
+  .shell .main {
+    border-left: none;
   }
 
   .shell .side-panel {

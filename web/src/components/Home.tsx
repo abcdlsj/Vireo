@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { api, ApiError, onEvent, type Me, type Thread } from "../api";
 import { CardSlot } from "../cards/CardSlot";
+import { BoardContext, type Board } from "../cards/Frame";
+import { Peek } from "../cards/Peek";
 import type { Card } from "../cards/types";
 import { ArrowUpIcon, CheckIcon } from "../icons";
 import { HostSwitcher } from "./Hosts";
@@ -15,6 +17,8 @@ const NUMBERS = ["No", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "E
 export function Home({ me, onSignedOut }: { me: Me | null; onSignedOut: () => void }) {
   const [cards, setCards] = useState<Card[] | null>(null);
   const [note, setNote] = useState("");
+  // The matter open in the peek sheet, by thread: its card can change id as it moves on.
+  const [peekThread, setPeekThread] = useState<string | null>(null);
   const timer = useRef<number | undefined>(undefined);
 
   const load = useCallback(async () => {
@@ -34,6 +38,9 @@ export function Home({ me, onSignedOut }: { me: Me | null; onSignedOut: () => vo
       }
     });
   }, [load]);
+
+  const board = useMemo<Board>(() => ({ peek: (c) => setPeekThread(c.threadId), refresh: () => void load() }), [load]);
+  const peekCard = peekThread ? (cards ?? []).find((c) => c.threadId === peekThread && !c.id.startsWith("reminder:")) : undefined;
 
   const active = (cards ?? []).filter((c) => c.status !== "done");
   const done = (cards ?? []).filter((c) => c.status === "done");
@@ -75,23 +82,35 @@ export function Home({ me, onSignedOut }: { me: Me | null; onSignedOut: () => vo
         </div>
         {note ? <p className="ask-sent">{note}</p> : null}
 
-        <div className="board" data-testid="board">
-          {cards && active.length === 0 ? (
-            <div className="board-empty">
-              <b>All clear</b>
-              <span>Ask for anything above. Each matter shows up here as a card while Vireo takes care of it.</span>
-            </div>
-          ) : null}
-          {active.map((c) => (
-            <CardSlot key={c.id} card={c} refresh={load} />
-          ))}
-        </div>
+        <BoardContext.Provider value={board}>
+          <div className="board" data-testid="board">
+            {cards && active.length === 0 ? (
+              <div className="board-empty">
+                <b>All clear</b>
+                <span>Ask for anything above. Each matter shows up here as a card while Vireo takes care of it.</span>
+              </div>
+            ) : null}
+            {active.map((c) => (
+              <CardSlot key={c.id} card={c} refresh={load} />
+            ))}
+          </div>
+        </BoardContext.Provider>
 
         {done.length ? (
           <div className="done-strip" data-testid="done-strip">
             <span className="label">Done lately</span>
             {done.slice(0, 12).map((c) => (
-              <a key={c.id} className="done-chip" href={`#thread/${c.threadId}`} title={c.title}>
+              <a
+                key={c.id}
+                className="done-chip"
+                href={`#thread/${c.threadId}`}
+                title={c.title}
+                onClick={(e) => {
+                  if (e.metaKey || e.ctrlKey) return;
+                  e.preventDefault();
+                  setPeekThread(c.threadId);
+                }}
+              >
                 <CheckIcon />
                 {c.title}
               </a>
@@ -99,6 +118,7 @@ export function Home({ me, onSignedOut }: { me: Me | null; onSignedOut: () => vo
           </div>
         ) : null}
       </div>
+      {peekCard ? <Peek key={peekCard.threadId} card={peekCard} onClose={() => setPeekThread(null)} refresh={load} /> : null}
     </div>
   );
 }

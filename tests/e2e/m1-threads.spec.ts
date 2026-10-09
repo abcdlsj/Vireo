@@ -97,7 +97,14 @@ test.describe("Milestone 1 — Threads that think", () => {
     await page.goto("/");
     const card = page.getByTestId("board").locator('[data-kind="answer"]').filter({ hasText: "Research the vireo bird" });
     await expect(card).toBeVisible();
+    // A card opens in place: the card in full and a line to answer it; the thread is one tap away.
     await card.click();
+    const peek = page.getByTestId("peek");
+    await expect(peek.locator('[data-kind="answer"]')).toContainText("vireo");
+    await page.keyboard.press("Escape");
+    await expect(peek).toHaveCount(0);
+    await card.click();
+    await peek.getByTestId("peek-open").click();
     await expect(page.getByTestId("thread-view")).toHaveAttribute("data-thread-id", id);
   });
 
@@ -106,8 +113,23 @@ test.describe("Milestone 1 — Threads that think", () => {
     await page.getByTestId("ask-input").fill("What is a good name for a houseplant?");
     await page.getByTestId("ask-send").click();
     await settle(request);
-    const card = page.getByTestId("board").locator('[data-kind="thread"]').filter({ hasText: /houseplant/i });
-    await expect(card).toContainText("scripted demo model");
+    const first = page.getByTestId("board").locator('[data-kind="thread"]').filter({ hasText: /houseplant/i });
+    await expect(first).toContainText("scripted demo model");
+    const threadId = await first.getAttribute("data-thread-id");
+    const card = page.getByTestId("board").locator(`[data-thread-id="${threadId}"]`);
+    // Answering from the peek sheet keeps the owner on the board.
+    await card.click();
+    await page.getByTestId("peek-input").fill("Something for a sunny window, please");
+    await page.getByTestId("peek-send").click();
+    await settle(request);
+    await expect(page.getByTestId("peek")).toContainText("sunny window");
+    await page.getByTestId("peek-close").click();
+    await expect(page.getByTestId("peek")).toHaveCount(0);
+    // Closing the matter from the card's corner takes it off the board.
+    await card.hover();
+    await card.getByTestId("card-done").click();
+    await expect(card).toHaveCount(0);
+    await expect(page.getByTestId("done-strip").locator(`a[href="#thread/${threadId}"]`)).toBeVisible();
     // History still lists every thread.
     await page.getByTestId("nav-threads").click();
     await expect(page.getByTestId("thread-list")).toContainText(/houseplant/i);

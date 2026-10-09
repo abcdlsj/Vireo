@@ -6,6 +6,9 @@
  */
 :root {
   --c-canvas: #f1f1ec;
+  /* The working area beside the sidebar: a shade lighter than the canvas. */
+  --c-main: #fafaf7;
+  --c-hairline: rgba(30, 30, 20, 0.07);
   --c-paper: #ffffff;
   --c-ink: #1f1f1a;
   --c-ink-2: #55544c;
@@ -33,6 +36,8 @@
 
 :root[data-theme="dark"] {
   --c-canvas: #141412;
+  --c-main: #191917;
+  --c-hairline: rgba(255, 255, 255, 0.06);
   --c-paper: #1f1f1c;
   --c-ink: #ecebe5;
   --c-ink-2: #a9a89e;
@@ -195,6 +200,7 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
+  animation: c-rise 0.32s ease both;
 }
 
 .board > .slot > .vcard {
@@ -288,7 +294,142 @@
 
 .vcard:not(.expanded):hover {
   box-shadow: var(--c-shadow-hover);
-  transform: translateY(-1px);
+  transform: translateY(-2px);
+}
+
+.vcard:not(.expanded):active {
+  transform: translateY(0) scale(0.995);
+  transition-duration: 0.06s;
+}
+
+.vcard:focus-visible {
+  outline: 2px solid var(--c-accent);
+  outline-offset: 3px;
+}
+
+/* A card whose content just changed glows once, so the change is noticed. */
+.vcard.just-updated {
+  animation: c-updated 1.4s ease-out;
+}
+
+/* Closing a matter folds its card away before the board closes the gap. */
+.vcard.leaving {
+  opacity: 0;
+  transform: scale(0.96);
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease;
+  pointer-events: none;
+}
+
+/* The head's right corner: the status, swapped for quick actions on hover. */
+.vcard-corner {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-height: 28px;
+  margin: -4px -6px -4px 0;
+  padding-right: 6px;
+}
+
+.vcard-corner > .vcard-status {
+  transition: opacity 0.14s ease;
+}
+
+.vcard-corner.floating {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  z-index: 2;
+  margin: 0;
+  padding: 0;
+}
+
+/* Without a head, the corner floats over the body: keep the title clear of it. */
+.vcard:has(> .vcard-corner.floating .vcard-act) > .vcard-body > .c-title:first-child {
+  padding-right: 60px;
+}
+
+.vcard-actions {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  display: inline-flex;
+  gap: 4px;
+  opacity: 0;
+  transform: translate(6px, -50%);
+  pointer-events: none;
+  transition:
+    opacity 0.14s ease,
+    transform 0.14s ease;
+}
+
+.vcard:hover .vcard-actions,
+.vcard:focus-within .vcard-actions {
+  opacity: 1;
+  transform: translate(0, -50%);
+  pointer-events: auto;
+}
+
+.vcard:hover .vcard-corner:has(.vcard-actions) > .vcard-status,
+.vcard:focus-within .vcard-corner:has(.vcard-actions) > .vcard-status {
+  opacity: 0;
+}
+
+.vcard-act {
+  width: 28px;
+  height: 28px;
+  display: inline-grid;
+  place-items: center;
+  border: none;
+  border-radius: 50%;
+  background: var(--c-soft);
+  color: var(--c-ink-2);
+  cursor: pointer;
+  box-shadow: 0 0 0 1px var(--c-line);
+}
+
+.vcard a.vcard-act:hover {
+  text-decoration: none;
+}
+
+.vcard-act:hover {
+  background: var(--c-ink);
+  color: var(--c-paper);
+  box-shadow: none;
+}
+
+.vcard.tone-dark .vcard-act {
+  background: var(--c-dark-2);
+  color: var(--c-dark-ink);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+
+@keyframes c-updated {
+  0% {
+    box-shadow:
+      0 0 0 2px var(--c-accent),
+      var(--c-shadow);
+  }
+  100% {
+    box-shadow:
+      0 0 0 2px transparent,
+      var(--c-shadow);
+  }
+}
+
+@keyframes c-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+@keyframes c-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .vcard.expanded {
@@ -469,6 +610,48 @@
 .vcard-error {
   font-size: 13px;
   color: var(--c-ink-2);
+}
+
+/* After a button: what the owner said, and that Vireo has it. */
+.vcard-sent {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  animation: c-rise 0.24s ease both;
+}
+
+.vcard-sent .you {
+  font-weight: 600;
+  color: var(--c-ink);
+}
+
+.vcard-sent .on-it {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--c-accent);
+  font-weight: 500;
+}
+
+.vcard-sent .on-it::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: c-pulse 1.4s ease-in-out infinite;
+}
+
+.cbtn[aria-busy="true"]::after {
+  content: "";
+  width: 12px;
+  height: 12px;
+  margin-left: 8px;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  animation: c-spin 0.7s linear infinite;
 }
 
 .vcard-error {
@@ -1913,5 +2096,246 @@
 
   .vcard.trip {
     min-height: 300px;
+  }
+}
+
+/* ---------- peek: a card opened from the board ---------- */
+.peek {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 32px 16px;
+  background: rgba(20, 20, 14, 0.28);
+  backdrop-filter: blur(3px);
+  animation: c-fade 0.18s ease both;
+}
+
+.peek.closing {
+  animation: c-fade 0.16s ease reverse both;
+}
+
+.peek-sheet {
+  width: min(680px, 100%);
+  max-height: min(860px, calc(100dvh - 64px));
+  display: flex;
+  flex-direction: column;
+  background: var(--c-main);
+  color: var(--c-ink);
+  border-radius: calc(var(--c-radius) + 6px);
+  box-shadow: 0 30px 80px -20px rgba(20, 20, 14, 0.45);
+  outline: none;
+  overflow: hidden;
+  font-variant-numeric: tabular-nums;
+  animation: c-pop 0.22s cubic-bezier(0.2, 0.9, 0.3, 1.1) both;
+}
+
+.peek.closing .peek-sheet {
+  animation: c-pop 0.16s ease reverse both;
+}
+
+.peek-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 14px 10px 22px;
+  font-size: 13px;
+}
+
+.peek-head .grow {
+  flex: 1;
+}
+
+.peek-when {
+  min-width: 0;
+  color: var(--c-ink-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.peek-btn {
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px;
+  border: none;
+  border-radius: 16px;
+  background: transparent;
+  color: var(--c-ink-2);
+  font: inherit;
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.peek-btn:hover {
+  background: var(--c-paper);
+  color: var(--c-ink);
+  box-shadow: var(--c-shadow);
+}
+
+.peek-btn.icon {
+  width: 32px;
+  padding: 0;
+  justify-content: center;
+}
+
+.peek-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px 18px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.peek-card > .slot,
+.peek-card .vcard {
+  --c-canvas: var(--c-main);
+}
+
+.peek-latest {
+  padding: 4px 6px;
+  font-size: 14px;
+  line-height: 21px;
+  color: var(--c-ink-2);
+  animation: c-rise 0.24s ease both;
+}
+
+.peek-latest-head {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--c-ink-3);
+}
+
+.peek-latest-text > :first-child {
+  margin-top: 0;
+}
+
+.peek-latest-text > :last-child {
+  margin-bottom: 0;
+}
+
+.peek-working {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 4px 6px;
+  color: var(--c-accent);
+  font-weight: 500;
+}
+
+.pulse-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: c-pulse 1.4s ease-in-out infinite;
+}
+
+.peek-reply {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 14px 14px;
+  padding: 6px 6px 6px 18px;
+  background: var(--c-paper);
+  border-radius: 24px;
+  box-shadow: var(--c-shadow);
+}
+
+.peek-reply input {
+  flex: 1;
+  min-width: 0;
+  height: 36px;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--c-ink);
+  font: inherit;
+  font-size: 15px;
+}
+
+.peek-reply button {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: 50%;
+  background: var(--c-ink);
+  color: var(--c-paper);
+  cursor: pointer;
+}
+
+.peek-reply button:disabled {
+  opacity: 0.25;
+  cursor: default;
+}
+
+@keyframes c-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes c-pop {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.98);
+  }
+}
+
+@media (max-width: 900px) {
+  /* Phones: no hover, so actions stay in the peek sheet, which rises from the bottom. */
+  .vcard-actions {
+    display: none;
+  }
+
+  .peek {
+    place-items: end stretch;
+    padding: 0;
+  }
+
+  .peek-sheet {
+    width: 100%;
+    max-height: calc(100dvh - 48px);
+    border-radius: calc(var(--c-radius) + 6px) calc(var(--c-radius) + 6px) 0 0;
+    animation-name: c-sheet;
+  }
+
+  .peek-reply {
+    margin-bottom: calc(14px + env(safe-area-inset-bottom));
+  }
+
+  .peek-btn:not(.icon) svg {
+    display: none;
+  }
+}
+
+@keyframes c-sheet {
+  from {
+    transform: translateY(100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .board > .slot,
+  .vcard,
+  .vcard.just-updated,
+  .peek,
+  .peek-sheet,
+  .vcard-sent,
+  .peek-latest {
+    animation: none !important;
+    transition: none !important;
   }
 }
