@@ -4,6 +4,7 @@ import type { Card } from "../cards/types";
 import { relTime } from "../format";
 import { ArrowUpIcon, HomeIcon, MemoryIcon, SettingsIcon } from "../icons";
 import { go } from "../route";
+import { useGlide } from "../glide";
 
 interface Item {
   key: string;
@@ -103,6 +104,9 @@ export function QuickJump({ threads, onClose }: { threads: Thread[]; onClose: ()
     return found.length ? [...found, ...pages, ...ask] : [...ask, ...pages];
   }, [query, threads, cards]);
 
+  const box = useRef<HTMLDivElement>(null);
+  useGlide(box, { active: ".qj-item.on", clip: ".qj-list" });
+
   useEffect(() => setIndex(0), [query]);
   useEffect(() => {
     list.current?.querySelector<HTMLElement>(`[data-index="${index}"]`)?.scrollIntoView({ block: "nearest" });
@@ -121,7 +125,7 @@ export function QuickJump({ threads, onClose }: { threads: Thread[]; onClose: ()
 
   return (
     <div className="qj" data-testid="quick-jump" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="qj-box" role="dialog" aria-modal="true" aria-label="Jump to">
+      <div className="qj-box" ref={box} role="dialog" aria-modal="true" aria-label="Jump to">
         <input
           ref={input}
           className="qj-input"

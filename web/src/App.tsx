@@ -12,6 +12,7 @@ import { ThreadView } from "./components/ThreadView";
 import { HomeIcon, MemoryIcon, PlusIcon, SearchIcon, SettingsIcon } from "./icons";
 import { QuickJump } from "./components/QuickJump";
 import { go, useRoute } from "./route";
+import { useGlide } from "./glide";
 
 type AuthState =
   | { loading: true }
@@ -87,6 +88,8 @@ function Shell({ onSignedOut }: { onSignedOut: () => void }) {
   const [me, setMe] = useState<Me | null>(null);
   const [jump, setJump] = useState(false);
   const timer = useRef<number | undefined>(undefined);
+  const sidebar = useRef<HTMLElement>(null);
+  useGlide(sidebar, { hover: ".nav-item, .thread-row", active: ".nav-item.active, .thread-row.active", clip: ".thread-list" });
 
   const loadThreads = useCallback(async () => {
     try {
@@ -145,7 +148,7 @@ function Shell({ onSignedOut }: { onSignedOut: () => void }) {
 
   return (
     <div className={`shell ${showList ? "show-list" : "show-main"} ${route.name === "home" ? "at-home" : ""}`}>
-      <aside className="sidebar">
+      <aside className="sidebar" ref={sidebar}>
         <header className="sidebar-head">
           <div className="brand">
             <a href="#" aria-label="Vireo home">

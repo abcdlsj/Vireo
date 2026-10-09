@@ -892,3 +892,133 @@
 :root[data-theme="dark"] .qj {
   background: rgba(0, 0, 0, 0.5);
 }
+
+/* ---------- motion: highlights that glide, pop-ups that spring, pages that fade in ---------- */
+:root {
+  /* A damped spring with a slight overshoot, for things that open. */
+  --spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+  --spring: linear(0, 0.056, 0.175, 0.334, 0.489, 0.642, 0.765, 0.87, 0.945, 1, 1.033, 1.051, 1.058, 1.057, 1.051, 1.042, 1.033, 1.024, 1.016, 1.009, 1.005, 1.001, 0.999, 0.997, 1);
+  /* The same spring with no overshoot, for things that move. */
+  --glide: cubic-bezier(0.22, 1, 0.36, 1);
+  --glide: linear(0, 0.064, 0.199, 0.354, 0.502, 0.631, 0.735, 0.816, 0.877, 0.921, 0.951, 0.972, 0.985, 0.993, 0.998, 1.001, 1.002, 1.002, 1.002, 1.002, 1);
+  --c-hover: rgba(30, 30, 20, 0.05);
+  --c-scroll: rgba(30, 30, 20, 0.2);
+}
+
+:root[data-theme="dark"] {
+  --c-hover: rgba(255, 255, 255, 0.05);
+  --c-scroll: rgba(255, 255, 255, 0.18);
+}
+
+/* glide.ts places these layers under the hovered and the selected item. */
+.glide-host {
+  position: relative;
+}
+
+.glide {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0;
+  transition:
+    transform 0.38s var(--glide),
+    width 0.38s var(--glide),
+    height 0.38s var(--glide),
+    opacity 0.16s ease;
+}
+
+.glide.on {
+  opacity: 1;
+}
+
+.glide-hover {
+  background: var(--c-hover);
+}
+
+.glide-active {
+  background: var(--c-paper);
+  box-shadow: var(--c-shadow);
+}
+
+.qj-box .glide-active {
+  background: var(--c-soft);
+  box-shadow: none;
+}
+
+/* The items paint over the layers, which now carry their hover and selected backgrounds. */
+.glide-host :is(.nav-item, .thread-row, .settings-nav-item, .qj-item) {
+  position: relative;
+  z-index: 1;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+/* Each page fades in when you move to it. */
+.shell .main > * {
+  animation: c-fade 0.22s ease both;
+}
+
+/* ⌘K, menus and the peek sheet spring open and come into focus. */
+.qj {
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+
+.qj-box {
+  animation: spring-open 0.42s var(--spring) both;
+}
+
+@media (min-width: 901px) {
+  /* On phones the sheet rises from the bottom edge, where an overshoot would show a gap. */
+  .peek-sheet {
+    animation: spring-open 0.42s var(--spring) both;
+  }
+}
+
+.menu {
+  transform-origin: top left;
+  background: color-mix(in srgb, var(--c-paper, var(--bg)) 82%, transparent);
+  backdrop-filter: blur(16px) saturate(1.4);
+  -webkit-backdrop-filter: blur(16px) saturate(1.4);
+  animation: spring-open 0.36s var(--spring) both;
+}
+
+@keyframes spring-open {
+  from {
+    opacity: 0;
+    filter: blur(4px);
+    transform: translateY(6px) scale(0.96);
+  }
+  60% {
+    filter: blur(0);
+  }
+}
+
+/* Thin scrollbars that show only while the pointer is over the list. */
+@media (hover: hover) {
+  .shell,
+  .shell * {
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+  }
+
+  .shell :hover,
+  .shell :focus-within {
+    scrollbar-color: var(--c-scroll) transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .glide {
+    transition: none;
+  }
+
+  .shell .main > *,
+  .qj-box,
+  .peek-sheet,
+  .menu {
+    animation: none;
+  }
+}
