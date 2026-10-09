@@ -163,6 +163,8 @@ export const cardTools = [
         data,
         buttons,
       });
+      // The thread is waiting on the owner exactly when its card says so, so the list and the board agree.
+      ctx.app.threads.update(ctx.thread.id, { needs_you: card.status === "needs_you" ? 1 : 0 });
       return { text: `Card ${card.id} is on the owner's home page. To change it later, call show_card with card_id "${card.id}".` };
     },
   }),

@@ -14,6 +14,8 @@ import type { Card, CardButton } from "./types";
 export interface Board {
   peek: (card: Card) => void;
   refresh: () => void;
+  /** The board puts cards under headings by status, so a card need not repeat it. */
+  grouped?: boolean;
 }
 
 export const BoardContext = createContext<Board | null>(null);
@@ -110,9 +112,9 @@ export function Frame({
       window.setTimeout(() => board?.refresh(), 220);
     }
   };
-  const labelNode = label ?? (card.threadTitle && card.threadTitle !== card.title ? <a href={`#thread/${card.threadId}`}>{card.threadTitle}</a> : null);
+  const labelNode = label ?? (namesOwnMatter(card) ? null : <a href={`#thread/${card.threadId}`}>{card.threadTitle}</a>);
   // A ready card with nothing to label needs no head: an empty line with only a time in it is noise.
-  const quiet = card.status === "ready" && !card.running;
+  const quiet = !card.running && (card.status === "ready" || (Boolean(board?.grouped) && (card.status === "needs_you" || card.status === "watching")));
   const head = label !== null && !(labelNode === null && quiet);
   const own = buttons ?? (card.buttons.length ? <Buttons card={card} buttons={card.buttons} /> : null);
   const actions = interactive ? (
@@ -143,7 +145,7 @@ export function Frame({
         <header className="vcard-head">
           <span className="vcard-label">{labelNode}</span>
           <span className="vcard-corner">
-            <Status card={card} />
+            <Status card={card} grouped={board?.grouped} />
             {actions}
           </span>
         </header>
@@ -157,6 +159,17 @@ export function Frame({
       {own ? <footer className="vcard-foot">{own}</footer> : null}
     </article>
   );
+}
+
+/**
+ * The thread's name labels a card only when it adds something: "Weekend"
+ * over "Tokyo or Seoul in November" does, "Inbox" over "Inbox tidied" does not.
+ */
+function namesOwnMatter(card: Card): boolean {
+  const thread = card.threadTitle.trim().toLowerCase();
+  const title = card.title.toLowerCase();
+  if (!thread || title.includes(thread) || thread.includes(title)) return true;
+  return thread.split(/[\s,·:/-]+/).some((w) => w.length >= 3 && title.includes(w));
 }
 
 const CHANGE_WINDOW = 36 * 3600e3;
@@ -195,7 +208,9 @@ function Pulse({ card, live }: { card: Card; live: boolean }) {
   );
 }
 
-export function Status({ card }: { card: Card }) {
+export function Status({ card, grouped }: { card: Card; grouped?: boolean }) {
+  // On the board the heading says the status, and a time on every card is noise: the peek says when it moved.
+  if (grouped && !card.running && card.status !== "working") return null;
   if (card.status === "needs_you") return <span className="vcard-status needs">Needs you</span>;
   if (card.running || card.status === "working") return <span className="vcard-status working">Working</span>;
   if (card.status === "watching") return <span className="vcard-status watching">Watching</span>;

@@ -92,9 +92,10 @@ function ReturnBars({ options }: { options: ReturnOption[] }) {
           const cheapest = prices[i] === min;
           return (
             <div key={i} className={`return-bar ${cheapest ? "best" : ""}`} role="listitem" title={[d?.toLocaleDateString(undefined, { weekday: "long" }), o.flight].filter(Boolean).join(" · ")}>
-              <span className="return-price">{o.price}</span>
+              {/* The price sits on its bar, so a column reads as one figure. */}
               <span className="bar-track">
-                <span className="bar" style={{ height: `${30 + (max > min ? ((prices[i]! - min) / (max - min)) * 70 : 0)}%` }} />
+                <span className="return-price">{o.price}</span>
+                <span className="bar" style={{ height: `${8 + (max > min ? ((prices[i]! - min) / (max - min)) * 28 : 0)}px` }} />
               </span>
               <span className="return-date">{d ? `${d.getMonth() + 1}/${d.getDate()}` : o.date}</span>
             </div>

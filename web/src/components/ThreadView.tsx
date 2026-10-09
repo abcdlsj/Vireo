@@ -359,7 +359,7 @@ function StatusTag({ t }: { t: ThreadDetail["thread"] }) {
   if (t.state === "done") return <span className="tag green">Done</span>;
   if (t.running) return <span className="tag blue">Working</span>;
   if (t.needsYou) return <span className="tag orange">Needs you</span>;
-  return <span className="tag">In progress</span>;
+  return <span className="tag">In hand</span>;
 }
 
 function ItemView({ item, actions, onChange }: { item: Item; actions: Map<string, Action>; onChange: () => void }) {

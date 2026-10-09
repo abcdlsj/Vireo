@@ -3,7 +3,7 @@ import { relTime } from "../format";
 
 const GROUPS: { key: Thread["group"]; label: string }[] = [
   { key: "needs_you", label: "Needs you" },
-  { key: "in_progress", label: "In progress" },
+  { key: "in_progress", label: "In hand" },
   { key: "done", label: "Done" },
 ];
 

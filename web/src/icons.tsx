@@ -192,3 +192,17 @@ export function ToolIcon({ tool }: { tool: string }) {
   if (tool.startsWith("browser")) return <GlobeIcon />;
   return <SparkIcon />;
 }
+
+export const SearchIcon = () => (
+  <Icon>
+    <circle cx="7" cy="7" r="4.3" />
+    <path d="m10.2 10.2 3.3 3.3" />
+  </Icon>
+);
+
+export const ListIcon = () => (
+  <Icon>
+    <path d="M5.5 4h8M5.5 8h8M5.5 12h8" />
+    <path d="M2.5 4h.01M2.5 8h.01M2.5 12h.01" strokeWidth="1.8" />
+  </Icon>
+);

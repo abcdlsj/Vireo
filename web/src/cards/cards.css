@@ -59,43 +59,61 @@
   --c-shadow-hover: 0 0 0 1px rgba(255, 255, 255, 0.09), 0 18px 40px -10px rgba(0, 0, 0, 0.7);
 }
 
-/* ---------- home ---------- */
+/* ---------- home: the board, in the main area of the shell ---------- */
 .home {
-  min-height: 100%;
-  min-height: 100dvh;
-  background: var(--c-canvas);
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
   color: var(--c-ink);
   font-variant-numeric: tabular-nums;
-  overflow-y: auto;
-  height: 100dvh;
+  container-type: inline-size;
+  container-name: home;
 }
 
 .home-inner {
-  max-width: 1200px;
+  max-width: 1140px;
   margin: 0 auto;
-  padding: 0 24px 64px;
-  padding-top: env(safe-area-inset-top);
+  padding: calc(8px + env(safe-area-inset-top)) 40px 72px;
 }
 
+/* Only on a phone, where the sidebar is a page of its own. */
 .home-bar {
-  height: 72px;
-  display: flex;
+  display: none;
+  height: 52px;
   align-items: center;
-  gap: 22px;
+  gap: 4px;
 }
 
 .home-bar .grow {
   flex: 1;
 }
 
-.home-bar a.nav {
-  color: var(--c-ink-2);
-  text-decoration: none;
-  font-size: 14px;
+.home-logo {
+  display: flex;
+  margin-right: 4px;
 }
 
-.home-bar a.nav:hover {
-  color: var(--c-ink);
+.home-icon {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: 20px;
+  background: transparent;
+  color: var(--c-ink-2);
+  cursor: pointer;
+}
+
+.home-icon:active {
+  background: var(--c-chip);
+}
+
+.home-icon .dot {
+  position: absolute;
+  top: 9px;
+  right: 9px;
 }
 
 .home-bar .host-switch {
@@ -104,34 +122,33 @@
 
 .home-hero {
   display: flex;
-  align-items: center;
-  gap: 24px;
-  margin: 20px 0 36px;
+  flex-direction: column;
+  gap: 18px;
+  margin: 36px 0 40px;
 }
 
 .home-greet {
-  width: 300px;
-  flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
 }
 
 .home-greet .date {
   font-size: 13px;
-  color: var(--c-ink-2);
+  line-height: 18px;
+  color: var(--c-ink-3);
 }
 
 .home-greet h1 {
   margin: 0;
-  font-size: 24px;
-  line-height: 30px;
+  font-size: 30px;
+  line-height: 36px;
   font-weight: 600;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.025em;
+  text-wrap: balance;
 }
 
 .ask {
-  flex: 1;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -181,10 +198,49 @@
   cursor: default;
 }
 
+.ask:focus-within {
+  box-shadow:
+    0 0 0 3px var(--c-accent-soft),
+    var(--c-shadow);
+}
+
+.ask {
+  transition: box-shadow 0.18s ease;
+}
+
 .ask-sent {
   font-size: 13px;
   color: var(--c-ink-2);
-  margin: -24px 0 24px 324px;
+  margin: -28px 0 32px 22px;
+  animation: c-rise 0.32s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+/* Sections of the board: needs you, in hand, watching. */
+.boards {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.board-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0 2px 14px;
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 600;
+  letter-spacing: 0;
+  color: var(--c-ink-2);
+}
+
+.board-section.needs .board-head {
+  color: var(--c-needs-ink);
+}
+
+.board-head .count {
+  font-weight: 500;
+  color: var(--c-ink-3);
 }
 
 /* A masonry: Home sizes each slot's row span to its card (4px rows, 20px gaps). */
@@ -215,9 +271,7 @@
 }
 
 .board-empty {
-  grid-column: 1 / -1;
-  grid-row: span 40;
-  margin-bottom: 20px;
+  min-height: 200px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1281,9 +1335,12 @@
   color: var(--c-accent);
 }
 
-.mark-attention .g-mark {
-  background: var(--c-warm);
-  color: var(--c-needs-ink);
+.g-attn {
+  width: 7px;
+  height: 7px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--c-needs);
 }
 
 .mark-best .g-value,
@@ -1383,7 +1440,9 @@
   max-width: 28px;
   border-radius: 4px 4px 2px 2px;
   background: var(--c-chip);
+  transform-origin: bottom;
   transition: height 0.3s ease;
+  animation: c-grow 0.5s cubic-bezier(0.2, 0.7, 0.2, 1) both;
 }
 
 .g-bar.hi .g-bar-fill {
@@ -2149,8 +2208,14 @@
   padding: 4px 0;
 }
 
-/* ---------- phone ---------- */
-@media (max-width: 900px) {
+/* The board follows the room it has, not the window: the sidebar takes some. */
+@container home (max-width: 940px) {
+  .board {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@container home (max-width: 620px) {
   .board {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -2159,29 +2224,33 @@
     grid-column: auto;
   }
 
-  .home-hero {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 16px;
-    margin: 4px 0 24px;
-  }
-
-  .home-greet {
-    width: auto;
-  }
-
-  .ask-sent {
-    margin: -12px 0 16px;
-  }
-
   .home-inner {
     padding: 0 16px 48px;
   }
 
-  .home-bar {
-    height: 56px;
-    gap: 16px;
+  .home-hero {
+    gap: 14px;
+    margin: 8px 0 28px;
   }
+
+  .home-greet h1 {
+    font-size: 26px;
+    line-height: 32px;
+  }
+
+  .ask-sent {
+    margin: -18px 0 24px 18px;
+  }
+}
+
+@media (max-width: 760px) {
+  .home-bar {
+    display: flex;
+  }
+}
+
+/* ---------- phone ---------- */
+@media (max-width: 900px) {
 
   .mail {
     flex-direction: column;
@@ -2362,6 +2431,7 @@
 .return-bars {
   display: flex;
   gap: 8px;
+  padding-top: 4px;
 }
 
 .return-bar {
@@ -2376,16 +2446,38 @@
 
 .bar-track {
   width: 100%;
-  max-width: 30px;
-  height: 34px;
+  height: 56px;
   display: flex;
-  align-items: flex-end;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  border-bottom: 1px solid var(--c-line);
 }
 
 .return-bar .bar {
   width: 100%;
-  border-radius: 7px 7px 3px 3px;
+  max-width: 34px;
+  border-radius: 6px 6px 0 0;
   background: var(--c-chip);
+  transform-origin: bottom;
+  animation: c-grow 0.5s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+.return-bar:nth-child(2) .bar { animation-delay: 0.04s; }
+.return-bar:nth-child(3) .bar { animation-delay: 0.08s; }
+.return-bar:nth-child(4) .bar { animation-delay: 0.12s; }
+.return-bar:nth-child(5) .bar { animation-delay: 0.16s; }
+.return-bar:nth-child(n + 6) .bar { animation-delay: 0.2s; }
+
+.return-date {
+  margin-top: 4px;
+}
+
+@keyframes c-grow {
+  from {
+    transform: scaleY(0);
+  }
 }
 
 .return-price {
@@ -2763,8 +2855,25 @@
   .peek,
   .peek-sheet,
   .vcard-sent,
-  .peek-latest {
+  .peek-latest,
+  .vcard-pulse,
+  .return-bar .bar,
+  .g-bar-fill,
+  .ask-sent,
+  .qj,
+  .qj-box {
     animation: none !important;
     transition: none !important;
   }
+}
+
+/* Quiet bars need a little more light on a dark card than the chip colour gives. */
+:root[data-theme="dark"] .return-bar .bar,
+:root[data-theme="dark"] .g-bar-fill {
+  background: rgba(255, 255, 255, 0.13);
+}
+
+:root[data-theme="dark"] .return-bar.best .bar,
+:root[data-theme="dark"] .g-bar.hi .g-bar-fill {
+  background: var(--c-accent);
 }

@@ -9,7 +9,8 @@ import { NewThread } from "./components/NewThread";
 import { SettingsPage } from "./components/SettingsPage";
 import { ThreadList } from "./components/ThreadList";
 import { ThreadView } from "./components/ThreadView";
-import { MemoryIcon, PlusIcon, SettingsIcon } from "./icons";
+import { HomeIcon, MemoryIcon, PlusIcon, SearchIcon, SettingsIcon } from "./icons";
+import { QuickJump } from "./components/QuickJump";
 import { go, useRoute } from "./route";
 
 type AuthState =
@@ -84,6 +85,7 @@ function Shell({ onSignedOut }: { onSignedOut: () => void }) {
   const route = useRoute();
   const [threads, setThreads] = useState<Thread[]>([]);
   const [me, setMe] = useState<Me | null>(null);
+  const [jump, setJump] = useState(false);
   const timer = useRef<number | undefined>(undefined);
 
   const loadThreads = useCallback(async () => {
@@ -129,10 +131,20 @@ function Shell({ onSignedOut }: { onSignedOut: () => void }) {
     else void nav.clearAppBadge?.().catch(() => undefined);
   }, [needsYou]);
 
-  if (route.name === "home") return <Home me={me} onSignedOut={onSignedOut} />;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setJump((v) => !v);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+  const mac = /Mac|iPhone|iPad/.test(navigator.platform);
 
   return (
-    <div className={`shell ${showList ? "show-list" : "show-main"}`}>
+    <div className={`shell ${showList ? "show-list" : "show-main"} ${route.name === "home" ? "at-home" : ""}`}>
       <aside className="sidebar">
         <header className="sidebar-head">
           <div className="brand">
@@ -145,6 +157,18 @@ function Shell({ onSignedOut }: { onSignedOut: () => void }) {
             <PlusIcon />
           </button>
         </header>
+        <nav className="sidebar-nav">
+          <button className="nav-item search" onClick={() => setJump(true)} data-testid="open-quick-jump">
+            <SearchIcon />
+            <span>Search</span>
+            <kbd>{mac ? "⌘K" : "Ctrl K"}</kbd>
+          </button>
+          <a href="#" className={`nav-item ${route.name === "home" ? "active" : ""}`} data-testid="nav-home">
+            <HomeIcon />
+            <span>Home</span>
+            {needsYou ? <span className="nav-count">{needsYou}</span> : null}
+          </a>
+        </nav>
         <ThreadList threads={threads} current={current} />
         <nav className="sidebar-foot">
           <a href="#memory" className={`nav-item ${route.name === "memory" ? "active" : ""}`}>
@@ -159,7 +183,9 @@ function Shell({ onSignedOut }: { onSignedOut: () => void }) {
         </nav>
       </aside>
       <main className="main">
-        {route.name === "thread" ? (
+        {route.name === "home" ? (
+          <Home me={me} onSignedOut={onSignedOut} onSearch={() => setJump(true)} />
+        ) : route.name === "thread" ? (
           <ThreadView key={route.id} id={route.id} />
         ) : route.name === "new" ? (
           <NewThread />
@@ -173,6 +199,7 @@ function Shell({ onSignedOut }: { onSignedOut: () => void }) {
           </div>
         )}
       </main>
+      {jump ? <QuickJump threads={threads} onClose={() => setJump(false)} /> : null}
     </div>
   );
 }

@@ -130,9 +130,15 @@ test.describe("Milestone 1 — Threads that think", () => {
     await card.getByTestId("card-done").click();
     await expect(card).toHaveCount(0);
     await expect(page.getByTestId("done-strip").locator(`a[href="#thread/${threadId}"]`)).toBeVisible();
-    // History still lists every thread.
-    await page.getByTestId("nav-threads").click();
+    // The sidebar beside the board still lists every thread.
     await expect(page.getByTestId("thread-list")).toContainText(/houseplant/i);
+    // ⌘K finds a matter by what it is about and opens it.
+    await page.keyboard.press("ControlOrMeta+k");
+    await page.getByTestId("quick-jump-input").fill("houseplant");
+    await expect(page.getByTestId("quick-jump-item").first()).toContainText("Done");
+    await page.keyboard.press("Enter");
+    await expect(page).toHaveURL(new RegExp(`#thread/${threadId}`));
+    await expect(page.getByTestId("quick-jump")).toHaveCount(0);
   });
 
   test("[M1.5] model access is configurable", async ({ page, request }) => {

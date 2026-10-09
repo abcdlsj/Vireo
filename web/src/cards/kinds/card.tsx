@@ -116,8 +116,10 @@ function Rows({ items }: { items: NonNullable<Extract<Block, { type: "rows" }>["
             <span className="g-main">
               <span className="g-title">
                 {r.mark === "picked" || r.mark === "done" ? <CheckIcon /> : null}
+                {/* Several rows can need the owner at once; a dot says so without a word repeated down the list. */}
+                {r.mark === "attention" ? <span className="g-attn" role="img" aria-label={MARK_LABEL.attention} title={MARK_LABEL.attention} /> : null}
                 <span className="g-name">{title}</span>
-                {r.mark === "best" || r.mark === "attention" ? <span className="g-mark">{MARK_LABEL[r.mark]}</span> : null}
+                {r.mark === "best" ? <span className="g-mark">{MARK_LABEL.best}</span> : null}
               </span>
               {r.detail ? <span className="g-detail">{r.detail}</span> : null}
             </span>
