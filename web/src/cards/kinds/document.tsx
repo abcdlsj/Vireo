@@ -17,7 +17,7 @@ export default defineCard({
         className="doc"
         buttons={
           fileId && !card.buttons.length ? (
-            <div className="card-buttons">
+            <div className="vcard-buttons">
               <a className="cbtn" href={fileUrl(fileId)} target="_blank" rel="noreferrer">
                 Open file
               </a>

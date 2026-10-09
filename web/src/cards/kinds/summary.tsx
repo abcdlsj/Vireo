@@ -26,12 +26,12 @@ export default defineCard({
           </div>
         ) : null}
         {shown.length ? (
-          <ul className="rows">
+          <ul className="c-rows">
             {shown.map((it, i) => (
               <li key={i}>
                 <Avatar name={it.title ?? "?"} size={28} />
                 <div>
-                  <span className="row-title">
+                  <span className="c-row-title">
                     {isHttp(it.url) ? (
                       <a href={it.url} target="_blank" rel="noreferrer">
                         {it.title}
@@ -40,7 +40,7 @@ export default defineCard({
                       it.title
                     )}
                   </span>
-                  {it.text ? <span className="row-text">{it.text}</span> : null}
+                  {it.text ? <span className="c-row-text">{it.text}</span> : null}
                 </div>
               </li>
             ))}

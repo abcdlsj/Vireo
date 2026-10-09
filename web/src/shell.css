@@ -1,0 +1,448 @@
+/*
+ * The thread, memory and settings pages in the same language as the home
+ * board: the warm canvas, white surfaces with soft shadows, round controls.
+ * Loaded after styles.css and only restyles; layout stays where it is.
+ */
+.shell {
+  background: var(--c-canvas);
+  color: var(--c-ink);
+}
+
+.shell .main {
+  background: var(--c-canvas);
+}
+
+/* ---------- left: the list of matters ---------- */
+.shell .sidebar {
+  background: transparent;
+}
+
+.shell .sidebar-head {
+  padding: 14px 12px 8px 16px;
+}
+
+.shell .brand img {
+  box-shadow: none;
+}
+
+.shell .thread-list {
+  padding: 2px 10px 12px;
+}
+
+.shell .thread-list h3 {
+  margin: 18px 8px 6px;
+  color: var(--c-ink-3);
+  font-weight: 600;
+}
+
+.shell .thread-row {
+  min-height: 34px;
+  padding: 6px 10px;
+  border-radius: 12px;
+  margin-bottom: 2px;
+  color: var(--c-ink);
+}
+
+.shell .thread-row:hover {
+  background: rgba(30, 30, 20, 0.05);
+}
+
+.shell .thread-row.active {
+  background: var(--c-paper);
+  box-shadow: var(--c-shadow);
+}
+
+.shell .thread-row.active .title {
+  font-weight: 600;
+}
+
+.shell .thread-row.overview {
+  margin-top: 0;
+  font-weight: inherit;
+}
+
+.shell .row-sub {
+  color: var(--c-ink-2);
+}
+
+.shell .row-sub.attention {
+  color: var(--c-needs-ink);
+}
+
+.shell .dot.attention {
+  background: var(--c-needs);
+}
+
+.shell .pulse {
+  background: var(--c-accent);
+}
+
+.shell .sidebar-foot {
+  border-top: none;
+  padding: 8px 10px calc(12px + env(safe-area-inset-bottom));
+}
+
+.shell .nav-item {
+  border-radius: 12px;
+  color: var(--c-ink-2);
+}
+
+.shell .nav-item.active {
+  background: var(--c-paper);
+  color: var(--c-ink);
+  box-shadow: var(--c-shadow);
+}
+
+/* ---------- middle: the conversation ---------- */
+.shell .topbar {
+  padding-top: calc(14px + env(safe-area-inset-top));
+  padding-bottom: 10px;
+}
+
+.shell .crumbs {
+  color: var(--c-ink-3);
+}
+
+.shell .crumb-here {
+  color: var(--c-ink);
+  font-weight: 500;
+}
+
+.shell .head-actions .btn.ghost {
+  border-radius: 18px;
+}
+
+.shell .head-actions .btn.ghost:hover,
+.shell .head-actions .btn.ghost.on {
+  background: var(--c-paper);
+  box-shadow: var(--c-shadow);
+}
+
+.shell .page-head {
+  border-bottom: none;
+  padding: 18px 0 8px;
+}
+
+.shell .page-head h1,
+.shell .page-title,
+.shell .title-input {
+  font-size: 28px;
+  line-height: 34px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.shell .props {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.shell .props > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  padding: 0 12px;
+  border-radius: 15px;
+  background: var(--c-paper);
+  box-shadow: var(--c-shadow);
+  font-size: 13px;
+}
+
+.shell .props dt {
+  color: var(--c-ink-3);
+}
+
+.shell .props dt svg {
+  display: none;
+}
+
+.shell .props dd .tag {
+  background: transparent;
+  padding: 0;
+  font-weight: 600;
+}
+
+.shell .props dd .tag.orange {
+  color: var(--c-needs-ink);
+}
+
+.shell .props dd .tag.blue,
+.shell .props dd .tag.green {
+  color: var(--c-accent);
+}
+
+.shell .msg.user .bubble {
+  background: var(--c-paper);
+  color: var(--c-ink);
+  padding: 9px 16px;
+  border-radius: 20px 20px 6px 20px;
+  box-shadow: var(--c-shadow);
+}
+
+.shell .msg.vireo-task {
+  background: var(--c-paper);
+  border-radius: 18px;
+  box-shadow: var(--c-shadow);
+  border: none;
+}
+
+.shell .notice {
+  color: var(--c-ink-2);
+}
+
+.shell .action-card,
+.shell .procedure-card {
+  background: var(--c-paper);
+  border-radius: 22px;
+  padding: 18px 20px 20px;
+  box-shadow: var(--c-shadow);
+}
+
+.shell .action-card.pending {
+  box-shadow:
+    inset 3px 0 0 var(--c-needs),
+    var(--c-shadow);
+}
+
+.shell .action-card.failed {
+  box-shadow:
+    inset 3px 0 0 var(--c-minus),
+    var(--c-shadow);
+}
+
+.shell .action-card .btn,
+.shell .procedure-card .btn {
+  border-radius: 18px;
+  padding: 7px 16px;
+}
+
+.shell .action-card .btn.primary,
+.shell .procedure-card .btn.primary {
+  background: var(--c-ink);
+  border-color: var(--c-ink);
+  color: var(--c-paper);
+}
+
+.shell .composer {
+  background: transparent;
+}
+
+.shell .composer-box {
+  background: var(--c-paper);
+  border: none;
+  border-radius: 26px;
+  padding: 7px 7px 7px 12px;
+  box-shadow: var(--c-shadow);
+}
+
+.shell .composer-box:focus-within {
+  box-shadow:
+    0 0 0 2px var(--c-accent-soft),
+    var(--c-shadow);
+}
+
+.shell .composer .send {
+  width: 36px;
+  height: 36px;
+  border-radius: 18px;
+  background: var(--c-accent);
+  color: #fff;
+}
+
+.shell .composer .send:disabled {
+  opacity: 0.4;
+}
+
+/* ---------- right: details, a card of its own ---------- */
+@media (min-width: 761px) {
+  .shell .side-panel:not(.wide) {
+    width: 368px;
+  }
+
+  .shell .side-panel {
+    margin: 12px 12px 12px 0;
+    border: none;
+    border-radius: 22px;
+    background: var(--c-paper);
+    box-shadow: var(--c-shadow);
+    overflow: hidden;
+  }
+}
+
+.shell .panel-tabs {
+  gap: 2px;
+  margin: 12px 12px 4px;
+  padding: 3px;
+  border: none;
+  border-radius: 14px;
+  background: var(--c-soft);
+}
+
+.shell .panel-tabs button {
+  flex: 0 0 auto;
+  padding: 5px 10px;
+  margin: 0;
+  border: none;
+  border-radius: 11px;
+  font-size: 13px;
+  color: var(--c-ink-2);
+}
+
+.shell .panel-tabs button.on {
+  background: var(--c-paper);
+  color: var(--c-ink);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(30, 30, 20, 0.08);
+}
+
+.shell .panel-tabs .close {
+  padding: 5px;
+  margin: 0;
+  color: var(--c-ink-3);
+}
+
+.shell .panel-tabs .close:hover {
+  background: var(--c-paper);
+  color: var(--c-ink);
+}
+
+.shell .panel-body {
+  padding: 8px 12px 16px;
+}
+
+.shell .panel-body h4 {
+  margin: 16px 8px 6px;
+  color: var(--c-ink-3);
+  font-weight: 600;
+}
+
+.shell .related-item {
+  align-items: center;
+  gap: 12px;
+  padding: 8px;
+  border-radius: 14px;
+  color: var(--c-ink);
+}
+
+.shell .related-item:hover {
+  background: var(--c-soft);
+}
+
+.related-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  line-height: 18px;
+}
+
+.related-text small {
+  font-size: 12px;
+}
+
+.kind-tile {
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: var(--c-soft);
+  color: var(--c-ink-2);
+}
+
+.kind-tile.event {
+  background: var(--c-accent-soft);
+  color: var(--c-accent);
+}
+
+.kind-tile.email {
+  background: #e6eef7;
+  color: #28456c;
+}
+
+.kind-tile.page {
+  background: #fbeee1;
+  color: #7a3e09;
+}
+
+:root[data-theme="dark"] .kind-tile.email {
+  background: #1f2f40;
+  color: #a9c6e6;
+}
+
+:root[data-theme="dark"] .kind-tile.page {
+  background: #3d2c1f;
+  color: #e9b98d;
+}
+
+.shell .thumb {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+}
+
+.shell .audit-stats {
+  gap: 6px;
+  border: none;
+  background: transparent;
+  border-radius: 0;
+}
+
+.shell .audit-stats div {
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: var(--c-soft);
+}
+
+.shell .audit-stats b {
+  font-size: 17px;
+  letter-spacing: -0.01em;
+}
+
+.shell .audit-row {
+  border-bottom-color: var(--c-line);
+}
+
+/* settings sections become white cards on the canvas */
+.shell .settings .card {
+  background: var(--c-paper);
+  border: none;
+  border-radius: 22px;
+  box-shadow: var(--c-shadow);
+  padding: 20px 22px 22px;
+}
+
+.shell .settings-nav {
+  border-right: none;
+}
+
+.shell .settings-nav-item {
+  padding: 7px 12px;
+  margin-bottom: 2px;
+  border-radius: 12px;
+  color: var(--c-ink-2);
+}
+
+.shell .settings-nav-item:hover {
+  background: rgba(30, 30, 20, 0.05);
+}
+
+.shell .settings-nav-item.active {
+  background: var(--c-paper);
+  color: var(--c-ink);
+  font-weight: 600;
+  box-shadow: var(--c-shadow);
+}
+
+@media (max-width: 760px) {
+  .shell .sidebar {
+    background: var(--c-canvas);
+  }
+
+  .shell .side-panel {
+    background: var(--c-paper);
+  }
+}

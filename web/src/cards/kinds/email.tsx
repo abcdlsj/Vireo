@@ -30,8 +30,8 @@ export function EmailBody({
         <div className="mail-from">
           <Avatar name={from} size={30} />
           <div>
-            <span className="row-title">{from}</span>
-            <span className="row-text">{[address, at ? relTime(at.getTime()) : ""].filter(Boolean).join(" · ")}</span>
+            <span className="c-row-title">{from}</span>
+            <span className="c-row-text">{[address, at ? relTime(at.getTime()) : ""].filter(Boolean).join(" · ")}</span>
           </div>
         </div>
         <span className="mail-subject">{subject}</span>
