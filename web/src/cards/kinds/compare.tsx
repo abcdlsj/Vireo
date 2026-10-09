@@ -22,7 +22,7 @@ export default defineCard({
     return (
       <Frame card={card} expanded={expanded}>
         <h3 className="c-title">{card.title}</h3>
-        {subtitle ? <p className="c-sub">{subtitle}</p> : null}
+        {subtitle && (expanded || options.length < 3) ? <p className="c-sub">{subtitle}</p> : null}
         <ol className="options">
           {options.slice(0, expanded ? 12 : 3).map((o, i) => (
             <li key={i} className={o.badge ? "picked" : ""}>

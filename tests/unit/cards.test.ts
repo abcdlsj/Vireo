@@ -30,7 +30,7 @@ describe("cards", () => {
   it("describes every kind's data to the model", () => {
     const description = open().tools.get("show_card")!.description;
     for (const k of CARD_KINDS) expect(description).toContain(`- ${k.name}:`);
-    expect(shapeOf(CARD_KINDS.find((k) => k.name === "answer")!.data)).toBe("{ text, sources?: [{ title, url }] }");
+    expect(shapeOf(CARD_KINDS.find((k) => k.name === "answer")!.data)).toBe("{ text: ≤600, sources?: [{ title: ≤80, url }] ≤5 }");
   });
 
   it("checks the data against the kind and updates a card in place", async () => {
@@ -38,6 +38,11 @@ describe("cards", () => {
     const t = a.threads.create({ title: "Tokyo flights" });
     await expect(show(a, t.id, { kind: "flight", title: "PVG to HND", data: { from: "PVG" } })).rejects.toThrow(/does not fit a flight card/);
     await expect(show(a, t.id, { kind: "hologram", title: "x", data: {} })).rejects.toThrow(/Unknown kind/);
+    // Cards stay glanceable: long titles and fields are refused, so the model says it shorter.
+    await expect(show(a, t.id, { kind: "answer", title: "x".repeat(61), data: { text: "x" } })).rejects.toThrow(/title is too long/);
+    await expect(
+      show(a, t.id, { kind: "compare", title: "Hotels", data: { options: [{ title: "A hotel with a very long name that also lists its price ¥804" }] } }),
+    ).rejects.toThrow(/options\/0\/title/);
 
     const out = await show(a, t.id, {
       kind: "flight",
