@@ -72,7 +72,7 @@ function Decide({ card, refresh }: { card: Card; refresh: () => void }) {
     }
   };
   return (
-    <div className="card-buttons">
+    <div className="vcard-buttons">
       <button className="cbtn primary" disabled={busy} onClick={() => void run("confirm")} data-testid="card-confirm">
         {card.data.tool === "send_email" ? "Send" : card.data.tool === "create_event" ? "Send invite" : "Confirm"}
       </button>
@@ -82,7 +82,7 @@ function Decide({ card, refresh }: { card: Card; refresh: () => void }) {
       <button className="cbtn ghost" disabled={busy} onClick={() => void run("cancel")} data-testid="card-cancel">
         Not now
       </button>
-      {error ? <span className="card-error">{error}</span> : null}
+      {error ? <span className="vcard-error">{error}</span> : null}
     </div>
   );
 }

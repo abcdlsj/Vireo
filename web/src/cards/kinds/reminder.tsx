@@ -16,7 +16,7 @@ export default defineCard({
         tone="warm"
         label={<span className="bell">Reminder</span>}
         buttons={
-          <div className="card-buttons">
+          <div className="vcard-buttons">
             <button className="cbtn ghost" onClick={() => void api.post(`/api/reminders/${String(card.data.reminderId)}/cancel`).then(refresh)}>
               Cancel
             </button>

@@ -1,6 +1,5 @@
 import type { Thread } from "../api";
 import { relTime } from "../format";
-import { HomeIcon } from "../icons";
 
 const GROUPS: { key: Thread["group"]; label: string }[] = [
   { key: "needs_you", label: "Needs you" },
@@ -38,7 +37,6 @@ function Row({ t, active }: { t: Thread; active: boolean }) {
   const sub = t.group === "overview" ? "" : [t.temporary ? "Temporary" : "", status].filter(Boolean).join(" · ");
   return (
     <a href={`#thread/${t.id}`} className={`thread-row ${active ? "active" : ""} ${t.group} ${sub ? "two-line" : ""}`} data-testid="thread-row" data-thread-id={t.id} title={sub || undefined}>
-      {t.group === "overview" ? <HomeIcon /> : null}
       <span className="row-text">
         <span className="row-top">
           <span className="title">{t.title}</span>

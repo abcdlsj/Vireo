@@ -40,7 +40,7 @@ export function EventBody({
         <p className="c-sub">{[s && e ? span(s, e) : "", location].filter(Boolean).join(" · ")}</p>
         {people.length ? (
           <div className="people">
-            <span className="stack">
+            <span className="c-stack">
               {people.slice(0, 4).map((p) => (
                 <Avatar key={p} name={p} size={26} />
               ))}

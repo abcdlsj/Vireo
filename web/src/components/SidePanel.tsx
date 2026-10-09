@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ClipboardEvent, type CompositionEvent
 import { api, fileUrl, type ThreadDetail } from "../api";
 import { authedUrl } from "../hosts";
 import { bytes, compact, dateTime, duration, purposeLabel, shortTime, stepOutcome, stepSubject, tokens, toolLabel, usd } from "../format";
-import { CloseIcon, FullscreenIcon, NarrowIcon, WidenIcon } from "../icons";
+import { AttachIcon, CalendarIcon, CloseIcon, FullscreenIcon, GlobeIcon, MailIcon, NarrowIcon, WidenIcon } from "../icons";
 
 interface ToolCallRow {
   id: number;
@@ -83,8 +83,14 @@ export function SidePanel({ detail, running, browsing, onClose }: { detail: Thre
               <h4>Files</h4>
               {detail.files.map((f) => (
                 <a key={f.id} className="related-item" href={fileUrl(f.id)} target="_blank" rel="noreferrer">
-                  {f.mime.startsWith("image/") ? <img src={fileUrl(f.id)} alt="" className="thumb" /> : <span className="kind">{f.origin === "produced" ? "📄" : "📎"}</span>}
-                  <span>
+                  {f.mime.startsWith("image/") ? (
+                    <img src={fileUrl(f.id)} alt="" className="thumb" />
+                  ) : (
+                    <span className="kind-tile">
+                      <AttachIcon />
+                    </span>
+                  )}
+                  <span className="related-text">
                     {f.name}
                     <small className="muted"> · {bytes(f.size)}</small>
                   </span>
@@ -100,8 +106,8 @@ export function SidePanel({ detail, running, browsing, onClose }: { detail: Thre
                 <h4>{kind === "event" ? "Events" : kind === "email" ? "Emails" : "Web pages"}</h4>
                 {list.map((r) => (
                   <a key={r.id} className="related-item" href={r.url ?? undefined} target="_blank" rel="noreferrer">
-                    <span className="kind">{kind === "event" ? "📅" : kind === "email" ? "✉︎" : "🌐"}</span>
-                    <span>
+                    <span className={`kind-tile ${kind}`}>{kind === "event" ? <CalendarIcon /> : kind === "email" ? <MailIcon /> : <GlobeIcon />}</span>
+                    <span className="related-text">
                       {r.title}
                       {r.data && "start" in r.data ? <small className="muted"> · {dateTime(Date.parse(String(r.data.start)))}</small> : null}
                       {r.url && kind === "page" ? <small className="muted url">{r.url}</small> : null}

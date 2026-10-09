@@ -16,7 +16,7 @@ export default defineCard({
     const statusLine = field(card, "statusLine", "");
     if (card.data.browsing && card.running) {
       return (
-        <Frame card={card} expanded={expanded} tone="dark" label={<span className="live-dot">Working on the web</span>}>
+        <Frame card={card} expanded={expanded} tone="dark" label={<span className="web-live">Working on the web</span>}>
           <LiveFrame threadId={card.threadId} />
           <h3 className="c-title">{statusLine || card.title}</h3>
         </Frame>
@@ -41,9 +41,9 @@ export default defineCard({
 });
 
 function ThreadStatus({ status, running }: { status: string; running: boolean }) {
-  if (running) return <span className="card-status working corner">Working</span>;
-  if (status === "needs_you") return <span className="card-status needs corner">Needs you</span>;
-  if (status === "done") return <span className="card-status done corner">Done</span>;
+  if (running) return <span className="vcard-status working corner">Working</span>;
+  if (status === "needs_you") return <span className="vcard-status needs corner">Needs you</span>;
+  if (status === "done") return <span className="vcard-status done corner">Done</span>;
   return null;
 }
 

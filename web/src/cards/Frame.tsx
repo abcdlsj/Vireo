@@ -41,40 +41,40 @@ export function Frame({
   const own = buttons ?? (card.buttons.length ? <Buttons card={card} buttons={card.buttons} /> : null);
   return (
     <article
-      className={`card tone-${tone} ${expanded ? "expanded" : ""} ${flush ? "flush" : ""} ${card.status} ${className ?? ""}`}
+      className={`vcard tone-${tone} ${expanded ? "expanded" : ""} ${flush ? "flush" : ""} ${card.status} ${className ?? ""}`}
       onClick={open}
       data-testid="card"
       data-kind={card.kind}
       data-status={card.status}
     >
       {label !== null ? (
-        <header className="card-head">
-          <span className="card-label">
+        <header className="vcard-head">
+          <span className="vcard-label">
             {label ?? (card.threadTitle && card.threadTitle !== card.title ? <a href={`#thread/${card.threadId}`}>{card.threadTitle}</a> : null)}
           </span>
           <Status card={card} />
         </header>
       ) : null}
-      <div className="card-body">{children}</div>
-      {own ? <footer className="card-foot">{own}</footer> : null}
+      <div className="vcard-body">{children}</div>
+      {own ? <footer className="vcard-foot">{own}</footer> : null}
     </article>
   );
 }
 
 export function Status({ card }: { card: Card }) {
-  if (card.status === "needs_you") return <span className="card-status needs">Needs you</span>;
-  if (card.running || card.status === "working") return <span className="card-status working">Working</span>;
-  if (card.status === "watching") return <span className="card-status watching">Watching</span>;
-  if (card.status === "done") return <span className="card-status done">Done</span>;
-  return <span className="card-status quiet">{relTime(card.updatedAt)}</span>;
+  if (card.status === "needs_you") return <span className="vcard-status needs">Needs you</span>;
+  if (card.running || card.status === "working") return <span className="vcard-status working">Working</span>;
+  if (card.status === "watching") return <span className="vcard-status watching">Watching</span>;
+  if (card.status === "done") return <span className="vcard-status done">Done</span>;
+  return <span className="vcard-status quiet">{relTime(card.updatedAt)}</span>;
 }
 
 export function Buttons({ card, buttons }: { card: Card; buttons: CardButton[] }) {
   const [busy, setBusy] = useState(false);
   const [sent, setSent] = useState("");
-  if (sent) return <span className="card-sent">Sent “{sent}”</span>;
+  if (sent) return <span className="vcard-sent">Sent “{sent}”</span>;
   return (
-    <div className="card-buttons">
+    <div className="vcard-buttons">
       {buttons.map((b, i) => (
         <button
           key={i}

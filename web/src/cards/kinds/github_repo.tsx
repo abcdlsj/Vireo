@@ -41,7 +41,7 @@ export default defineCard({
           </div>
         ) : null}
         {stats.length ? (
-          <div className="stats small">
+          <div className="stats stats-sm">
             {stats.slice(0, 3).map((s, i) => (
               <div key={i}>
                 <span className="stat-value">{s.value}</span>
