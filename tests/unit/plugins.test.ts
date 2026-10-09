@@ -3,7 +3,9 @@ import type { AddressInfo } from "node:net";
 import { resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { App } from "../../server/src/app.js";
+import { AGENTS } from "../../server/src/agents.js";
 import { Db } from "../../server/src/db.js";
+import { buildSystemPrompt } from "../../server/src/prompt.js";
 import { messageText } from "../../server/src/threads.js";
 import { tempDir, testApp } from "./helpers.js";
 
@@ -82,6 +84,37 @@ describe("plugins", () => {
     expect(app.plugins.config("google")).toMatchObject({ client_id: "cid.apps.googleusercontent.com", client_secret: "gsecret-1" });
     expect(app.db.getKv("google.client")).toBeUndefined();
     expect(app.integrations.status().google).toMatchObject({ installed: true, connected: true, email: "owner@example.com" });
+  });
+});
+
+describe("capabilities", () => {
+  it("tells the assistant which plugins are missing or unfinished", async () => {
+    const app = open();
+    await app.plugins.install("search", { provider: "tavily" });
+    const caps = app.plugins.capabilities();
+    expect(caps.find((c) => c.id === "tailscale")).toMatchObject({ state: "not_added" });
+    expect(caps.find((c) => c.id === "search")).toMatchObject({ state: "needs_setup", message: expect.stringContaining("API key") });
+    const t = app.threads.create({ title: "Check my NAS" });
+    const prompt = buildSystemPrompt(app, AGENTS.general!, app.threads.get(t.id)!, "", AGENTS);
+    expect(prompt).toContain("- tailscale: Tailscale.");
+    expect(prompt).toContain("added, needs setup: Add a Tavily API key");
+    expect(prompt).toContain("call suggest_setup");
+  });
+
+  it("links to the plugin's settings and carries on once it is ready", async () => {
+    const app = open();
+    const t = app.threads.create({ title: "Check my NAS" });
+    const thread = app.threads.get(t.id)!;
+    const out = await app.tools.get("suggest_setup")!.run({ plugin: "tailscale" }, { app, thread, agent: "general" });
+    expect(out.text).toContain("[Tailscale](#settings/plugins/tailscale)");
+    await expect(app.tools.get("suggest_setup")!.run({ plugin: "nope" }, { app, thread, agent: "general" })).rejects.toThrow("Unknown plugin");
+
+    await app.plugins.install("tailscale", { mode: "system", bin_dir: FAKE_TS });
+    const resumed = app.threads.messages(t.id).filter((m) => m.role === "user").map((m) => messageText(m.body));
+    expect(resumed.at(-1)).toContain("Tailscale is set up now");
+    // Once is enough: a later refresh does not resume it again.
+    await app.plugins.refreshStatuses();
+    expect(app.threads.messages(t.id).filter((m) => m.role === "user")).toHaveLength(resumed.length);
   });
 });
 

@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, onEvent, type PluginField, type PluginView } from "../api";
 
-/** Settings → Plugins: installed plugins with their settings, plus the community catalog. */
-export function PluginsCard({ reload }: { reload: () => Promise<void> }) {
+/**
+ * Settings → Plugins: installed plugins with their settings, plus the
+ * community catalog. A link to #settings/plugins/<id> (the assistant sends
+ * one when a request needs that plugin) opens straight to it.
+ */
+export function PluginsCard({ reload, focus }: { reload: () => Promise<void>; focus?: string }) {
   const [plugins, setPlugins] = useState<PluginView[] | null>(null);
   const [browsing, setBrowsing] = useState(false);
   const [error, setError] = useState("");
@@ -11,6 +15,14 @@ export function PluginsCard({ reload }: { reload: () => Promise<void> }) {
     void load();
   }, [load]);
   useEffect(() => onEvent((e) => (e.type === "plugins.updated" ? void load() : undefined)), [load]);
+  const loaded = plugins !== null;
+  useEffect(() => {
+    if (!loaded || !focus) return;
+    const target = plugins?.find((p) => p.id === focus);
+    if (target && !target.installed) setBrowsing(true);
+    requestAnimationFrame(() => document.querySelector(`[data-plugin="${focus}"]`)?.scrollIntoView({ block: "center", behavior: "smooth" }));
+    // Only when the page opens on a plugin, not on every reload of the list.
+  }, [loaded, focus]);
 
   const run = async (fn: () => Promise<unknown>) => {
     setError("");
@@ -38,7 +50,7 @@ export function PluginsCard({ reload }: { reload: () => Promise<void> }) {
         <div className="plugin-catalog" data-testid="plugin-catalog">
           {available.length === 0 ? <p className="muted small">Every community plugin is added.</p> : null}
           {available.map((p) => (
-            <div key={p.id} className="plugin-row">
+            <div key={p.id} className={`plugin-row${p.id === focus ? " focused" : ""}`} data-plugin={p.id}>
               <div>
                 <b>{p.name}</b> <span className="muted small">by {p.author}</span>
                 <p className="muted small">{p.description}</p>
@@ -52,7 +64,7 @@ export function PluginsCard({ reload }: { reload: () => Promise<void> }) {
       ) : null}
       {plugins && installed.length === 0 && !browsing ? <p className="muted small">No plugins yet. Add Google, Tailscale and more from Community plugins.</p> : null}
       {installed.map((p) => (
-        <Plugin key={p.id} plugin={p} run={run} />
+        <Plugin key={p.id} plugin={p} run={run} focused={p.id === focus} />
       ))}
     </section>
   );
@@ -60,8 +72,8 @@ export function PluginsCard({ reload }: { reload: () => Promise<void> }) {
 
 const STATE_LABEL: Record<string, string> = { ready: "Ready", setup: "Needs setup", login: "Sign in needed", starting: "Starting", error: "Error" };
 
-function Plugin({ plugin: p, run }: { plugin: PluginView; run: (fn: () => Promise<unknown>) => Promise<void> }) {
-  const [open, setOpen] = useState(p.status?.state === "setup");
+function Plugin({ plugin: p, run, focused }: { plugin: PluginView; run: (fn: () => Promise<unknown>) => Promise<void>; focused: boolean }) {
+  const [open, setOpen] = useState(p.status?.state === "setup" || (focused && p.status?.state !== "ready"));
   const [form, setForm] = useState<Record<string, unknown>>({});
   const [note, setNote] = useState("");
   const value = (f: PluginField) => (f.key in form ? form[f.key] : f.type === "secret" ? "" : (p.config[f.key] ?? f.default ?? ""));
@@ -69,7 +81,7 @@ function Plugin({ plugin: p, run }: { plugin: PluginView; run: (fn: () => Promis
   const st = p.status;
 
   return (
-    <div className="plugin" data-testid={`plugin-${p.id}`}>
+    <div className={`plugin${focused ? " focused" : ""}`} data-testid={`plugin-${p.id}`} data-plugin={p.id}>
       <div className="plugin-row">
         <div>
           <b>{p.name}</b> {st ? <span className={`plugin-state ${st.state}`}>{STATE_LABEL[st.state] ?? st.state}</span> : null}

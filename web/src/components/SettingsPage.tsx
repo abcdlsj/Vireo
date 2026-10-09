@@ -19,7 +19,9 @@ const SECTIONS = [
 
 export function SettingsPage({ section, me, reload, onSignedOut }: { section: string; me: Me | null; reload: () => Promise<void>; onSignedOut: () => void }) {
   if (!me) return <div className="page" />;
-  const cur = SECTIONS.find((s) => s.id === section) ?? SECTIONS[0]!;
+  // A section can name one item in it, e.g. plugins/google.
+  const [base, item] = section.split("/");
+  const cur = SECTIONS.find((s) => s.id === base) ?? SECTIONS[0]!;
   return (
     <div className="page" data-testid="settings-page">
       <header className="topbar">
@@ -51,7 +53,7 @@ export function SettingsPage({ section, me, reload, onSignedOut }: { section: st
           ) : cur.id === "model" ? (
             <Models reload={reload} />
           ) : cur.id === "plugins" ? (
-            <PluginsCard reload={reload} />
+            <PluginsCard reload={reload} focus={item} />
           ) : cur.id === "hosts" ? (
             <HostsSettings />
           ) : cur.id === "notifications" ? (

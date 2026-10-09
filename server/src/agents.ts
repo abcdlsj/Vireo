@@ -33,6 +33,7 @@ const COMMON = [
   "create_file",
   "propose_procedure",
   "show_card",
+  "suggest_setup",
 ];
 
 export const AGENTS: Record<string, AgentDef> = {
@@ -47,6 +48,7 @@ export const AGENTS: Record<string, AgentDef> = {
       "- calendar: schedule, free time, meetings, events, invitations, conflicts.",
       "- email: reading, searching, summarising, drafting or sending email.",
       "- browser: doing something on a website (log in, fill a form, book, buy, compare on a specific site), and looking up live data that only shows in an interactive site: flight or train times, hotel and ticket prices, maps, shopping results, dashboards.",
+      "- A request that needs a capability listed as not ready goes to general, which helps the owner set it up.",
       "Only answer directly (without transferring) for a greeting or a one-line acknowledgement. Never ask the owner which specialist to use.",
     ].join("\n"),
     tools: [],

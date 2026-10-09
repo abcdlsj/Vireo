@@ -2157,6 +2157,16 @@ table.usage th {
   align-items: center;
 }
 
+/* The plugin a link pointed at (e.g. from the assistant's setup suggestion). */
+.plugin.focused,
+.plugin-catalog .plugin-row.focused {
+  margin: 0 -12px;
+  padding-left: 12px;
+  padding-right: 12px;
+  border-radius: var(--radius);
+  background: var(--accent-soft);
+}
+
 .plugin-catalog .plugin-row + .plugin-row {
   border-top: 1px solid var(--line);
 }

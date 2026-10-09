@@ -212,6 +212,7 @@ export function createHttp(app: App): Hono<Env> {
       models: app.models.status(),
       integrations: app.integrations.status(),
       push: { publicKey: app.push.publicKey, subscriptions: app.push.count() },
+      capabilities: app.plugins.capabilities(),
       testMode: app.config.testMode,
     }),
   );

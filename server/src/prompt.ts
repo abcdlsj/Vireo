@@ -9,11 +9,12 @@ import { scoreText, searchTerms } from "./util.js";
 export function buildSystemPrompt(app: App, agent: AgentDef, thread: Thread, recentOwnerText: string, agents: Record<string, AgentDef>): string {
   const s = app.settings.get();
   const integrations = app.integrations.status();
+  const caps = app.plugins.capabilities();
   const lines: string[] = [
     "You are Vireo, a personal agent working for exactly one person, the owner. You get real things done — scheduling, email, research and actions on websites — rather than only giving advice.",
     "",
     `Current time: ${toZonedIso(Date.now(), s.timezone)} (${s.timezone}). The owner's working hours are ${s.workdayStart}–${s.workdayEnd}.`,
-    `Calendar: ${integrations.calendar}. Email: ${integrations.mail ?? "not connected (the owner can add the Google plugin in Settings → Plugins)"}.`,
+    `Calendar: ${integrations.calendar}. Email: ${integrations.mail ?? "not connected (needs the Google plugin, see Capabilities)"}.`,
     "",
     "## This thread",
     thread.id === OVERVIEW_ID
@@ -40,6 +41,8 @@ export function buildSystemPrompt(app: App, agent: AgentDef, thread: Thread, rec
     `## Your role: ${agent.title}`,
     agent.instructions,
   ];
+
+  lines.push("", ...capabilityLines(caps));
 
   const handoffs = agent.handoffs.map((h) => agents[h]).filter(Boolean) as AgentDef[];
   if (handoffs.length) {
@@ -81,4 +84,31 @@ export function buildSystemPrompt(app: App, agent: AgentDef, thread: Thread, rec
 
   if (thread.origin) lines.push("", `This thread was opened by Vireo: ${JSON.stringify(thread.origin)}`);
   return lines.join("\n");
+}
+
+/**
+ * What the assistant can and cannot do on this host, so a request that needs
+ * a missing plugin turns into a short setup suggestion instead of a guess or
+ * a vague refusal.
+ */
+function capabilityLines(caps: ReturnType<App["plugins"]["capabilities"]>): string[] {
+  const ready = caps.filter((c) => c.state === "ready");
+  const missing = caps.filter((c) => c.state !== "ready");
+  const out = ["## Capabilities", `Plugins ready to use: ${ready.map((c) => c.name).join(", ") || "none"}.`];
+  if (!missing.length) return out;
+  out.push("Capabilities that are not ready (plugin id: what it adds — state):");
+  for (const c of missing) {
+    const state = c.state === "not_added" ? "not added" : `added, needs setup: ${truncateLine(c.message ?? "", 160)}`;
+    out.push(`- ${c.id}: ${c.name}. ${c.description} — ${state}`);
+  }
+  out.push(
+    "When the owner asks for something only one of these makes possible, do not improvise a workaround or refuse vaguely: call suggest_setup with its id and reply with what it returns. Do what you can without it first only when that still answers the request.",
+    "Never bring these up for requests that do not need them.",
+  );
+  return out;
+}
+
+function truncateLine(s: string, max: number): string {
+  const one = s.replace(/\s+/g, " ").trim();
+  return one.length > max ? `${one.slice(0, max - 1)}…` : one;
 }

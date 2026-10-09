@@ -6,7 +6,7 @@ import type { App } from "../app.js";
 import { bus } from "../bus.js";
 import type { Notification } from "../push.js";
 import type { ToolDef } from "../tools/types.js";
-import { errorMessage } from "../util.js";
+import { errorMessage, now } from "../util.js";
 import type { SearchResult } from "../tools/research.js";
 import { feishuPlugin } from "./feishu/index.js";
 import { googlePlugin } from "./google/index.js";
@@ -40,11 +40,38 @@ export interface PluginView {
   actions: { id: string; label: string; primary?: boolean }[];
 }
 
+/** What the assistant knows about one catalog plugin: whether it can use it now. */
+export interface Capability {
+  id: string;
+  name: string;
+  description: string;
+  state: "ready" | "needs_setup" | "not_added";
+  /** What is left to do, for a plugin that is added but not ready. */
+  message?: string;
+}
+
+/** A thread that asked for something a plugin would make possible, waiting for it to be ready. */
+interface SetupWait {
+  threadId: string;
+  plugin: string;
+  at: number;
+}
+
 const KEY = "plugins";
+const WAITS = "plugins.setup_waits";
+/** Statuses older than this are refreshed in the background when read. */
+const STATUS_TTL = 30_000;
+/** A thread stops waiting on a setup after a week. */
+const WAIT_TTL = 7 * 864e5;
 
 /** Installs, configures and runs plugins; installed plugins survive restarts. */
 export class Plugins {
   private readonly runtimes = new Map<string, PluginRuntime>();
+  /** Last known status of each installed plugin, so a prompt can say what is ready without waiting on it. */
+  private readonly statuses = new Map<string, PluginStatus>();
+  private checkedAt = 0;
+  private refreshing: Promise<void> | undefined;
+  private again: Promise<void> | undefined;
 
   constructor(private readonly app: App) {
     for (const def of CATALOG) {
@@ -122,6 +149,7 @@ export class Plugins {
   /** Starts every installed plugin; failures are reported in its status, not thrown. */
   async start(): Promise<void> {
     for (const def of CATALOG) if (this.installed(def.id)) await this.startOne(def.id);
+    await this.refreshStatuses();
   }
 
   private async startOne(id: string): Promise<void> {
@@ -141,6 +169,7 @@ export class Plugins {
     this.write(id, config, true);
     this.changed();
     await this.startOne(id);
+    await this.refreshStatuses();
   }
 
   async uninstall(id: string): Promise<void> {
@@ -149,6 +178,7 @@ export class Plugins {
     const all = this.all();
     delete all[id];
     this.app.db.setKv(KEY, all);
+    this.statuses.delete(id);
     this.changed();
   }
 
@@ -158,6 +188,7 @@ export class Plugins {
     await this.runtimes.get(id)?.stop?.().catch(() => undefined);
     await this.startOne(id);
     this.changed();
+    await this.refreshStatuses();
   }
 
   async action(id: string, actionId: string, req: RequestInfo): Promise<ActionResult> {
@@ -165,6 +196,7 @@ export class Plugins {
     if (!r?.runAction) throw new Error("This plugin has no actions.");
     const out = await r.runAction(actionId, req);
     this.changed();
+    await this.refreshStatuses();
     return out;
   }
 
@@ -188,6 +220,7 @@ export class Plugins {
       } catch (err) {
         status = { state: "error", message: errorMessage(err) };
       }
+      this.noteStatus(def.id, status);
     }
     return {
       id: def.id,
@@ -202,6 +235,95 @@ export class Plugins {
       status,
       actions: installed ? (runtime.actions?.() ?? []) : [],
     };
+  }
+
+  /**
+   * Asks every installed plugin for its status. One refresh runs at a time; a
+   * call during one runs again after it, so a change just made is always seen.
+   */
+  refreshStatuses(): Promise<void> {
+    if (this.refreshing) {
+      this.again ??= this.refreshing.then(() => {
+        this.again = undefined;
+        return this.refreshStatuses();
+      });
+      return this.again;
+    }
+    const run = (async () => {
+      for (const def of CATALOG) {
+        if (!this.installed(def.id)) {
+          this.statuses.delete(def.id);
+          continue;
+        }
+        let st: PluginStatus;
+        try {
+          st = await this.runtimes.get(def.id)!.status();
+        } catch (err) {
+          st = { state: "error", message: errorMessage(err) };
+        }
+        this.noteStatus(def.id, st);
+      }
+      this.checkedAt = now();
+    })();
+    // Cleared once settled (not inside the run, which may finish before it is assigned).
+    this.refreshing = run.finally(() => {
+      this.refreshing = undefined;
+    });
+    return this.refreshing;
+  }
+
+  private noteStatus(id: string, status: PluginStatus): void {
+    const was = this.statuses.get(id)?.state;
+    this.statuses.set(id, status);
+    if (status.state === "ready" && was !== "ready") this.resumeWaiting(id);
+  }
+
+  /**
+   * Every catalog plugin and whether the assistant can use it now, from the
+   * last known statuses (refreshed in the background when stale).
+   */
+  capabilities(): Capability[] {
+    if (now() - this.checkedAt > STATUS_TTL) void this.refreshStatuses();
+    return CATALOG.map((def) => {
+      const base = { id: def.id, name: def.name, description: def.description };
+      if (!this.installed(def.id)) return { ...base, state: "not_added" as const };
+      const st = this.statuses.get(def.id);
+      // Not checked yet: an added plugin is assumed to work until its status says otherwise.
+      if (!st || st.state === "ready") return { ...base, state: "ready" as const };
+      return { ...base, state: "needs_setup" as const, message: st.message };
+    });
+  }
+
+  /** Remembers that a thread waits on a plugin, to pick the matter up again once it is ready. */
+  waitForSetup(threadId: string, plugin: string): void {
+    this.def(plugin);
+    const waits = this.waits().filter((w) => !(w.threadId === threadId && w.plugin === plugin));
+    waits.push({ threadId, plugin, at: now() });
+    this.app.db.setKv(WAITS, waits);
+  }
+
+  private waits(): SetupWait[] {
+    return (this.app.db.getKv<SetupWait[]>(WAITS) ?? []).filter((w) => now() - w.at < WAIT_TTL);
+  }
+
+  /** A plugin just became ready: each thread that waited on it carries on with what the owner asked. */
+  private resumeWaiting(plugin: string): void {
+    const waits = this.waits();
+    const due = waits.filter((w) => w.plugin === plugin);
+    if (!due.length) return;
+    this.app.db.setKv(
+      WAITS,
+      waits.filter((w) => w.plugin !== plugin),
+    );
+    const name = this.def(plugin).name;
+    for (const w of due) {
+      if (!this.app.threads.get(w.threadId)) continue;
+      try {
+        this.app.runner.send(w.threadId, `${name} is set up now. Carry on with what I asked for in this thread.`, { source: "vireo" });
+      } catch (err) {
+        console.warn(`[plugin:${plugin}] could not resume ${w.threadId}: ${errorMessage(err)}`);
+      }
+    }
   }
 
   /** Tools from installed plugins. */

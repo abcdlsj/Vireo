@@ -137,7 +137,17 @@ export interface Me {
   models: ModelStatus;
   integrations: { calendar: string; mail: string | null; google: { installed: boolean; configured: boolean; connected: boolean; email?: string } };
   push: { publicKey: string; subscriptions: number };
+  /** Every community plugin and whether Vireo can use it now. */
+  capabilities: Capability[];
   testMode: boolean;
+}
+
+export interface Capability {
+  id: string;
+  name: string;
+  description: string;
+  state: "ready" | "needs_setup" | "not_added";
+  message?: string;
 }
 
 export interface PluginField {

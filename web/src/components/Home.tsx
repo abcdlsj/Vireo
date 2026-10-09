@@ -244,11 +244,16 @@ function Setup({ me }: { me: Me }) {
   });
   const steps = [
     { done: me.models.ready, label: "Connect a model", why: "Vireo needs one to do anything.", href: "#settings/model" },
-    { done: me.integrations.google.connected, label: "Connect Google", why: "Calendar and mail, so Vireo can schedule and answer for you.", href: "#settings/plugins" },
+    { done: me.integrations.google.connected, label: "Connect Google", why: "Calendar and mail, so Vireo can schedule and answer for you.", href: "#settings/plugins/google" },
     { done: me.push.subscriptions > 0, label: "Turn on notifications", why: "Hear about what needs you without opening Vireo.", href: "#settings/notifications" },
+    // Plugins the owner added but did not finish; Google is already a step above.
+    ...(me.capabilities ?? [])
+      .filter((c) => c.state === "needs_setup" && c.id !== "google")
+      .map((c) => ({ done: false, label: `Finish setting up ${c.name}`, why: c.message ?? "", href: `#settings/plugins/${c.id}` })),
   ];
   const left = steps.filter((s) => !s.done).length;
-  if (left === 0 || (hidden && me.models.ready)) return null;
+  const unfinishedPlugin = steps.some((s) => !s.done && s.href.startsWith("#settings/plugins/"));
+  if (left === 0 || (hidden && me.models.ready && !unfinishedPlugin)) return null;
   return (
     <section className="setup" data-testid="setup">
       <header>
