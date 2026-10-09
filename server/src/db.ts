@@ -277,6 +277,10 @@ const MIGRATIONS: string[] = [
   );
   CREATE INDEX cards_thread ON cards(thread_id);
   `,
+  // What changed in a card's last update (see cards/diff.ts).
+  `
+  ALTER TABLE cards ADD COLUMN changes TEXT NOT NULL DEFAULT '[]';
+  `,
 ];
 
 function migrate(db: Db): void {

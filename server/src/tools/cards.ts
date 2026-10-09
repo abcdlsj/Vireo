@@ -34,7 +34,7 @@ export function shapeOf(schema: unknown, seen = new Map<unknown, string>()): str
 }
 
 const TITLE_MAX = 40;
-const LABEL_MAX = 16;
+const LABEL_MAX = 20;
 
 const DATE_TIME = /^(\d{4}-\d{2}-\d{2})(?:[T ](\d{1,2}):(\d{2})(?::(\d{2}))?)?\s*(Z|[+-]\d{2}:?\d{2})?$/;
 const TIME_ONLY = /^(\d{1,2}):(\d{2})$/;

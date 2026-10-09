@@ -116,20 +116,20 @@ export function ThreadView({ id }: { id: string }) {
   const [error, setError] = useState("");
   const [live, setLive] = useState<Live | null>(null);
   const [liveSteps, setLiveSteps] = useState<{ tool: string; status: string }[]>([]); // only to notice browsing
-  const [panel, setPanelState] = useState(panelDefault);
+  // The owner's own open/close for this thread; until they choose, the panel follows its content.
+  const [panelChoice, setPanelChoice] = useState<boolean | null>(null);
   const [editingTitle, setEditingTitle] = useState(false);
   const scroller = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
   const reloadTimer = useRef<number | undefined>(undefined);
 
-  // While the agent works in the browser, show the live view (without changing the saved panel choice).
   const browsing = Boolean(detail?.thread.running) && liveSteps.some((s) => s.tool.startsWith("browser_"));
-  useEffect(() => {
-    if (browsing) setPanelState(true);
-  }, [browsing]);
+  useEffect(() => setPanelChoice(null), [id]);
+  // While the agent works in the browser the live view opens whatever was chosen before.
+  const panel = browsing || (panelChoice ?? panelAuto(detail));
 
   const setPanel = (open: boolean) => {
-    setPanelState(open);
+    setPanelChoice(open);
     localStorage.setItem(PANEL_KEY, open ? "open" : "closed");
   };
 
@@ -343,10 +343,16 @@ export function ThreadView({ id }: { id: string }) {
 
 const PANEL_KEY = "vireo.panel";
 
-/** The details panel starts open on wide screens unless the owner closed it; on phones it is a sheet and starts closed. */
-function panelDefault(): boolean {
-  if (window.matchMedia("(max-width: 760px)").matches) return false;
-  return localStorage.getItem(PANEL_KEY) !== "closed";
+/**
+ * The details panel opens by itself only when it has something to show (pages
+ * read, files, emails, events) and the owner hasn't closed it before; an empty
+ * panel would only take room from the conversation. On phones it is a sheet
+ * and stays closed until asked for.
+ */
+function panelAuto(detail: ThreadDetail | null): boolean {
+  if (!detail || window.matchMedia("(max-width: 760px)").matches) return false;
+  if (localStorage.getItem(PANEL_KEY) === "closed") return false;
+  return detail.related.length > 0 || detail.files.length > 0;
 }
 
 function StatusTag({ t }: { t: ThreadDetail["thread"] }) {

@@ -153,8 +153,45 @@ export function Frame({
       <div className="vcard-body" ref={body}>
         {children}
       </div>
+      <Pulse card={card} live={Boolean(board) && !expanded} />
       {own ? <footer className="vcard-foot">{own}</footer> : null}
     </article>
+  );
+}
+
+const CHANGE_WINDOW = 36 * 3600e3;
+
+/**
+ * One line between the body and the buttons that says what moved: while the
+ * matter is worked on, the step Vireo is on; after an update, the facts it
+ * changed ("Return ¥2,202 → ¥2,137"), for a day and a half.
+ */
+function Pulse({ card, live }: { card: Card; live: boolean }) {
+  // A matter shown as its latest answer already carries its working line.
+  if (card.kind === "thread") return null;
+  // The peek and the thread page say what Vireo is doing in their own place.
+  if (card.running && !live) return null;
+  if (card.running) {
+    return (
+      <p className="vcard-pulse working" data-testid="card-step">
+        <span className="pulse-dot" />
+        <span className="vcard-pulse-text">{card.statusLine || "Working on it…"}</span>
+      </p>
+    );
+  }
+  const changes = card.changes ?? [];
+  if (!changes.length || Date.now() - card.updatedAt > CHANGE_WINDOW) return null;
+  return (
+    <p className="vcard-pulse changed" data-testid="card-changes">
+      {changes.map((c, i) => (
+        <span key={i} className="vcard-change">
+          <span className="what">{c.label}</span>
+          <s>{c.from}</s>
+          <span className="arrow" aria-label="now">→</span>
+          <b>{c.to}</b>
+        </span>
+      ))}
+    </p>
   );
 }
 

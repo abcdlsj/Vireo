@@ -485,6 +485,64 @@
   flex-shrink: 0;
 }
 
+/* What moved: the live step while Vireo works, or the facts the last update changed. */
+.vcard-pulse {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 12px 0 0;
+  font-size: 12.5px;
+  line-height: 1.4;
+  animation: c-rise 0.32s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+.vcard-pulse.working {
+  flex-wrap: nowrap;
+  gap: 8px;
+  color: var(--c-accent);
+  font-weight: 500;
+}
+
+.vcard-pulse.working .pulse-dot {
+  flex-shrink: 0;
+}
+
+.vcard-pulse-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vcard-change {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  white-space: nowrap;
+  color: var(--c-ink-2);
+}
+
+.vcard-change .what {
+  color: var(--c-ink-3);
+}
+
+.vcard-change s {
+  color: var(--c-ink-3);
+  text-decoration-thickness: 1px;
+}
+
+.vcard-change .arrow {
+  opacity: 0.45;
+}
+
+.vcard-change b {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--c-accent);
+}
+
 .vcard-status {
   display: inline-flex;
   align-items: center;

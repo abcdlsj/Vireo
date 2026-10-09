@@ -67,6 +67,17 @@ describe("cards", () => {
     const card = a.cards.get(id)!;
     expect(card).toMatchObject({ kind: "flight", status: "watching", threadTitle: "Tokyo flights" });
     expect(card.buttons).toEqual([{ label: "Book this", reply: "Book it" }]);
+    expect(card.changes).toEqual([]);
+
+    // An update remembers the few facts it changed, for the card to say so.
+    await show(a, t.id, {
+      card_id: id,
+      kind: "flight",
+      title: "PVG to HND",
+      status: "watching",
+      data: { from: "PVG", to: "HND", departs: "08:10", arrives: "12:05", date: "2026-11-14", price: "298 USD" },
+    });
+    expect(a.cards.get(id)!.changes).toEqual([{ label: "Price", from: "320 USD", to: "298 USD" }]);
 
     await show(a, t.id, {
       card_id: id,

@@ -1,5 +1,11 @@
 export type CardStatus = "working" | "needs_you" | "watching" | "ready" | "done";
 
+export interface CardChange {
+  label: string;
+  from: string;
+  to: string;
+}
+
 export interface CardButton {
   label: string;
   reply?: string;
@@ -18,6 +24,10 @@ export interface Card {
   data: Record<string, unknown>;
   buttons: CardButton[];
   running: boolean;
+  /** What the thread is doing right now, while it runs. */
+  statusLine?: string;
+  /** Facts the last update changed. */
+  changes: CardChange[];
   createdAt: number;
   updatedAt: number;
 }

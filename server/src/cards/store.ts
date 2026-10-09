@@ -2,6 +2,7 @@ import type { App } from "../app.js";
 import { bus } from "../bus.js";
 import { messageText, OVERVIEW_ID, type Thread } from "../threads.js";
 import { newId, now, safeJson, truncate } from "../util.js";
+import { diffCard, type CardChange } from "./diff.js";
 
 export type CardStatus = "working" | "needs_you" | "watching" | "ready" | "done";
 
@@ -30,6 +31,10 @@ export interface Card {
   buttons: CardButton[];
   /** The thread behind the card is working right now. */
   running: boolean;
+  /** What the thread is doing right now, while it runs. */
+  statusLine?: string;
+  /** Facts the last update changed; empty for a new card or one that changed throughout. */
+  changes: CardChange[];
   createdAt: number;
   updatedAt: number;
 }
@@ -43,6 +48,7 @@ interface CardRow {
   data: string;
   buttons: string;
   archived: number;
+  changes: string;
   created_at: number;
   updated_at: number;
 }
@@ -65,6 +71,8 @@ export class Cards {
       data: safeJson(r.data, {}),
       buttons: safeJson(r.buttons, []),
       running: Boolean(thread?.running),
+      statusLine: thread?.running ? thread.statusLine : undefined,
+      changes: safeJson(r.changes, []),
       createdAt: r.created_at,
       updatedAt: r.updated_at,
     };
@@ -94,13 +102,16 @@ export class Cards {
       : undefined;
     const id = existing?.id ?? newId("card");
     if (existing) {
+      // A card that changed kind is a new stage of the matter, not an update.
+      const changes = existing.kind === input.kind ? diffCard(safeJson(existing.data, {}), input.data) : [];
       this.app.db.run(
-        "UPDATE cards SET kind = ?, title = ?, status = ?, data = ?, buttons = ?, archived = 0, updated_at = ? WHERE id = ?",
+        "UPDATE cards SET kind = ?, title = ?, status = ?, data = ?, buttons = ?, changes = ?, archived = 0, updated_at = ? WHERE id = ?",
         input.kind,
         input.title,
         input.status,
         JSON.stringify(input.data),
         JSON.stringify(input.buttons),
+        JSON.stringify(changes),
         t,
         id,
       );
@@ -159,6 +170,7 @@ export class Cards {
         data: { actionId: a.id, tool: a.tool, args: a.args },
         buttons: [],
         running: false,
+        changes: [],
         createdAt: a.createdAt,
         updatedAt: a.createdAt,
       });
@@ -184,6 +196,7 @@ export class Cards {
         data: { reminderId: r.id, due: r.due_at },
         buttons: [],
         running: false,
+        changes: [],
         createdAt: r.created_at,
         updatedAt: r.created_at,
       });
@@ -216,6 +229,8 @@ export class Cards {
       data: { text: last ? truncate(messageText(last.body), 600) : "", statusLine: thread.statusLine, browsing: thread.running && this.app.browser.hasPage(thread.id) },
       buttons: [],
       running: thread.running,
+      statusLine: thread.running ? thread.statusLine : undefined,
+      changes: [],
       createdAt: thread.createdAt,
       updatedAt: thread.updatedAt,
     };
