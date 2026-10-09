@@ -9,8 +9,8 @@ import type { Card, CardButton } from "./types";
  */
 export interface CardKindView {
   kind: string;
-  /** Spans two columns on the home grid. */
-  wide?: boolean;
+  /** Spans two columns on the home grid; a function decides per card. */
+  wide?: boolean | ((card: Card) => boolean);
   /** Renders the card. `expanded` is the card's own page, where it can show everything. */
   render: (props: { card: Card; expanded: boolean; refresh: () => void }) => ReactNode;
 }

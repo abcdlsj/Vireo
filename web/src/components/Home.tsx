@@ -39,6 +39,7 @@ export function Home({ me, onSignedOut }: { me: Me | null; onSignedOut: () => vo
     });
   }, [load]);
 
+  const board_ = useMasonry();
   const board = useMemo<Board>(() => ({ peek: (c) => setPeekThread(c.threadId), refresh: () => void load() }), [load]);
   const peekCard = peekThread ? (cards ?? []).find((c) => c.threadId === peekThread && !c.id.startsWith("reminder:")) : undefined;
 
@@ -83,7 +84,7 @@ export function Home({ me, onSignedOut }: { me: Me | null; onSignedOut: () => vo
         {note ? <p className="ask-sent">{note}</p> : null}
 
         <BoardContext.Provider value={board}>
-          <div className="board" data-testid="board">
+          <div className="board" data-testid="board" ref={board_}>
             {cards && active.length === 0 ? (
               <div className="board-empty">
                 <b>All clear</b>
@@ -121,6 +122,45 @@ export function Home({ me, onSignedOut }: { me: Me | null; onSignedOut: () => vo
       {peekCard ? <Peek key={peekCard.threadId} card={peekCard} onClose={() => setPeekThread(null)} refresh={load} /> : null}
     </div>
   );
+}
+
+const ROW = 4;
+const GAP = 20;
+
+/**
+ * Lays the board out as a masonry: every card keeps its natural height, so
+ * nothing is cut off and nothing leaves a hole, while the reading order stays
+ * left to right. Each slot spans as many 4px rows as its card is tall.
+ */
+function useMasonry() {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const grid = ref.current;
+    if (!grid) return;
+    const size = (slot: HTMLElement) => {
+      const card = slot.firstElementChild as HTMLElement | null;
+      if (!card) return;
+      slot.style.gridRowEnd = `span ${Math.ceil((card.getBoundingClientRect().height + GAP) / ROW)}`;
+    };
+    const ro = new ResizeObserver((entries) => {
+      for (const e of entries) size((e.target as HTMLElement).parentElement!);
+    });
+    const watch = () => {
+      ro.disconnect();
+      for (const slot of grid.querySelectorAll<HTMLElement>(":scope > .slot")) {
+        if (slot.firstElementChild) ro.observe(slot.firstElementChild);
+        size(slot);
+      }
+    };
+    watch();
+    const mo = new MutationObserver(watch);
+    mo.observe(grid, { childList: true });
+    return () => {
+      ro.disconnect();
+      mo.disconnect();
+    };
+  }, []);
+  return ref;
 }
 
 /** The one input on the board. Each ask becomes its own matter. */

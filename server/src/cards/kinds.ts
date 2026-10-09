@@ -1,10 +1,14 @@
 import { Type, type TSchema } from "typebox";
 
 /**
- * Card kinds the agent can show. A kind is a name, a sentence telling the
- * model when to use it, and the shape of its data; the web app has one
- * component per kind (web/src/cards/kinds/<name>.tsx). Adding a kind means
- * adding an entry here and that component, nothing else.
+ * Card kinds the agent can show. A few matters that recur and have a shape
+ * of their own (a flight, a trip, an event, an email, a pull request,
+ * something watched, a place, a document) get a kind with a designed card;
+ * everything else is the general "card", composed from blocks (blocks.ts).
+ * A kind is a name, a sentence telling the model when to use it, and the
+ * shape of its data; the web app has one component per kind
+ * (web/src/cards/kinds/<name>.tsx). Cards of kinds that were retired keep
+ * rendering with their old components.
  *
  * Cards are glanced at, not read, so every text field has a length limit and
  * every list a size limit. Data over a limit is refused and the model has to
@@ -24,8 +28,6 @@ const Str = (max: number, description?: string) => Type.String({ maxLength: max,
 const Opt = <T extends TSchema>(t: T) => Type.Optional(t);
 const List = <T extends TSchema>(t: T, max: number, description?: string) => Type.Array(t, { maxItems: max, ...(description ? { description } : {}) });
 const Url = Type.String({ maxLength: 2000 });
-const Link = Type.Object({ title: Str(80), url: Url });
-const Field = Type.Object({ label: Str(24), value: Str(40) });
 /** A short number that decides, e.g. a price: "¥804", "320 USD". */
 const Value = (description = "The number that decides, e.g. a price") => Str(16, description);
 const Leg = Type.Object({
@@ -41,38 +43,12 @@ const Leg = Type.Object({
 
 export const CARD_KINDS: CardKind[] = [
   {
-    name: "answer",
-    description: "A direct answer to a question: the conclusion first, with sources. The fallback when nothing else fits.",
+    name: "card",
+    description:
+      "The general card, for anything without a kind of its own: an answer, options to compare, a batch handled, a person, a file, a page. Compose it from blocks (listed below), the most important first.",
     data: Type.Object({
-      text: Str(600, "Markdown. The first paragraph is the conclusion in one sentence; at most one short paragraph after it"),
-      sources: Opt(List(Link, 5)),
-    }),
-  },
-  {
-    name: "compare",
-    description: "A few options side by side to choose from: hotels, products, plans, restaurants. Put the best first and mark it with a badge.",
-    data: Type.Object({
-      subtitle: Opt(Str(60, "The criteria used, e.g. 'Direct, under 300 USD'")),
-      options: List(
-        Type.Object({
-          title: Str(40, "The option's name only, no price"),
-          subtitle: Opt(Str(60, "One fact that tells it apart")),
-          value: Opt(Value()),
-          badge: Opt(Str(12, "e.g. 'Cheapest'")),
-          url: Opt(Url),
-        }),
-        5,
-      ),
-      note: Opt(Str(140, "One caveat worth knowing")),
-    }),
-  },
-  {
-    name: "summary",
-    description: "The outcome of handling a batch of similar things: an inbox tidied, files sorted, a list processed. Never for flights, a place or a single matter.",
-    data: Type.Object({
-      subtitle: Opt(Str(60)),
-      stats: Opt(List(Type.Object({ label: Str(16), value: Str(10), attention: Opt(Type.Boolean()) }), 4)),
-      items: Opt(List(Type.Object({ title: Str(40), text: Opt(Str(60, "One fact, not a sentence of reasoning")), url: Opt(Url) }), 8)),
+      subtitle: Opt(Str(60, "One line under the title, e.g. the criteria or the source")),
+      blocks: Type.Array(Type.Unknown(), { minItems: 1, maxItems: 4, description: "1 to 4 blocks" }),
     }),
   },
   {
@@ -177,26 +153,6 @@ export const CARD_KINDS: CardKind[] = [
     }),
   },
   {
-    name: "github_repo",
-    description: "Activity in a GitHub repository the owner follows.",
-    data: Type.Object({
-      repo: Str(100, "owner/name"),
-      url: Opt(Url),
-      activity: Opt(List(Type.Number(), 28, "Commits per day, oldest first")),
-      stats: Opt(List(Field, 3)),
-      latest: Opt(Str(100, "The newest notable event")),
-    }),
-  },
-  {
-    name: "web_page",
-    description: "A web page worth keeping, with what matters on it.",
-    data: Type.Object({
-      url: Url,
-      summary: Str(240),
-      site: Opt(Str(40)),
-    }),
-  },
-  {
     name: "place",
     description: "A place: a restaurant, shop, venue or address, possibly with a time.",
     data: Type.Object({
@@ -206,26 +162,6 @@ export const CARD_KINDS: CardKind[] = [
       when: Opt(Str(40)),
       note: Opt(Str(100)),
       url: Opt(Url),
-    }),
-  },
-  {
-    name: "person",
-    description: "Someone the owner deals with, and what Vireo knows about them.",
-    data: Type.Object({
-      name: Str(40),
-      role: Opt(Str(60)),
-      email: Opt(Str(120)),
-      facts: Opt(List(Str(60), 6)),
-    }),
-  },
-  {
-    name: "file",
-    description: "A file and the key facts in it: a contract, an invoice, a statement.",
-    data: Type.Object({
-      name: Str(80),
-      file_id: Opt(Str(60)),
-      meta: Opt(Str(40, "e.g. '12 pages · from Lin'")),
-      fields: Opt(List(Field, 6)),
     }),
   },
 ];

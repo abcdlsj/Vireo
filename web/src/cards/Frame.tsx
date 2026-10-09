@@ -23,24 +23,17 @@ function closable(card: Card): boolean {
   return card.threadId !== "overview" && card.kind !== "proposal" && card.kind !== "reminder" && card.status !== "done";
 }
 
-/**
- * On the board, a list of rows that has no room for even its first row is
- * left out rather than shown as a cut-off sliver (the CSS hides later rows).
- */
-function useFitRows(expanded: boolean) {
+/** On the board, marks long text that its box cuts off, so only that text fades out. */
+function useFade(expanded: boolean) {
   const ref = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     const body = ref.current;
     if (expanded || !body) return;
-    const fit = () => {
-      for (const list of body.querySelectorAll<HTMLElement>(":scope > .c-rows")) {
-        list.classList.remove("no-room");
-        const first = list.firstElementChild as HTMLElement | null;
-        if (first && list.clientHeight < first.offsetHeight) list.classList.add("no-room");
-      }
+    const mark = () => {
+      for (const el of body.querySelectorAll<HTMLElement>(".fade")) el.classList.toggle("cut", el.scrollHeight > el.clientHeight + 1);
     };
-    fit();
-    const ro = new ResizeObserver(fit);
+    mark();
+    const ro = new ResizeObserver(mark);
     ro.observe(body);
     return () => ro.disconnect();
   });
@@ -92,7 +85,7 @@ export function Frame({
 }) {
   const board = useContext(BoardContext);
   const flash = useJustUpdated(card);
-  const body = useFitRows(expanded);
+  const body = useFade(expanded);
   const [leaving, setLeaving] = useState(false);
   const interactive = !expanded;
   const open = () => (board ? board.peek(card) : go(`thread/${card.threadId}`));
@@ -117,6 +110,10 @@ export function Frame({
       window.setTimeout(() => board?.refresh(), 220);
     }
   };
+  const labelNode = label ?? (card.threadTitle && card.threadTitle !== card.title ? <a href={`#thread/${card.threadId}`}>{card.threadTitle}</a> : null);
+  // A ready card with nothing to label needs no head: an empty line with only a time in it is noise.
+  const quiet = card.status === "ready" && !card.running;
+  const head = label !== null && !(labelNode === null && quiet);
   const own = buttons ?? (card.buttons.length ? <Buttons card={card} buttons={card.buttons} /> : null);
   const actions = interactive ? (
     <span className="vcard-actions">
@@ -142,11 +139,9 @@ export function Frame({
       data-status={card.status}
       data-thread-id={card.threadId}
     >
-      {label !== null ? (
+      {head ? (
         <header className="vcard-head">
-          <span className="vcard-label">
-            {label ?? (card.threadTitle && card.threadTitle !== card.title ? <a href={`#thread/${card.threadId}`}>{card.threadTitle}</a> : null)}
-          </span>
+          <span className="vcard-label">{labelNode}</span>
           <span className="vcard-corner">
             <Status card={card} />
             {actions}
@@ -205,20 +200,41 @@ export function Buttons({ card, buttons }: { card: Card; buttons: CardButton[] }
   );
 }
 
-/** A tiny line chart of recent values, oldest first. */
-export function Sparkline({ values, width = 160, height = 28 }: { values: number[]; width?: number; height?: number }) {
+/**
+ * A small line chart of recent values, oldest first, with a soft wash under
+ * the line. Without a width it fills its container and follows its size.
+ */
+export function Sparkline({ values, width, height = 28 }: { values: number[]; width?: number; height?: number }) {
+  const box = useRef<HTMLSpanElement>(null);
+  const [measured, setMeasured] = useState(0);
+  useLayoutEffect(() => {
+    if (width !== undefined || !box.current) return;
+    const el = box.current;
+    const ro = new ResizeObserver(() => setMeasured(Math.round(el.clientWidth)));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [width]);
+  const w = width ?? measured;
   const nums = values.filter((v) => Number.isFinite(v));
   if (nums.length < 2) return null;
   const min = Math.min(...nums);
   const max = Math.max(...nums);
   const span = max - min || 1;
-  const pts = nums.map((v, i) => [(i / (nums.length - 1)) * (width - 6) + 3, height - 3 - ((v - min) / span) * (height - 6)] as const);
+  const pts = nums.map((v, i) => [(i / (nums.length - 1)) * (w - 8) + 4, height - 4 - ((v - min) / span) * (height - 8)] as const);
   const last = pts[pts.length - 1]!;
-  return (
-    <svg className="sparkline" width={width} height={height} viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`Recent values from ${nums[0]} to ${nums[nums.length - 1]}`}>
-      <polyline points={pts.map((p) => p.join(",")).join(" ")} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-      <circle cx={last[0]} cy={last[1]} r="3" fill="currentColor" />
+  const line = pts.map((p) => p.join(",")).join(" ");
+  const svg = w > 0 && (
+    <svg className="sparkline" width={w} height={height} viewBox={`0 0 ${w} ${height}`} role="img" aria-label={`Recent values from ${nums[0]} to ${nums[nums.length - 1]}`}>
+      <polygon points={`${pts[0]![0]},${height} ${line} ${last[0]},${height}`} fill="currentColor" opacity="0.08" />
+      <polyline points={line} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx={last[0]} cy={last[1]} r="3.5" fill="currentColor" stroke="var(--c-paper)" strokeWidth="2" />
     </svg>
+  );
+  if (width !== undefined) return svg || null;
+  return (
+    <span ref={box} className="sparkline-fill" style={{ height }}>
+      {svg}
+    </span>
   );
 }
 

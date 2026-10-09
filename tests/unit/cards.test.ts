@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import type { App } from "../../server/src/app.js";
+import { BLOCK_KINDS } from "../../server/src/cards/blocks.js";
 import { CARD_KINDS } from "../../server/src/cards/kinds.js";
 import { OVERVIEW_ID } from "../../server/src/threads.js";
 import { toZonedIso, zonedToUtc } from "../../server/src/time.js";
@@ -31,7 +32,9 @@ describe("cards", () => {
   it("describes every kind's data to the model", () => {
     const description = open().tools.get("show_card")!.description;
     for (const k of CARD_KINDS) expect(description).toContain(`- ${k.name}:`);
-    expect(shapeOf(CARD_KINDS.find((k) => k.name === "web_page")!.data)).toBe("{ url, summary: ≤240, site?: ≤40 }");
+    expect(shapeOf(CARD_KINDS.find((k) => k.name === "github_pr")!.data)).toContain('state?: "open"|"draft"|"merged"|"closed"');
+    // The general card's blocks are described too.
+    for (const b of BLOCK_KINDS) expect(description).toContain(`- ${b.type}:`);
     // Field hints reach the model, and a shape used twice is spelled out once.
     expect(description).toContain('start: ≤40 "Date and time, e.g. 2026-10-14T15:30+08:00"');
     expect(description).toContain("return?: same as outbound");
@@ -43,13 +46,15 @@ describe("cards", () => {
     await expect(show(a, t.id, { kind: "flight", title: "PVG to HND", data: { from: "PVG" } })).rejects.toThrow(/does not fit a flight card/);
     await expect(show(a, t.id, { kind: "hologram", title: "x", data: {} })).rejects.toThrow(/Unknown kind/);
     // Cards stay glanceable: long titles and fields are refused, so the model says it shorter.
-    await expect(show(a, t.id, { kind: "answer", title: "x".repeat(41), data: { text: "x" } })).rejects.toThrow(/title is too long/);
+    await expect(show(a, t.id, { kind: "card", title: "x".repeat(41), data: { blocks: [{ type: "text", text: "x" }] } })).rejects.toThrow(/title is too long/);
     await expect(
-      show(a, t.id, { kind: "answer", title: "x", data: { text: "x" }, buttons: [{ label: "Book both legs with carry-on only", reply: "Book both" }] }),
+      show(a, t.id, { kind: "card", title: "x", data: { blocks: [{ type: "text", text: "x" }] }, buttons: [{ label: "Book both legs with carry-on only", reply: "Book both" }] }),
     ).rejects.toThrow(/button .* is too long/);
+    // The general card checks each block against its own type.
     await expect(
-      show(a, t.id, { kind: "compare", title: "Hotels", data: { options: [{ title: "A hotel with a very long name that also lists its price ¥804" }] } }),
-    ).rejects.toThrow(/options\/0\/title/);
+      show(a, t.id, { kind: "card", title: "Hotels", data: { blocks: [{ type: "rows", items: [{ title: "A hotel with a very long name that also lists its price, ¥804" }] }] } }),
+    ).rejects.toThrow(/blocks\/0\/items\/0\/title/);
+    await expect(show(a, t.id, { kind: "card", title: "x", data: { blocks: [{ type: "hologram" }] } })).rejects.toThrow(/unknown type/);
 
     const out = await show(a, t.id, {
       kind: "flight",
@@ -75,14 +80,14 @@ describe("cards", () => {
 
     // A card id from another thread can't be reached: the call shows a card in its own thread.
     const other = a.threads.create({});
-    await show(a, other.id, { card_id: id, kind: "answer", title: "x", data: { text: "x" } });
+    await show(a, other.id, { card_id: id, kind: "card", title: "x", data: { blocks: [{ type: "text", text: "x" }] } });
     expect(a.cards.get(id)!.kind).toBe("flight");
-    expect(a.cards.forThread(other.id)).toMatchObject([{ kind: "answer" }]);
+    expect(a.cards.forThread(other.id)).toMatchObject([{ kind: "card" }]);
     // A made-up id updates the thread's latest card rather than failing the turn.
-    await show(a, other.id, { card_id: "made-up", kind: "answer", title: "y", data: { text: "y" } });
+    await show(a, other.id, { card_id: "made-up", kind: "card", title: "y", data: { blocks: [{ type: "text", text: "y" }] } });
     expect(a.cards.forThread(other.id)).toMatchObject([{ title: "y" }]);
     // Overview answers in place; cards belong to a matter.
-    await expect(show(a, OVERVIEW_ID, { kind: "answer", title: "x", data: { text: "x" } })).rejects.toThrow(/open_thread/);
+    await expect(show(a, OVERVIEW_ID, { kind: "card", title: "x", data: { blocks: [{ type: "text", text: "x" }] } })).rejects.toThrow(/open_thread/);
   });
 
   it("forgives the form models commonly get wrong", async () => {
@@ -103,14 +108,14 @@ describe("cards", () => {
     expect(a.cards.forThread(t.id).at(-1)!.data).toMatchObject({ start: "2026-10-14T15:30:00+08:00", end: "2026-10-14T16:15:00+08:00" });
 
     // Numbers where text is expected become text.
-    await show(a, t.id, { kind: "compare", title: "Hotels", data: { options: [{ title: "Park Hotel", value: 804 }] } });
-    expect(a.cards.forThread(t.id).at(-1)!.data).toEqual({ options: [{ title: "Park Hotel", value: "804" }] });
+    await show(a, t.id, { kind: "card", title: "Hotels", data: { blocks: [{ type: "rows", items: [{ title: "Park Hotel", value: 804 }] }] } });
+    expect(a.cards.forThread(t.id).at(-1)!.data).toEqual({ blocks: [{ type: "rows", items: [{ title: "Park Hotel", value: "804" }] }] });
   });
 
   it("feeds the home board: pending confirmations first, every matter once, temporary threads left out", async () => {
     const a = open();
     const withCard = a.threads.create({ title: "Inbox" });
-    await show(a, withCard.id, { kind: "summary", title: "Inbox sorted", data: { stats: [{ label: "archived", value: "42" }] } });
+    await show(a, withCard.id, { kind: "card", title: "Inbox sorted", data: { blocks: [{ type: "facts", items: [{ label: "Archived", value: "42" }] }] } });
     const plain = a.threads.create({ title: "A question" });
     a.threads.create({ title: "Secret", temporary: true });
 
@@ -122,7 +127,7 @@ describe("cards", () => {
     expect(feed[0]).toMatchObject({ kind: "proposal", status: "needs_you", threadId: meeting.id });
     expect(feed[0]!.data).toMatchObject({ tool: "create_event" });
     expect(feed.filter((c) => c.threadId === meeting.id)).toHaveLength(1);
-    expect(feed.find((c) => c.threadId === withCard.id)).toMatchObject({ kind: "summary", title: "Inbox sorted" });
+    expect(feed.find((c) => c.threadId === withCard.id)).toMatchObject({ kind: "card", title: "Inbox sorted" });
     expect(feed.find((c) => c.threadId === plain.id)).toMatchObject({ kind: "thread", id: `thread:${plain.id}` });
     expect(feed.some((c) => c.threadTitle === "Secret")).toBe(false);
     expect(feed.some((c) => c.threadId === OVERVIEW_ID)).toBe(false);

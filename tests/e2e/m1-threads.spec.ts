@@ -92,15 +92,15 @@ test.describe("Milestone 1 — Threads that think", () => {
     const detail = await threadDetail(request, id);
     expect(detail.related.filter((r: { kind: string }) => r.kind === "page").length).toBeGreaterThanOrEqual(2);
     // The answer is a card, on the thread and on the home board.
-    expect(detail.cards).toEqual([expect.objectContaining({ kind: "answer" })]);
-    await expect(page.getByTestId("thread-cards").locator('[data-kind="answer"]')).toContainText("vireo");
+    expect(detail.cards).toEqual([expect.objectContaining({ kind: "card" })]);
+    await expect(page.getByTestId("thread-cards").locator('[data-kind="card"]')).toContainText("vireo");
     await page.goto("/");
-    const card = page.getByTestId("board").locator('[data-kind="answer"]').filter({ hasText: "Research the vireo bird" });
+    const card = page.getByTestId("board").locator('[data-kind="card"]').filter({ hasText: "Research the vireo bird" });
     await expect(card).toBeVisible();
     // A card opens in place: the card in full and a line to answer it; the thread is one tap away.
     await card.click();
     const peek = page.getByTestId("peek");
-    await expect(peek.locator('[data-kind="answer"]')).toContainText("vireo");
+    await expect(peek.locator('[data-kind="card"]')).toContainText("vireo");
     await page.keyboard.press("Escape");
     await expect(peek).toHaveCount(0);
     await card.click();

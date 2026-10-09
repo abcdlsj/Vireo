@@ -323,9 +323,14 @@ function research(t: Turn): AssistantMessage {
   // In a matter's thread, the result also goes on a card.
   if (t.tools.has("show_card") && /Show results as cards/.test(t.system) && !t.results.some((r) => r.name === "show_card")) {
     return call("show_card", {
-      kind: "answer",
+      kind: "card",
       title: t.owner.slice(0, 40).trim(),
-      data: { text: pages.map((p) => p.sentence).join("\n\n"), sources: pages.map((p) => ({ title: p.title, url: p.url })) },
+      data: {
+        blocks: [
+          { type: "text", text: pages.map((p) => p.sentence).join("\n\n").slice(0, 500) },
+          { type: "links", items: pages.map((p) => ({ title: p.title.slice(0, 64), url: p.url })) },
+        ],
+      },
     });
   }
   return reply(

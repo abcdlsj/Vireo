@@ -187,12 +187,15 @@
   margin: -24px 0 24px 324px;
 }
 
+/* A masonry: Home sizes each slot's row span to its card (4px rows, 20px gaps). */
 .board {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  grid-auto-rows: var(--c-height);
+  grid-auto-rows: 4px;
   grid-auto-flow: row dense;
-  gap: 20px;
+  column-gap: 20px;
+  row-gap: 0;
+  align-items: start;
 }
 
 .board > .slot {
@@ -204,8 +207,7 @@
 }
 
 .board > .slot > .vcard {
-  flex: 1;
-  min-height: 0;
+  flex: none;
 }
 
 .board > .slot.wide {
@@ -214,7 +216,8 @@
 
 .board-empty {
   grid-column: 1 / -1;
-  grid-row: span 1;
+  grid-row: span 40;
+  margin-bottom: 20px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -668,40 +671,6 @@
   text-wrap: pretty;
 }
 
-/*
- * On the board a card has a fixed size, so what doesn't fit is left out whole
- * rather than cut through: titles stop at two lines, rows that don't fit wrap
- * into a hidden column, and buttons that don't fit one line wait in the peek.
- */
-.vcard:not(.expanded) .c-title {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  overflow: hidden;
-}
-
-.vcard:not(.expanded) .vcard-body > .c-rows {
-  flex: 1 1 0;
-  min-height: 0;
-  flex-wrap: wrap;
-  align-content: flex-start;
-  overflow: hidden;
-}
-
-.vcard:not(.expanded) .vcard-body > .c-rows.no-room {
-  visibility: hidden;
-}
-
-.vcard:not(.expanded) .vcard-body > .c-rows > li {
-  width: calc(100% + 20px);
-  box-sizing: border-box;
-}
-
-.vcard:not(.expanded) .vcard-buttons {
-  max-height: 36px;
-  overflow: hidden;
-}
-
 .c-title.big {
   font-size: 22px;
   line-height: 28px;
@@ -750,11 +719,15 @@
   overflow: hidden;
 }
 
+/* Long text on the board stops at a height and fades out, only when it is actually cut. */
 .vcard:not(.expanded) .fade {
-  flex: 1;
-  min-height: 0;
+  max-height: 210px;
   overflow: hidden;
-  mask-image: linear-gradient(to bottom, #000 65%, transparent);
+}
+
+.vcard:not(.expanded) .fade.cut {
+  -webkit-mask-image: linear-gradient(to bottom, #000 70%, transparent);
+  mask-image: linear-gradient(to bottom, #000 70%, transparent);
 }
 
 .accent-ink {
@@ -1105,6 +1078,276 @@
   font-weight: 600;
 }
 
+/* ---------- the general card: title, a line, and blocks ---------- */
+.vcard.gcard .vcard-body {
+  gap: 14px;
+}
+
+.g-head {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+/* Key numbers: big, aligned on one baseline, labels quiet underneath. */
+.g-facts {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(var(--n, 3), minmax(0, max-content));
+  column-gap: 28px;
+}
+
+.g-facts > div {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.g-facts dd {
+  margin: 0;
+  font-size: 24px;
+  line-height: 30px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+}
+
+.g-facts dt {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--c-ink-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.g-facts .attention dd {
+  color: var(--c-needs-ink);
+}
+
+.g-facts .good dd {
+  color: var(--c-accent);
+}
+
+/* Rows: hairlines rather than boxes; the value right-aligned on the title's line. */
+.g-rows,
+.g-links {
+  gap: 0;
+}
+
+.g-rows li,
+.g-links li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  column-gap: 14px;
+  padding: 9px 0;
+  margin: 0;
+  border-radius: 0;
+  border-top: 1px solid var(--c-line);
+}
+
+.g-rows li:first-child,
+.g-links li:first-child {
+  background: none;
+  border-top: none;
+  padding-top: 2px;
+}
+
+.g-rows.with-lead li {
+  grid-template-columns: 52px minmax(0, 1fr) auto;
+}
+
+.g-lead {
+  font-size: 12px;
+  line-height: 20px;
+  color: var(--c-ink-3);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.g-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.g-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-weight: 500;
+}
+
+.g-title svg {
+  flex-shrink: 0;
+  color: var(--c-accent);
+}
+
+.g-name {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.g-detail {
+  font-size: 12.5px;
+  line-height: 18px;
+  color: var(--c-ink-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.g-value {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+.g-mark {
+  flex-shrink: 0;
+  padding: 0 7px;
+  border-radius: 9px;
+  font-size: 11px;
+  line-height: 18px;
+  font-weight: 600;
+  background: var(--c-accent-soft);
+  color: var(--c-accent);
+}
+
+.mark-attention .g-mark {
+  background: var(--c-warm);
+  color: var(--c-needs-ink);
+}
+
+.mark-best .g-value,
+.mark-picked .g-value {
+  color: var(--c-accent);
+}
+
+.mark-done .g-name,
+.mark-done .g-value {
+  color: var(--c-ink-3);
+}
+
+.g-links a {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 14px;
+  align-items: baseline;
+}
+
+.g-links .g-name {
+  font-weight: 500;
+}
+
+.g-host {
+  font-size: 12px;
+  color: var(--c-ink-3);
+}
+
+.g-text {
+  font-size: 14px;
+  line-height: 21px;
+  color: var(--c-ink-2);
+}
+
+.g-text p {
+  margin: 0 0 8px;
+}
+
+.g-text > :last-child {
+  margin-bottom: 0;
+}
+
+.g-text strong {
+  color: var(--c-ink);
+  font-weight: 600;
+}
+
+.g-text > p:first-child {
+  color: var(--c-ink);
+  font-size: 15px;
+  line-height: 22px;
+}
+
+.gcard .stages {
+  margin-top: 0;
+}
+
+/* Charts: a line in the accent, or quiet bars with one picked out. */
+.g-chart {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.g-chart figcaption {
+  font-size: 12px;
+  color: var(--c-ink-3);
+}
+
+.sparkline-fill {
+  display: block;
+  width: 100%;
+}
+
+.g-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 64px;
+}
+
+.g-bar {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 4px;
+}
+
+.g-bar-fill {
+  width: 100%;
+  max-width: 28px;
+  border-radius: 4px 4px 2px 2px;
+  background: var(--c-chip);
+  transition: height 0.3s ease;
+}
+
+.g-bar.hi .g-bar-fill {
+  background: var(--c-accent);
+}
+
+.g-bars:has(.g-bar-label) {
+  height: 84px;
+}
+
+.g-bar-label {
+  font-size: 11px;
+  line-height: 14px;
+  color: var(--c-ink-3);
+  white-space: nowrap;
+}
+
+.g-bar.hi .g-bar-label {
+  color: var(--c-accent);
+  font-weight: 600;
+}
+
 /* ---------- document ---------- */
 .vcard.doc .doc-text {
   flex: 1;
@@ -1117,6 +1360,8 @@
 }
 
 .vcard.doc:not(.expanded) .doc-text {
+  flex: none;
+  max-height: 180px;
   overflow: hidden;
   mask-image: linear-gradient(to bottom, #000 55%, transparent);
 }
@@ -1850,16 +2095,10 @@
 @media (max-width: 900px) {
   .board {
     grid-template-columns: minmax(0, 1fr);
-    grid-auto-rows: auto;
   }
 
   .board > .slot.wide {
     grid-column: auto;
-  }
-
-  .board > .slot > .vcard {
-    min-height: 220px;
-    max-height: 380px;
   }
 
   .home-hero {
@@ -2123,7 +2362,7 @@
   }
 
   .leg-route {
-    grid-column: 2;
+    grid-column: 2 / span 2;
     grid-row: 2;
   }
 
@@ -2154,13 +2393,10 @@
 
   .leg-price {
     grid-column: 3;
-    grid-row: 1 / span 2;
-    align-self: center;
+    grid-row: 1;
+    align-self: baseline;
   }
 
-  .vcard.trip {
-    min-height: 300px;
-  }
 }
 
 /* ---------- thread page: a card out of view, pinned as a slim bar ---------- */

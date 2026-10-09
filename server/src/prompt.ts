@@ -33,7 +33,7 @@ export function buildSystemPrompt(app: App, agent: AgentDef, thread: Thread, rec
     ...(thread.id === OVERVIEW_ID
       ? []
       : [
-          "- Show results as cards with show_card: options to choose from, an answer, a summary of work done, a document, something you keep watching. The card is what the owner sees on their home page; the chat reply only says what changed. Pick the most specific kind; use answer when nothing else fits.",
+          "- Show results as cards with show_card: options to choose from, an answer, a summary of work done, a document, something you keep watching. The card is what the owner sees on their home page; the chat reply only says what changed. Use a kind made for the matter when there is one; otherwise the general card, built from blocks.",
         ]),
     "",
     `## Your role: ${agent.title}`,
