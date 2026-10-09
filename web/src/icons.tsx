@@ -170,14 +170,6 @@ export const SparkIcon = () => (
   </Icon>
 );
 
-export const BriefIcon = () => (
-  <Icon>
-    <path d="M3 3.2h8v9.6a.9.9 0 0 0 .9.9H3.9a.9.9 0 0 1-.9-.9z" />
-    <path d="M11 6h2v6.8a.9.9 0 0 1-1.8 0" />
-    <path d="M5 5.6h4M5 8h4M5 10.4h2.6" />
-  </Icon>
-);
-
 export const XCircleIcon = () => (
   <Icon>
     <circle cx="8" cy="8" r="5.6" />

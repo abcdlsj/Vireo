@@ -554,7 +554,6 @@ export function createHttp(app: App): Hono<Env> {
   });
 
   // ---- proactive ----
-  api.post("/api/brief", async (c) => c.json({ text: await app.scheduler.morningBrief() }));
   api.post("/api/reminders/:id/cancel", (c) => {
     const id = c.req.param("id");
     const r = app.db.get<{ thread_id: string | null }>("SELECT thread_id FROM reminders WHERE id = ? AND status = 'scheduled'", id);

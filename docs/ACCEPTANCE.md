@@ -37,7 +37,6 @@ Vireo's milestones are done when every acceptance criterion holds in real use, n
 
 ## Milestone 4 — Proactive and hands-on
 
-- [ ] **M4.1** The next morning, at the brief time set in Settings, Overview has a brief with today's schedule, emails awaiting a reply, and open threads, and you get a notification. **Brief me** in Overview triggers one on demand.
 - [ ] **M4.2** Save a site sign-in under **Settings → Sign-ins for websites**, then ask Vireo to do something on that site that ends in a submit (for example a booking or a form). It signs in, fills the form, and stops at a card before submitting.
 - [ ] **M4.3** Search for the saved password in `data/vireo.db`, the server log and the thread's **Activity**, for example with `grep -a`. It appears nowhere. Vireo's own tests also check every prompt sent to the model.
 - [ ] **M4.4** Open **Activity** for the M4.2 thread. Every page opened, field typed (shown as `{{password}}`), click, confirmation and model call is listed with its arguments.

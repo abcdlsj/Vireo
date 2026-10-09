@@ -5,23 +5,6 @@ import { finalReply, FIXTURES, sendMessage, settle, startThread, threadDetail } 
 const SITE_PASSWORD = "s3cret-Pa55word!";
 
 test.describe("Milestone 4 — Proactive and hands-on", () => {
-  test("[M4.1] the morning brief arrives in Overview with schedule, pending replies and open threads", async ({ page, request }) => {
-    await page.goto("/#thread/overview");
-    const before = await page.getByTestId("msg-assistant").count();
-    await page.getByTestId("brief-now").click();
-    await expect(page.getByTestId("msg-assistant")).toHaveCount(before + 1);
-    const brief = page.getByTestId("msg-assistant").last();
-    await expect(brief).toContainText("Today's schedule");
-    await expect(brief).toContainText("Emails awaiting a reply");
-    await expect(brief).toContainText("Lunch on Friday"); // the email thread from M3.2
-    await expect(brief).toContainText("Open threads");
-    // Links in the brief open the threads.
-    await brief.locator("a[href^='#thread/']").first().click();
-    await expect(page.getByTestId("thread-view")).not.toHaveAttribute("data-thread-id", "overview");
-    const notes = (await (await request.get("/api/test/notifications")).json()).notifications;
-    expect(notes.some((n: { title: string }) => n.title === "Your morning brief")).toBeTruthy();
-  });
-
   test("[M4.2] a multi-step website task completes, pausing for confirmation before submitting", async ({ page, request }) => {
     await request.get(`${FIXTURES}/_reset`);
     await request.post("/api/credentials", { data: { domain: "localhost", username: "lisa", password: SITE_PASSWORD } });

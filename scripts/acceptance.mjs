@@ -26,7 +26,6 @@ const CRITERIA = [
     ["M3.4", "Nothing outward-facing happens without confirmation."],
   ]],
   ["Milestone 4 — Proactive and hands-on", [
-    ["M4.1", "The morning brief arrives in Overview with schedule, pending replies and open threads."],
     ["M4.2", "A multi-step website task completes, pausing for confirmation before submitting."],
     ["M4.3", "Credentials never appear in prompts or logs."],
     ["M4.4", "Every action in a thread can be inspected in its audit trail."],

@@ -77,8 +77,6 @@ function routine(task: string, system: string, prompt: string): string {
       });
     case "email_triage":
       return JSON.stringify({ needs_reply: !/newsletter|unsubscribe|receipt|no-?reply|digest/i.test(prompt), reason: "scripted" });
-    case "morning_brief":
-      return `Good morning! Here is your brief.\n\n${prompt}`;
     default:
       return "OK";
   }

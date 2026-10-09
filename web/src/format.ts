@@ -148,7 +148,7 @@ export function stepOutcome(text: string | null | undefined): string {
 /** Names for model-call purposes in the activity list. */
 export function purposeLabel(purpose: string, agent: string | null): string {
   if (purpose === "agent") return agent ? `${agent[0]!.toUpperCase()}${agent.slice(1)} agent` : "Agent";
-  const names: Record<string, string> = { thread_title: "Named the thread", memory_extract: "Memory upkeep", memory_distill: "Distilled the thread", brief: "Morning brief", summary: "Summary" };
+  const names: Record<string, string> = { thread_title: "Named the thread", memory_extract: "Memory upkeep", memory_distill: "Distilled the thread", summary: "Summary" };
   return names[purpose] ?? purpose.replace(/_/g, " ");
 }
 

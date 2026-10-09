@@ -98,15 +98,15 @@ Only model access needs setting up, either here or in **Settings → Model**, wh
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | – | Google OAuth client; this can also be entered in Settings |
 | `VIREO_CHROMIUM_PATH` | Playwright's | Chromium executable for browser actions |
 | `VIREO_BROWSER_HEADLESS` | `true` | Set to `false` to watch the browser |
-| `VIREO_SCHEDULER` | on | Set to `off` to disable the brief, reminders and inbox checks |
+| `VIREO_SCHEDULER` | on | Set to `off` to disable reminders and inbox and calendar checks |
 | `VIREO_FAKE_MODEL` | – | Use the scripted model, for demos and tests |
 | `VIREO_FAKE_GOOGLE` | – | Use an in-memory calendar and mailbox |
 
-Preferences such as time zone, morning brief time, working hours and which proactive checks run are set in **Settings** in the app.
+Preferences such as time zone, working hours and which proactive checks run are set in **Settings** in the app.
 
 ## How it works
 
-- **Threads:** each matter is a thread with its own context. A run is built only from that thread's messages plus relevant memory, so two threads never mix. **Overview** is pinned. It answers quick things, receives the morning brief, and opens new threads for multi-step matters.
+- **Threads:** each matter is a thread with its own context. A run is built only from that thread's messages plus relevant memory, so two threads never mix. **Overview** is pinned. It answers quick things and opens new threads for multi-step matters.
 - **Agents:** Swarm-style multi-agent routing on the OpenAI Agents SDK. A triage agent (on the cheaper model) hands each request to a specialist (general, research, calendar, email, browser) with the SDK's native handoffs, and specialists can hand off to each other. Each specialist has only its own tools. Runs stream to the PWA over server-sent events, and every handoff appears in the thread's audit trail.
 - **Memory:** a temporal knowledge graph in SQLite. It stores entities, facts with validity intervals, and the episodes they came from.
   - A fast model extracts facts after each turn. A changed fact replaces the old one, which is kept as history rather than deleted.
@@ -114,7 +114,7 @@ Preferences such as time zone, morning brief time, working hours and which proac
   - Temporary threads are never remembered.
   - **Memory** in the app shows each fact's source, and lets you correct or delete it.
 - **Confirmations:** tools that act on the world, such as sending email, inviting people, deleting events or clicking a consequential button, never run directly. The agent gets "Not executed yet", and you get a card to Confirm, Edit or Cancel. Your decision resumes the thread, and pending cards survive restarts.
-- **Proactive work:** a scheduler fires reminders and follow-ups in their thread and sends the morning brief. It also opens threads for emails that need a reply (with a summary and a draft) and for calendar invitations or conflicts.
+- **Proactive work:** a scheduler fires reminders and follow-ups in their thread. It also opens threads for emails that need a reply (with a summary and a draft) and for calendar invitations or conflicts.
 - **Safety:** web pages, emails and files are passed to the model as untrusted content. Site passwords live in an encrypted vault (AES-256-GCM, key in the data directory). The model only ever sees `{{password}}`, which is filled into the page at the last moment and scrubbed from all output. The browser is limited to the sites a thread was asked to use.
 - **Audit:** every tool call, confirmation and model call is recorded per thread, in **Activity** in the side panel.
 

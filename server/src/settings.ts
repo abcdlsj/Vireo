@@ -5,8 +5,6 @@ import { applyProxy } from "./net.js";
 export interface OwnerSettings {
   /** IANA time zone, detected from the owner's browser. */
   timezone: string;
-  /** Local time of the daily brief, "HH:MM". Empty disables it. */
-  briefTime: string;
   /** Working hours used when looking for free slots. */
   workdayStart: string;
   workdayEnd: string;
@@ -16,21 +14,17 @@ export interface OwnerSettings {
   inboxQuery: string;
   /** Check the calendar for invitations and conflicts. */
   watchCalendar: boolean;
-  /** Days without activity before a thread is mentioned as quiet in the brief. */
-  staleDays: number;
   /** HTTP proxy for web search, page fetches and the browser, e.g. "http://127.0.0.1:7890". Empty connects directly. */
   proxyUrl: string;
 }
 
 const DEFAULTS: OwnerSettings = {
   timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
-  briefTime: "08:00",
   workdayStart: "09:00",
   workdayEnd: "18:00",
   watchInbox: true,
   inboxQuery: "in:inbox is:unread category:primary",
   watchCalendar: true,
-  staleDays: 7,
   proxyUrl: "",
 };
 

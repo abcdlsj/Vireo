@@ -123,13 +123,11 @@ export interface ModelStatus {
 
 export interface OwnerSettings {
   timezone: string;
-  briefTime: string;
   workdayStart: string;
   workdayEnd: string;
   watchInbox: boolean;
   inboxQuery: string;
   watchCalendar: boolean;
-  staleDays: number;
   proxyUrl: string;
 }
 

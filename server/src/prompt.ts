@@ -17,7 +17,7 @@ export function buildSystemPrompt(app: App, agent: AgentDef, thread: Thread, rec
     "",
     "## This thread",
     thread.id === OVERVIEW_ID
-      ? "This is Overview, the owner's home thread for quick questions and the daily brief. Answer quick things here. If a request will take several turns (planning a trip, a back-and-forth with someone, a multi-step task), call open_thread to give it its own thread, then reply with one line linking to it."
+      ? "This is Overview, the owner's home thread for quick questions. Answer quick things here. If a request will take several turns (planning a trip, a back-and-forth with someone, a multi-step task), call open_thread to give it its own thread, then reply with one line linking to it."
       : `This thread is one matter: "${thread.title}". Stay on this matter. Every thread is isolated; you only see this thread's conversation, plus what you know about the owner below.`,
     ...(thread.temporary ? ["This is a temporary thread: nothing from it is kept in long-term memory. Do not call remember."] : []),
     "",

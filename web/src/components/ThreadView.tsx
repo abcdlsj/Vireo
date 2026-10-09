@@ -10,7 +10,7 @@ import { SidePanel } from "./SidePanel";
 import { CardSlot } from "../cards/CardSlot";
 import { Status } from "../cards/Frame";
 import type { Card } from "../cards/types";
-import { AlertIcon, ArrowUpRightIcon, BellIcon, CheckIcon, ChevronLeft, ChevronRight, ClockIcon, PanelIcon, StatusIcon, BriefIcon } from "../icons";
+import { AlertIcon, ArrowUpRightIcon, BellIcon, CheckIcon, ChevronLeft, ChevronRight, ClockIcon, PanelIcon, StatusIcon } from "../icons";
 
 type Item =
   | { kind: "user"; m: Extract<Message, { role: "user" }> }
@@ -234,11 +234,7 @@ export function ThreadView({ id }: { id: string }) {
           <span className="crumb-here">{t.title}</span>
         </span>
         <div className="head-actions">
-          {isOverview ? (
-            <button className="btn ghost small" onClick={() => void api.post("/api/brief")} aria-label="Brief me now" title="Brief me now" data-testid="brief-now">
-              <BriefIcon />
-            </button>
-          ) : t.state === "done" ? (
+          {isOverview ? null : t.state === "done" ? (
             <button className="btn ghost small" onClick={() => void api.post(`/api/threads/${t.id}/reopen`).then(load)}>
               Reopen
             </button>
@@ -283,7 +279,7 @@ export function ThreadView({ id }: { id: string }) {
                   </h1>
                 )}
                 {isOverview ? (
-                  <p className="page-sub">Quick questions and your morning brief.</p>
+                  <p className="page-sub">Quick questions, answered here.</p>
                 ) : (
                   <dl className="props">
                     <div>
@@ -308,7 +304,7 @@ export function ThreadView({ id }: { id: string }) {
               </div>
               <CardDock cards={detail.cards ?? []} scroller={scroller} />
               {items.length === 0 && !live ? (
-                <div className="empty">{isOverview ? "Ask anything. Your morning brief lands here too." : "No messages yet."}</div>
+                <div className="empty">{isOverview ? "Ask anything." : "No messages yet."}</div>
               ) : null}
               {placeCards(t.running || live ? shown : items, detail.cards ?? []).map((it) =>
                 "card" in it ? (

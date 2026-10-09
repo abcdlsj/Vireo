@@ -84,7 +84,7 @@ export interface PluginRuntime {
   publicRoutes?(api: Hono): void;
   /** Plaintext secrets to scrub from tool output and logs. */
   secrets?(): string[];
-  /** Called for every owner notification (reminders, confirmations, the brief). */
+  /** Called for every owner notification (reminders, confirmations, new mail). */
   notify?(n: Notification): void;
   /** Replaces the built-in web search; undefined means "not configured, use the built-in one". */
   search?(query: string, max: number): Promise<SearchResult[] | undefined>;

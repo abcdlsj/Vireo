@@ -260,7 +260,7 @@ function Notifications({ me, reload }: { me: Me; reload: () => Promise<void> }) 
   };
   return (
     <section className="card">
-      <p className="muted small">Vireo notifies you when something needs you: confirmations, emails that need a reply, reminders and the morning brief.</p>
+      <p className="muted small">Vireo notifies you when something needs you: confirmations, emails that need a reply and reminders.</p>
       {supported ? (
         <div className="row-buttons">
           <button className="btn" onClick={() => void enable()}>
@@ -299,20 +299,12 @@ function Preferences({ settings, reload }: { settings: OwnerSettings; reload: ()
           <input value={s.timezone} onChange={(e) => setS({ ...s, timezone: e.target.value })} />
         </label>
         <label>
-          Morning brief at
-          <input type="time" value={s.briefTime} onChange={(e) => setS({ ...s, briefTime: e.target.value })} />
-        </label>
-        <label>
           Workday starts
           <input type="time" value={s.workdayStart} onChange={(e) => setS({ ...s, workdayStart: e.target.value })} />
         </label>
         <label>
           Workday ends
           <input type="time" value={s.workdayEnd} onChange={(e) => setS({ ...s, workdayEnd: e.target.value })} />
-        </label>
-        <label>
-          Mention quiet threads after (days)
-          <input type="number" min={1} value={s.staleDays} onChange={(e) => setS({ ...s, staleDays: Number(e.target.value) })} />
         </label>
         <label>
           Proxy for the web and browser
