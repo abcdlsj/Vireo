@@ -15,6 +15,8 @@ export interface CardKind {
   /** Tells the model when to pick this kind. */
   description: string;
   data: TSchema;
+  /** Data fields holding a moment in time. Vireo turns what the model wrote into ISO 8601 with offset. */
+  times?: string[];
 }
 
 /** Text of at most `max` characters. */
@@ -80,10 +82,11 @@ export const CARD_KINDS: CardKind[] = [
       value: Str(20, "The current value, e.g. '320 USD' or 'Out for delivery'"),
       detail: Opt(Str(80)),
       trend: Opt(List(Type.Number(), 30, "Recent values, oldest first, for a small chart")),
-      steps: Opt(List(Str(16), 5, "Stages in order, e.g. Shipped, Sorted, Out for delivery, Delivered")),
+      steps: Opt(List(Str(20), 5, "Stages in order, a word or two each, e.g. Shipped, Sorted, Out for delivery, Delivered")),
       current: Opt(Type.Number({ description: "Index into steps of the current stage" })),
-      checked_at: Opt(Str(40, "ISO time of the last check")),
+      checked_at: Opt(Str(40, "When you last checked, e.g. 2026-10-09T19:40+08:00")),
     }),
+    times: ["checked_at"],
   },
   {
     name: "document",
@@ -136,12 +139,13 @@ export const CARD_KINDS: CardKind[] = [
     name: "event",
     description: "A calendar event that is already on the owner's calendar or worth showing (not a pending invite: those confirm themselves).",
     data: Type.Object({
-      start: Str(40, "ISO 8601 with offset"),
-      end: Opt(Str(40, "ISO 8601 with offset")),
+      start: Str(40, "Date and time, e.g. 2026-10-14T15:30+08:00"),
+      end: Opt(Str(40, "Date and time, e.g. 2026-10-14T16:15+08:00")),
       location: Opt(Str(60)),
       attendees: Opt(List(Str(80), 20)),
       note: Opt(Str(120)),
     }),
+    times: ["start", "end"],
   },
   {
     name: "email",
@@ -150,10 +154,11 @@ export const CARD_KINDS: CardKind[] = [
       from: Str(60),
       address: Opt(Str(120)),
       subject: Str(100),
-      received: Opt(Str(40, "ISO time")),
+      received: Opt(Str(40, "e.g. 2026-10-09T09:12+08:00")),
       body: Str(600, "The relevant part of the message"),
       draft: Opt(Str(1200, "Vireo's suggested reply")),
     }),
+    times: ["received"],
   },
   {
     name: "github_pr",

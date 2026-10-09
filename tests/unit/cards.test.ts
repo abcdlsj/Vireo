@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { App } from "../../server/src/app.js";
 import { CARD_KINDS } from "../../server/src/cards/kinds.js";
 import { OVERVIEW_ID } from "../../server/src/threads.js";
+import { toZonedIso, zonedToUtc } from "../../server/src/time.js";
 import { shapeOf } from "../../server/src/tools/cards.js";
 import { testApp } from "./helpers.js";
 
@@ -30,7 +31,10 @@ describe("cards", () => {
   it("describes every kind's data to the model", () => {
     const description = open().tools.get("show_card")!.description;
     for (const k of CARD_KINDS) expect(description).toContain(`- ${k.name}:`);
-    expect(shapeOf(CARD_KINDS.find((k) => k.name === "answer")!.data)).toBe("{ text: ≤600, sources?: [{ title: ≤80, url }] ≤5 }");
+    expect(shapeOf(CARD_KINDS.find((k) => k.name === "web_page")!.data)).toBe("{ url, summary: ≤240, site?: ≤40 }");
+    // Field hints reach the model, and a shape used twice is spelled out once.
+    expect(description).toContain('start: ≤40 "Date and time, e.g. 2026-10-14T15:30+08:00"');
+    expect(description).toContain("return?: same as outbound");
   });
 
   it("checks the data against the kind and updates a card in place", async () => {
@@ -66,11 +70,38 @@ describe("cards", () => {
     expect(a.cards.forThread(t.id)).toHaveLength(1);
     expect(a.cards.get(id)!.data.booked).toEqual({ seat: "14C", ref: "K7Q2XD" });
 
-    // A card id from another thread can't be reached.
+    // A card id from another thread can't be reached: the call shows a card in its own thread.
     const other = a.threads.create({});
-    await expect(show(a, other.id, { card_id: id, kind: "answer", title: "x", data: { text: "x" } })).rejects.toThrow(/No card/);
+    await show(a, other.id, { card_id: id, kind: "answer", title: "x", data: { text: "x" } });
+    expect(a.cards.get(id)!.kind).toBe("flight");
+    expect(a.cards.forThread(other.id)).toMatchObject([{ kind: "answer" }]);
+    // A made-up id updates the thread's latest card rather than failing the turn.
+    await show(a, other.id, { card_id: "made-up", kind: "answer", title: "y", data: { text: "y" } });
+    expect(a.cards.forThread(other.id)).toMatchObject([{ title: "y" }]);
     // Overview answers in place; cards belong to a matter.
     await expect(show(a, OVERVIEW_ID, { kind: "answer", title: "x", data: { text: "x" } })).rejects.toThrow(/open_thread/);
+  });
+
+  it("forgives the form models commonly get wrong", async () => {
+    const a = open();
+    const t = a.threads.create({ title: "Dentist" });
+    const out = await show(a, t.id, {
+      kind: "event",
+      title: "Dentist",
+      // Data as a JSON string, a time without an offset, an end of just a time.
+      data: JSON.stringify({ start: "2026-10-14 15:30", end: "16:15", location: "Nanjing Road" }),
+    });
+    const card = a.cards.get(out.text.match(/Card (\S+)/)![1]!)!;
+    const tz = a.settings.get().timezone;
+    expect(card.data.start).toBe(toZonedIso(zonedToUtc(2026, 10, 14, 15, 30, tz), tz));
+    expect(card.data.end).toBe(toZonedIso(zonedToUtc(2026, 10, 14, 16, 15, tz), tz));
+
+    await show(a, t.id, { kind: "event", title: "Dentist", data: { start: "2026-10-14 15:30 +0800", end: "16:15" } });
+    expect(a.cards.forThread(t.id).at(-1)!.data).toMatchObject({ start: "2026-10-14T15:30:00+08:00", end: "2026-10-14T16:15:00+08:00" });
+
+    // Numbers where text is expected become text.
+    await show(a, t.id, { kind: "compare", title: "Hotels", data: { options: [{ title: "Park Hotel", value: 804 }] } });
+    expect(a.cards.forThread(t.id).at(-1)!.data).toEqual({ options: [{ title: "Park Hotel", value: "804" }] });
   });
 
   it("feeds the home board: pending confirmations first, every matter once, temporary threads left out", async () => {

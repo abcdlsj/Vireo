@@ -85,8 +85,13 @@ export class Cards {
   /** Creates a card, or replaces an existing one of this thread when id is given. */
   save(threadId: string, input: { id?: string; kind: string; title: string; status: CardStatus; data: Record<string, unknown>; buttons: CardButton[] }): Card {
     const t = now();
-    const existing = input.id ? this.app.db.get<CardRow>("SELECT * FROM cards WHERE id = ? AND thread_id = ?", input.id, threadId) : undefined;
-    if (input.id && !existing) throw new Error(`No card ${input.id} in this thread. Omit card_id to create a new card.`);
+    // Models sometimes make up a card_id ("tokyo-trip") instead of reusing the
+    // one they were given. An id this thread doesn't have means the thread's
+    // latest card, or a new card when there is none; never another thread's.
+    const existing = input.id
+      ? (this.app.db.get<CardRow>("SELECT * FROM cards WHERE id = ? AND thread_id = ?", input.id, threadId) ??
+        this.app.db.get<CardRow>("SELECT * FROM cards WHERE thread_id = ? AND archived = 0 ORDER BY updated_at DESC LIMIT 1", threadId))
+      : undefined;
     const id = existing?.id ?? newId("card");
     if (existing) {
       this.app.db.run(
