@@ -324,7 +324,7 @@ function research(t: Turn): AssistantMessage {
   if (t.tools.has("show_card") && /Show results as cards/.test(t.system) && !t.results.some((r) => r.name === "show_card")) {
     return call("show_card", {
       kind: "answer",
-      title: t.owner.slice(0, 80),
+      title: t.owner.slice(0, 40).trim(),
       data: { text: pages.map((p) => p.sentence).join("\n\n"), sources: pages.map((p) => ({ title: p.title, url: p.url })) },
     });
   }

@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import { api } from "../api";
 import { relTime } from "../format";
 import { ArrowUpRightIcon, CheckIcon } from "../icons";
@@ -21,6 +21,30 @@ export const BoardContext = createContext<Board | null>(null);
 /** Derived cards (a confirmation, a reminder) have no matter of their own to close. */
 function closable(card: Card): boolean {
   return card.threadId !== "overview" && card.kind !== "proposal" && card.kind !== "reminder" && card.status !== "done";
+}
+
+/**
+ * On the board, a list of rows that has no room for even its first row is
+ * left out rather than shown as a cut-off sliver (the CSS hides later rows).
+ */
+function useFitRows(expanded: boolean) {
+  const ref = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const body = ref.current;
+    if (expanded || !body) return;
+    const fit = () => {
+      for (const list of body.querySelectorAll<HTMLElement>(":scope > .c-rows")) {
+        list.classList.remove("no-room");
+        const first = list.firstElementChild as HTMLElement | null;
+        if (first && list.clientHeight < first.offsetHeight) list.classList.add("no-room");
+      }
+    };
+    fit();
+    const ro = new ResizeObserver(fit);
+    ro.observe(body);
+    return () => ro.disconnect();
+  });
+  return ref;
 }
 
 /** True for a moment after the card's content changes, so the change is seen. */
@@ -68,6 +92,7 @@ export function Frame({
 }) {
   const board = useContext(BoardContext);
   const flash = useJustUpdated(card);
+  const body = useFitRows(expanded);
   const [leaving, setLeaving] = useState(false);
   const interactive = !expanded;
   const open = () => (board ? board.peek(card) : go(`thread/${card.threadId}`));
@@ -130,7 +155,9 @@ export function Frame({
       ) : (
         <span className="vcard-corner floating">{actions}</span>
       )}
-      <div className="vcard-body">{children}</div>
+      <div className="vcard-body" ref={body}>
+        {children}
+      </div>
       {own ? <footer className="vcard-foot">{own}</footer> : null}
     </article>
   );

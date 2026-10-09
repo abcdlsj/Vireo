@@ -43,7 +43,10 @@ describe("cards", () => {
     await expect(show(a, t.id, { kind: "flight", title: "PVG to HND", data: { from: "PVG" } })).rejects.toThrow(/does not fit a flight card/);
     await expect(show(a, t.id, { kind: "hologram", title: "x", data: {} })).rejects.toThrow(/Unknown kind/);
     // Cards stay glanceable: long titles and fields are refused, so the model says it shorter.
-    await expect(show(a, t.id, { kind: "answer", title: "x".repeat(61), data: { text: "x" } })).rejects.toThrow(/title is too long/);
+    await expect(show(a, t.id, { kind: "answer", title: "x".repeat(41), data: { text: "x" } })).rejects.toThrow(/title is too long/);
+    await expect(
+      show(a, t.id, { kind: "answer", title: "x", data: { text: "x" }, buttons: [{ label: "Book both legs with carry-on only", reply: "Book both" }] }),
+    ).rejects.toThrow(/button .* is too long/);
     await expect(
       show(a, t.id, { kind: "compare", title: "Hotels", data: { options: [{ title: "A hotel with a very long name that also lists its price ¥804" }] } }),
     ).rejects.toThrow(/options\/0\/title/);

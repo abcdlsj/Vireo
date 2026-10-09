@@ -35,9 +35,18 @@ export default defineCard({
     const back = field<Leg | null>(card, "return", null);
     const options = field<ReturnOption[]>(card, "return_options", []).filter((o) => o.date && o.price);
     const note = field(card, "note", "");
+    const total = field(card, "total", "");
     return (
       <Frame card={card} expanded={expanded} className="trip">
-        <h3 className="c-title">{card.title}</h3>
+        <div className="trip-head">
+          <h3 className="c-title">{card.title}</h3>
+          {total ? (
+            <span className="trip-total">
+              <small>Total</small>
+              {total}
+            </span>
+          ) : null}
+        </div>
         {outbound ? <LegRow leg={outbound} label="Out" /> : null}
         {back ? <LegRow leg={back} label="Back" /> : options.length ? <ReturnBars options={options} /> : null}
         {note && expanded ? <p className="c-sub">{note}</p> : null}

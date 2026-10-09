@@ -104,9 +104,7 @@ export function Peek({ card, onClose, refresh }: { card: Card; onClose: () => vo
           ) : latest && latest.role === "assistant" ? (
             <div className="peek-latest">
               <span className="peek-latest-head">Vireo · {relTime(latest.createdAt)}</span>
-              <div className="peek-latest-text">
-                <Markdown text={latest.text} />
-              </div>
+              <Folded text={latest.text} />
             </div>
           ) : null}
         </div>
@@ -145,5 +143,28 @@ function PeekReply({ threadId, done, onSent }: { threadId: string; done: boolean
         <ArrowUpIcon />
       </button>
     </form>
+  );
+}
+
+/** Vireo's latest reply, folded to a few lines: the card above already carries the facts. */
+function Folded({ text }: { text: string }) {
+  const [open, setOpen] = useState(false);
+  const [long, setLong] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (el) setLong(el.scrollHeight > el.clientHeight + 2);
+  }, [text]);
+  return (
+    <>
+      <div ref={ref} className={`peek-latest-text ${open ? "open" : long ? "folded" : ""}`}>
+        <Markdown text={text} />
+      </div>
+      {long || open ? (
+        <button className="peek-more" onClick={() => setOpen(!open)} data-testid="peek-more">
+          {open ? "Show less" : "Show more"}
+        </button>
+      ) : null}
+    </>
   );
 }

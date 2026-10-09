@@ -8,6 +8,8 @@ import { Composer } from "./Composer";
 import { ProcedureCard } from "./ProcedureCard";
 import { SidePanel } from "./SidePanel";
 import { CardSlot } from "../cards/CardSlot";
+import { Status } from "../cards/Frame";
+import type { Card } from "../cards/types";
 import { AlertIcon, ArrowUpRightIcon, BellIcon, CheckIcon, ChevronLeft, ChevronRight, ClockIcon, PanelIcon, StatusIcon, BriefIcon } from "../icons";
 
 type Item =
@@ -42,6 +44,65 @@ function buildItems(messages: Message[]): Item[] {
     else items.push({ kind: "notice", m });
   }
   return items;
+}
+
+/**
+ * Puts each card in the conversation at the end of the turn that last
+ * changed it, so the latest state of the matter stays next to the talk about
+ * it instead of at the top of the page.
+ */
+function placeCards(items: Item[], cards: Card[]): (Item | { card: Card })[] {
+  const out: (Item | { card: Card })[] = [];
+  const pending = [...cards].sort((a, b) => a.updatedAt - b.updatedAt);
+  for (const it of items) {
+    if (it.kind === "user") {
+      while (pending.length && pending[0]!.updatedAt < it.m.createdAt) out.push({ card: pending.shift()! });
+    }
+    out.push(it);
+  }
+  for (const card of pending) out.push({ card });
+  return out;
+}
+
+/**
+ * A slim bar pinned to the top of the conversation while a card is out of
+ * view: its name and status, and a tap brings it back.
+ */
+function CardDock({ cards, scroller }: { cards: Card[]; scroller: React.RefObject<HTMLDivElement | null> }) {
+  const [hidden, setHidden] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    const root = scroller.current;
+    if (!root) return;
+    const io = new IntersectionObserver(
+      (entries) =>
+        setHidden((prev) => {
+          const next = new Set(prev);
+          for (const e of entries) {
+            const id = (e.target as HTMLElement).dataset.cardId!;
+            if (e.isIntersecting) next.delete(id);
+            else next.add(id);
+          }
+          // Re-observing reports every card again; keep the same set when nothing moved.
+          return next.size === prev.size && [...next].every((id) => prev.has(id)) ? prev : next;
+        }),
+      { root, rootMargin: "-48px 0px 0px 0px" },
+    );
+    for (const el of root.querySelectorAll<HTMLElement>("[data-card-id]")) io.observe(el);
+    return () => io.disconnect();
+  });
+  const away = cards.filter((c) => hidden.has(c.id) && c.status !== "done").sort((a, b) => b.updatedAt - a.updatedAt);
+  if (!away.length) return null;
+  const go = (id: string) => scroller.current?.querySelector(`[data-card-id="${id}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+  return (
+    <div className="card-dock" data-testid="card-dock">
+      {away.slice(0, 2).map((c) => (
+        <button key={c.id} className={`card-dock-item ${c.status}`} onClick={() => go(c.id)}>
+          <span className="card-dock-title">{c.title}</span>
+          <Status card={c} />
+        </button>
+      ))}
+    </div>
+  );
 }
 
 interface Live {
@@ -245,19 +306,19 @@ export function ThreadView({ id }: { id: string }) {
                   </dl>
                 )}
               </div>
-              {detail.cards?.length ? (
-                <div className="thread-cards" data-testid="thread-cards">
-                  {detail.cards.map((c) => (
-                    <CardSlot key={c.id} card={c} expanded refresh={load} />
-                  ))}
-                </div>
-              ) : null}
+              <CardDock cards={detail.cards ?? []} scroller={scroller} />
               {items.length === 0 && !live ? (
                 <div className="empty">{isOverview ? "Ask anything. Your morning brief lands here too." : "No messages yet."}</div>
               ) : null}
-              {(t.running || live ? shown : items).map((it) => (
-                <ItemView key={it.kind === "steps" ? it.key : `${it.kind}${it.m.id}`} item={it} actions={actions} onChange={load} />
-              ))}
+              {placeCards(t.running || live ? shown : items, detail.cards ?? []).map((it) =>
+                "card" in it ? (
+                  <div key={`card${it.card.id}`} className="thread-cards" data-testid="thread-cards" data-card-id={it.card.id}>
+                    <CardSlot card={it.card} expanded refresh={load} />
+                  </div>
+                ) : (
+                  <ItemView key={it.kind === "steps" ? it.key : `${it.kind}${it.m.id}`} item={it} actions={actions} onChange={load} />
+                ),
+              )}
               {t.running || live ? (
                 <div className="msg assistant live" data-testid="live">
                   {/* While working: one line saying what is happening now; when done it becomes the folded summary. */}

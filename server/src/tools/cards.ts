@@ -31,7 +31,8 @@ export function shapeOf(schema: unknown, seen = new Map<unknown, string>()): str
   return s.type ?? "";
 }
 
-const TITLE_MAX = 60;
+const TITLE_MAX = 40;
+const LABEL_MAX = 16;
 
 const DATE_TIME = /^(\d{4}-\d{2}-\d{2})(?:[T ](\d{1,2}):(\d{2})(?::(\d{2}))?)?\s*(Z|[+-]\d{2}:?\d{2})?$/;
 const TIME_ONLY = /^(\d{1,2}):(\d{2})$/;
@@ -95,21 +96,24 @@ export const cardTools = [
       "Do not use it for confirmations: outward actions show their own confirmation card.",
       "Status: ready (a result for the owner to look at: the default, and right for most answers), needs_you (the owner has to decide or reply), watching (you keep checking it), working (still on it), done (the matter is over, e.g. the trip was taken or the parcel arrived; done cards leave the home board, so never mark a fresh result done).",
       "Buttons send their reply text to this thread as if the owner had typed it, or open a url.",
-      "Cards are glanced at, not read. Make the point obvious: a title of a few words, one fact per field, numbers only in value/price fields, never the same fact in two fields. Leave reasoning and caveats to your chat reply. Text limits (≤N characters) and list limits are enforced.",
+      "Pick the most specific kind: a flight → flight, flights there and back → trip, options to choose from → compare, a place → place, an email → email. summary is only for a batch of similar things; answer only when nothing else fits.",
+      "Cards are glanced at, not read. A card holds facts only: one fact per field, numbers only in value/price fields, never the same fact twice. Checklists, questions to the owner, reasoning, caveats and reminders go in your chat reply, never in the card. Buttons are the next steps, labelled in two or three words. Text limits (≤N characters) and list limits are enforced.",
       "Kinds and their data:",
       ...CARD_KINDS.map((k) => `- ${k.name}: ${k.description} data ${shapeOf(k.data)}`),
     ].join("\n"),
     parameters: Type.Object({
       card_id: Type.Optional(Type.String({ description: "To update a card: the id show_card returned for it. Omit to show a new card" })),
       kind: Type.Union(CARD_KIND_NAMES.map((n) => Type.Literal(n))),
-      title: Type.String({ description: `A few words naming the matter, at most ${TITLE_MAX} characters, e.g. 'Shanghai ⇄ Tokyo, Oct 10'` }),
+      title: Type.String({
+        description: `The matter's name, at most ${TITLE_MAX} characters, e.g. 'Shanghai ⇄ Tokyo, Oct 10'. A name, never a sentence or the state of things: status and buttons say those`,
+      }),
       status: Type.Optional(Type.Union(STATUSES.map((s) => Type.Literal(s)))),
       data: Type.Record(Type.String(), Type.Unknown(), { description: "Shaped by the kind, as listed above" }),
       buttons: Type.Optional(
         Type.Array(
           Type.Object({
-            label: Type.String(),
-            reply: Type.Optional(Type.String()),
+            label: Type.String({ description: `At most ${LABEL_MAX} characters, e.g. 'Book both'` }),
+            reply: Type.Optional(Type.String({ description: "Sent to this thread as the owner's message" })),
             url: Type.Optional(Type.String()),
             primary: Type.Optional(Type.Boolean()),
           }),
@@ -127,6 +131,8 @@ export const cardTools = [
         const problems = [...Value.Errors(kind.data, data)].slice(0, 5).map((e) => `${e.instancePath || "data"} ${e.message}`);
         throw new Error(`The data does not fit a ${kind.name} card: ${problems.join("; ")}. Expected ${shapeOf(kind.data)}.`);
       }
+      const long = (args.buttons ?? []).find((b) => [...b.label].length > LABEL_MAX);
+      if (long) throw new Error(`The button "${long.label}" is too long (at most ${LABEL_MAX} characters). Label it in two or three words; details go in its reply.`);
       const buttons = (args.buttons ?? []).filter((b) => b.reply || (b.url && /^https?:\/\//.test(b.url)));
       const card = ctx.app.cards.save(ctx.thread.id, {
         id: args.card_id,

@@ -68,11 +68,11 @@ export const CARD_KINDS: CardKind[] = [
   },
   {
     name: "summary",
-    description: "The outcome of handling a batch of things: an inbox tidied, files sorted, a list processed.",
+    description: "The outcome of handling a batch of similar things: an inbox tidied, files sorted, a list processed. Never for flights, a place or a single matter.",
     data: Type.Object({
-      subtitle: Opt(Str(80)),
+      subtitle: Opt(Str(60)),
       stats: Opt(List(Type.Object({ label: Str(16), value: Str(10), attention: Opt(Type.Boolean()) }), 4)),
-      items: Opt(List(Type.Object({ title: Str(40), text: Opt(Str(90)), url: Opt(Url) }), 8)),
+      items: Opt(List(Type.Object({ title: Str(40), text: Opt(Str(60, "One fact, not a sentence of reasoning")), url: Opt(Url) }), 8)),
     }),
   },
   {
@@ -117,10 +117,11 @@ export const CARD_KINDS: CardKind[] = [
   {
     name: "trip",
     description:
-      "A round trip being planned: the outbound flight (picked or best found), the return flight once picked, and while it isn't, the cheapest return per date to choose from.",
+      "Flights there and back, on one ticket or two one-ways: the outbound flight (picked or best found), the return once picked, and while it isn't, the cheapest return per date to choose from. Use it for any two-leg trip, from searching to booked.",
     data: Type.Object({
       outbound: Leg,
       return: Opt(Leg),
+      total: Opt(Value("Both legs together, e.g. ¥3,006")),
       return_options: Opt(
         List(
           Type.Object({

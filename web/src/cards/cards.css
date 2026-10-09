@@ -665,6 +665,41 @@
   line-height: 23px;
   font-weight: 600;
   letter-spacing: -0.01em;
+  text-wrap: pretty;
+}
+
+/*
+ * On the board a card has a fixed size, so what doesn't fit is left out whole
+ * rather than cut through: titles stop at two lines, rows that don't fit wrap
+ * into a hidden column, and buttons that don't fit one line wait in the peek.
+ */
+.vcard:not(.expanded) .c-title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+.vcard:not(.expanded) .vcard-body > .c-rows {
+  flex: 1 1 0;
+  min-height: 0;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  overflow: hidden;
+}
+
+.vcard:not(.expanded) .vcard-body > .c-rows.no-room {
+  visibility: hidden;
+}
+
+.vcard:not(.expanded) .vcard-body > .c-rows > li {
+  width: calc(100% + 20px);
+  box-sizing: border-box;
+}
+
+.vcard:not(.expanded) .vcard-buttons {
+  max-height: 36px;
+  overflow: hidden;
 }
 
 .c-title.big {
@@ -1795,12 +1830,12 @@
   margin-bottom: auto;
 }
 
-/* ---------- thread page: its cards above the conversation ---------- */
+/* ---------- thread page: each card sits in the conversation where it last changed ---------- */
 .thread-cards {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  margin: 0 0 24px;
+  margin: 4px 0 24px;
 }
 
 .thread-cards .vcard {
@@ -1916,6 +1951,35 @@
 /* ---------- trip (round trip) ---------- */
 .vcard.trip .vcard-body {
   gap: 8px;
+}
+
+.trip-head {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+}
+
+.trip-head .c-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.trip-total {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 22px;
+  line-height: 28px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+}
+
+.trip-total small {
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0;
+  color: var(--c-ink-3);
 }
 
 .leg {
@@ -2099,6 +2163,51 @@
   }
 }
 
+/* ---------- thread page: a card out of view, pinned as a slim bar ---------- */
+.card-dock {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0 -8px 4px;
+  padding: 8px 8px 14px;
+  background: linear-gradient(var(--c-main) 70%, transparent);
+  animation: c-rise 0.2s ease both;
+}
+
+.card-dock-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  height: 40px;
+  padding: 0 16px;
+  border: none;
+  border-radius: 20px;
+  background: var(--c-paper);
+  box-shadow: var(--c-shadow);
+  color: var(--c-ink);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.card-dock-item:hover {
+  box-shadow: var(--c-shadow-hover);
+}
+
+.card-dock-title {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* ---------- peek: a card opened from the board ---------- */
 .peek {
   position: fixed;
@@ -2213,6 +2322,32 @@
   font-size: 12px;
   font-weight: 600;
   color: var(--c-ink-3);
+}
+
+.peek-latest-text:not(.open) {
+  max-height: 84px;
+  overflow: hidden;
+}
+
+.peek-latest-text.folded {
+  -webkit-mask-image: linear-gradient(to bottom, #000 55%, transparent);
+  mask-image: linear-gradient(to bottom, #000 55%, transparent);
+}
+
+.peek-more {
+  margin-top: 4px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--c-ink-3);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.peek-more:hover {
+  color: var(--c-ink);
 }
 
 .peek-latest-text > :first-child {

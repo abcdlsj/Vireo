@@ -373,19 +373,27 @@ export class Runner {
   /** Names a thread from its first message (e.g. "Book flight to Shanghai, Oct 15"). */
   async nameThread(threadId: string, firstMessage: string): Promise<void> {
     this.app.threads.update(threadId, { titled: 1, title: fallbackTitle(firstMessage) });
-    try {
-      const title = await this.app.models.complete({
-        task: "thread_title",
-        threadId,
-        system:
-          "Name this matter for a to-do style list. Reply with the title only: at most 7 words, in the same language as the message, specific (include names, places, dates when present), no quotes, no trailing punctuation. Example: Book flight to Shanghai, Oct 15",
-        prompt: firstMessage.slice(0, 2000),
-        maxTokens: 40,
-      });
-      const clean = title.replace(/^["'“”]+|["'“”.。]+$/g, "").split("\n")[0]!.trim();
-      if (clean) this.app.threads.update(threadId, { title: truncate(clean, 80) });
-    } catch {
-      // the fallback title stays
+    // The fast model first; if it fails or says nothing (a reasoning model can
+    // spend a small budget on thinking), the main model. Else the fallback stays.
+    for (const tier of ["fast", "main"] as const) {
+      try {
+        const title = await this.app.models.complete({
+          task: "thread_title",
+          threadId,
+          tier,
+          system:
+            "Name this matter for a to-do style list. Reply with the title only: at most 7 words, in the same language as the message, specific (include names, places, dates when present), no quotes, no trailing punctuation. Example: Book flight to Shanghai, Oct 15",
+          prompt: firstMessage.slice(0, 2000),
+          maxTokens: 400,
+        });
+        const clean = title.replace(/^["'“”]+|["'“”.。]+$/g, "").split("\n")[0]!.trim();
+        if (clean) {
+          this.app.threads.update(threadId, { title: truncate(clean, 80) });
+          return;
+        }
+      } catch {
+        // try the next tier
+      }
     }
   }
 
