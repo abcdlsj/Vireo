@@ -249,10 +249,10 @@ function Setup({ me }: { me: Me }) {
     // Plugins the owner added but did not finish; Google is already a step above.
     ...(me.capabilities ?? [])
       .filter((c) => c.state === "needs_setup" && c.id !== "google")
-      .map((c) => ({ done: false, label: `Finish setting up ${c.name}`, why: c.message ?? "", href: `#settings/plugins/${c.id}` })),
+      .map((c) => ({ done: false, label: `Finish setting up ${c.name}`, why: c.message ?? "", href: `#settings/plugins/${c.id}`, plugin: true })),
   ];
   const left = steps.filter((s) => !s.done).length;
-  const unfinishedPlugin = steps.some((s) => !s.done && s.href.startsWith("#settings/plugins/"));
+  const unfinishedPlugin = steps.some((s) => "plugin" in s);
   if (left === 0 || (hidden && me.models.ready && !unfinishedPlugin)) return null;
   return (
     <section className="setup" data-testid="setup">
