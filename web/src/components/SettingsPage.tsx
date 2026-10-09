@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useGlide } from "../glide";
 import { ChevronLeft } from "../icons";
 import { currentHost } from "../hosts";
 import { HostsSettings } from "./Hosts";
@@ -16,6 +17,22 @@ const SECTIONS = [
   { id: "usage", label: "Usage" },
   { id: "device", label: "This device" },
 ];
+
+/** The section list; the selected section's highlight slides between entries. */
+function SettingsNav({ cur, modelMissing }: { cur: string; modelMissing: boolean }) {
+  const ref = useRef<HTMLElement>(null);
+  useGlide(ref, { hover: ".settings-nav-item", active: ".settings-nav-item.active" });
+  return (
+    <nav className="settings-nav" ref={ref} aria-label="Settings sections">
+      {SECTIONS.map((s) => (
+        <a key={s.id} href={`#settings/${s.id}`} className={`settings-nav-item ${s.id === cur ? "active" : ""}`} aria-current={s.id === cur ? "page" : undefined} data-testid={`settings-nav-${s.id}`}>
+          {s.label}
+          {s.id === "model" && modelMissing ? <span className="dot warn" title="No model configured" /> : null}
+        </a>
+      ))}
+    </nav>
+  );
+}
 
 export function SettingsPage({ section, me, reload, onSignedOut }: { section: string; me: Me | null; reload: () => Promise<void>; onSignedOut: () => void }) {
   if (!me) return <div className="page" />;
@@ -35,14 +52,7 @@ export function SettingsPage({ section, me, reload, onSignedOut }: { section: st
         </span>
       </header>
       <div className="settings-layout">
-        <nav className="settings-nav" aria-label="Settings sections">
-          {SECTIONS.map((s) => (
-            <a key={s.id} href={`#settings/${s.id}`} className={`settings-nav-item ${s.id === cur.id ? "active" : ""}`} aria-current={s.id === cur.id ? "page" : undefined} data-testid={`settings-nav-${s.id}`}>
-              {s.label}
-              {s.id === "model" && !me.models.ready ? <span className="dot warn" title="No model configured" /> : null}
-            </a>
-          ))}
-        </nav>
+        <SettingsNav cur={cur.id} modelMissing={!me.models.ready} />
         <div className="page-body settings">
           <h1 className="page-title">{cur.label}</h1>
           {cur.id === "general" ? (
