@@ -1,10 +1,10 @@
 import { Type } from "typebox";
 import { formatSnapshot } from "../browser.js";
-import { defineTool, untrustedBlock, type ToolContext, type ToolDef } from "./types.js";
+import { defineTool, type ToolContext, type ToolDef } from "./types.js";
 
 function snapshotOutput(ctx: ToolContext, snap: Awaited<ReturnType<ToolContext["app"]["browser"]["snapshot"]>>) {
   ctx.app.threads.addRelated(ctx.thread.id, { kind: "page", title: snap.title || snap.url, url: snap.url });
-  return { text: untrustedBlock(snap.url, formatSnapshot(snap)), details: { url: snap.url } };
+  return { text: formatSnapshot(snap), source: snap.url, details: { url: snap.url } };
 }
 
 const Ref = Type.String({ description: "Element ref from the latest snapshot, e.g. e12 or f1e3" });
@@ -18,7 +18,6 @@ const tools = [
       url: Type.String(),
       new_tab: Type.Optional(Type.Boolean({ description: "Open in a new tab instead of the current one" })),
     }),
-    untrusted: true,
     async run(args, ctx) {
       return snapshotOutput(ctx, await ctx.app.browser.open(ctx.thread.id, args.url, Boolean(args.new_tab)));
     },
@@ -28,7 +27,6 @@ const tools = [
     label: "Look at page",
     description: "Re-read the current page and its element refs. Refs from older snapshots may stop working after the page changes.",
     parameters: Type.Object({}),
-    untrusted: true,
     async run(_args, ctx) {
       return snapshotOutput(ctx, await ctx.app.browser.snapshot(ctx.thread.id));
     },
@@ -38,10 +36,9 @@ const tools = [
     label: "Read page",
     description: "Return the visible text of the current page, for reading articles, prices or long result lists.",
     parameters: Type.Object({}),
-    untrusted: true,
     async run(_args, ctx) {
       const r = await ctx.app.browser.read(ctx.thread.id);
-      return { text: untrustedBlock(r.url, `URL: ${r.url}\nTitle: ${r.title}\n\n${r.text}`), details: { url: r.url } };
+      return { text: `URL: ${r.url}\nTitle: ${r.title}\n\n${r.text}`, source: r.url, details: { url: r.url } };
     },
   }),
   defineTool({
@@ -53,7 +50,6 @@ const tools = [
       description: Type.String({ description: "What this click does, for the owner, e.g. 'Submit the booking form'" }),
       double: Type.Optional(Type.Boolean()),
     }),
-    untrusted: true,
     confirm: (args, ctx) => ctx.app.browser.isConsequentialClick(ctx.thread.id, args.ref),
     summarize: (args) => args.description,
     async run(args, ctx) {
@@ -71,7 +67,6 @@ const tools = [
       submit: Type.Optional(Type.Boolean()),
       slowly: Type.Optional(Type.Boolean()),
     }),
-    untrusted: true,
     confirm: (args, ctx) => (args.submit ? ctx.app.browser.isConsequentialSubmit(ctx.thread.id, args.ref) : false),
     summarize: () => `Type into the page and press Enter to submit`,
     async run(args, ctx) {
@@ -83,7 +78,6 @@ const tools = [
     label: "Press key",
     description: "Press a key or shortcut, e.g. Enter, Escape, Tab, ArrowDown, PageDown. Targets the element by ref, or the focused element when ref is omitted.",
     parameters: Type.Object({ key: Type.String(), ref: Type.Optional(Ref) }),
-    untrusted: true,
     confirm: (args, ctx) => (/^enter$/i.test(args.key) ? ctx.app.browser.isConsequentialSubmit(ctx.thread.id, args.ref) : false),
     summarize: (args) => `Press ${args.key} to submit the form`,
     async run(args, ctx) {
@@ -95,7 +89,6 @@ const tools = [
     label: "Choose option",
     description: "Choose one or more options in a native select element (combobox) by ref. For custom dropdowns, click the dropdown and then the option instead.",
     parameters: Type.Object({ ref: Ref, values: Type.Array(Type.String(), { minItems: 1 }) }),
-    untrusted: true,
     async run(args, ctx) {
       return snapshotOutput(ctx, await ctx.app.browser.select(ctx.thread.id, args.ref, args.values));
     },
@@ -105,7 +98,6 @@ const tools = [
     label: "Tick box",
     description: "Check or uncheck a checkbox, radio button or switch by ref.",
     parameters: Type.Object({ ref: Ref, checked: Type.Boolean() }),
-    untrusted: true,
     async run(args, ctx) {
       return snapshotOutput(ctx, await ctx.app.browser.check(ctx.thread.id, args.ref, args.checked));
     },
@@ -115,7 +107,6 @@ const tools = [
     label: "Hover",
     description: "Move the mouse over an element by ref, to open hover menus or tooltips.",
     parameters: Type.Object({ ref: Ref }),
-    untrusted: true,
     async run(args, ctx) {
       return snapshotOutput(ctx, await ctx.app.browser.hover(ctx.thread.id, args.ref));
     },
@@ -128,7 +119,6 @@ const tools = [
       direction: Type.Optional(Type.Union([Type.Literal("down"), Type.Literal("up")])),
       ref: Type.Optional(Ref),
     }),
-    untrusted: true,
     async run(args, ctx) {
       return snapshotOutput(ctx, await ctx.app.browser.scroll(ctx.thread.id, args.direction ?? "down", args.ref));
     },
@@ -138,7 +128,6 @@ const tools = [
     label: "Wait",
     description: "Wait until some text appears on the page, or for a number of seconds (max 20), when results are still loading.",
     parameters: Type.Object({ text: Type.Optional(Type.String()), seconds: Type.Optional(Type.Number({ minimum: 0.5, maximum: 20 })) }),
-    untrusted: true,
     async run(args, ctx) {
       return snapshotOutput(ctx, await ctx.app.browser.wait(ctx.thread.id, args));
     },
@@ -148,7 +137,6 @@ const tools = [
     label: "Go back",
     description: "Go back (or forward) in the current tab's history.",
     parameters: Type.Object({ forward: Type.Optional(Type.Boolean()) }),
-    untrusted: true,
     async run(args, ctx) {
       return snapshotOutput(ctx, await ctx.app.browser.history(ctx.thread.id, args.forward ? "forward" : "back"));
     },
@@ -161,7 +149,6 @@ const tools = [
       index: Type.Optional(Type.Number({ minimum: 0 })),
       close: Type.Optional(Type.Boolean({ description: "Close the tab (the current one when index is omitted)" })),
     }),
-    untrusted: true,
     async run(args, ctx) {
       const b = ctx.app.browser;
       if (args.close) return snapshotOutput(ctx, await b.closeTab(ctx.thread.id, args.index));
@@ -191,7 +178,6 @@ const tools = [
     parameters: Type.Object({
       request: Type.String({ description: "What the owner should do, short and in their language, e.g. 'Sign in to Tailscale and press Connect'" }),
     }),
-    untrusted: true,
     async run(args, ctx) {
       const request = args.request.trim().slice(0, 120);
       ctx.app.threads.setStatus(ctx.thread.id, `Waiting for you in the browser: ${request}`);

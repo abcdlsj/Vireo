@@ -1,5 +1,4 @@
 import type { App } from "../app.js";
-import { bus } from "../bus.js";
 import type { Notification } from "../push.js";
 import { OVERVIEW_ID } from "../threads.js";
 import { errorMessage, truncate } from "../util.js";
@@ -109,7 +108,7 @@ export class ChatBridge {
 
   start(): void {
     this.unsubscribe?.();
-    this.unsubscribe = bus.subscribe((e) => {
+    this.unsubscribe = this.app.bus.subscribe((e) => {
       if (e.type === "run.finished") void this.afterRun(e.threadId, e.text);
     });
   }

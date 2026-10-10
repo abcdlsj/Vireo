@@ -41,6 +41,8 @@ export interface ToolResultMessage {
   toolCallId: string;
   toolName: string;
   content: TextContent[];
+  /** Set when the content came from outside the owner; the model reads it framed as untrusted (S2). */
+  source?: string;
   isError: boolean;
   details?: Record<string, unknown>;
   timestamp: number;

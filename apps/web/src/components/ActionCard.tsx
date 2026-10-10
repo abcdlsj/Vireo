@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { api, type Action } from "../api";
-import { prettyDates, readableResult, toolLabel } from "../format";
+import { prettyDates, toolLabel } from "../format";
 import { Markdown } from "../markdown";
 import { AlertIcon, CheckIcon, ToolIcon, XCircleIcon } from "../icons";
 
@@ -98,7 +98,7 @@ function ActionResult({ action }: { action: Action }) {
       </div>
     );
   }
-  const text = action.result ? readableResult(action.result) : "";
+  const text = action.result ?? "";
   return text ? (
     <div className="action-result" data-testid="action-result">
       {prettyDates(text)}

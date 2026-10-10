@@ -1,5 +1,5 @@
 import { Type } from "typebox";
-import { defineTool, untrustedBlock } from "./types.js";
+import { defineTool } from "./types.js";
 
 export const fileTools = [
   defineTool({
@@ -7,13 +7,12 @@ export const fileTools = [
     label: "Read file",
     description: "Read a text file attached to this thread by id.",
     parameters: Type.Object({ file_id: Type.String() }),
-    untrusted: true,
     async run(args, ctx) {
       const info = ctx.app.files.get(args.file_id);
       if (!info || info.threadId !== ctx.thread.id) throw new Error("File not found in this thread");
       const text = ctx.app.files.text(args.file_id);
       if (text === undefined) throw new Error(`${info.name} is not a text file`);
-      return { text: untrustedBlock(`file ${info.name}`, text) };
+      return { text, source: `file ${info.name}` };
     },
   }),
   defineTool({

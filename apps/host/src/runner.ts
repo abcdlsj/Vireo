@@ -1,13 +1,12 @@
-import { Agent, handoff, MaxTurnsExceededError, tool, type AgentInputItem, type FunctionTool, type RunStreamEvent } from "@openai/agents";
+import { Agent, handoff, MaxTurnsExceededError, type AgentInputItem, type FunctionTool, type RunStreamEvent } from "@openai/agents";
 import { activeAgents, agentDef, type AgentDef } from "./agents.js";
 import type { App } from "./app.js";
-import { bus } from "./bus.js";
 import type { AgentMessage, ImageContent, ToolCall } from "./messages.js";
 import { cacheTokens } from "./models.js";
 import { buildSystemPrompt } from "./prompt.js";
 import { messageText, OVERVIEW_ID, type StoredMessage, type Thread } from "./threads.js";
-import type { ToolContext, ToolDef } from "./tools/types.js";
-import { errorMessage, newId, now, safeJson, truncate } from "./util.js";
+import { forModel, type ToolContext } from "./tools/types.js";
+import { errorMessage, newId, now, safeJson } from "./util.js";
 
 /** Model turns per run, across handoffs; generous because browser tasks take many small steps. */
 const MAX_TURNS = 40;
@@ -41,6 +40,11 @@ export class Runner {
     return this.active.has(threadId);
   }
 
+  /** Resolves once the thread's current run, if any, has ended. */
+  async settled(threadId: string): Promise<void> {
+    await this.active.get(threadId);
+  }
+
   idle(): Promise<void> {
     return Promise.all([...this.active.values()]).then(() => undefined);
   }
@@ -61,7 +65,7 @@ export class Runner {
     const content = opts.images?.length ? [{ type: "text" as const, text: body }, ...opts.images] : body;
     const stored = this.app.threads.addMessage(threadId, { role: "user", content, timestamp: now() }, { agent: opts.source === "vireo" ? "vireo" : undefined });
     if (opts.source !== "vireo") this.app.threads.update(threadId, { last_owner_at: now(), needs_you: 0, ...(thread.state === "done" ? { state: "active", done_at: null } : {}) });
-    if (thread.id !== OVERVIEW_ID && !this.app.threads.row(threadId)?.titled) void this.nameThread(threadId, text);
+    if (thread.id !== OVERVIEW_ID && !this.app.threads.row(threadId)?.titled) void this.app.lifecycle.nameThread(threadId, text);
 
     if (this.active.has(threadId)) {
       // Answered right after the current run, placed after whatever that run still writes.
@@ -131,7 +135,7 @@ export class Runner {
       }
       this.followUps.delete(threadId);
       this.app.threads.update(threadId, { running: 0 });
-      this.finish(threadId, runStarted);
+      this.finished(threadId, runStarted);
     }
   }
 
@@ -193,14 +197,14 @@ export class Runner {
           if (data.type === "response_started") {
             streamId = newId("s");
             streamStart = now();
-            bus.publish({ type: "message.stream_start", threadId: thread.id, streamId, agent: current });
+            this.app.bus.publish({ type: "message.stream_start", threadId: thread.id, streamId, agent: current });
           } else if (data.type === "output_text_delta" && data.delta) {
-            bus.publish({ type: "message.delta", threadId: thread.id, streamId, delta: data.delta, kind: "text" });
+            this.app.bus.publish({ type: "message.delta", threadId: thread.id, streamId, delta: data.delta, kind: "text" });
           } else if (data.type === "response_done") {
             const u = data.response?.usage;
             const model = agents.get(current)!.model as string;
             this.app.models.recordUsage({ threadId: thread.id, purpose: "agent", agent: current, model, input: u?.inputTokens, output: u?.outputTokens, ...cacheTokens(u?.inputTokensDetails), durationMs: now() - streamStart });
-            bus.publish({ type: "message.stream_end", threadId: thread.id, streamId });
+            this.app.bus.publish({ type: "message.stream_end", threadId: thread.id, streamId });
           }
         } else if (ev.type === "run_item_stream_event") {
           const raw = ev.item.rawItem as { type?: string; role?: string; content?: { type: string; text?: string }[]; callId?: string; name?: string; arguments?: string; output?: unknown };
@@ -212,23 +216,30 @@ export class Runner {
             const call: ToolCall = { type: "toolCall", id: raw.callId ?? newId("call"), name: raw.name ?? "", arguments: safeJson(raw.arguments ?? "{}", {}) };
             this.app.threads.addMessage(thread.id, { role: "assistant", content: [call], timestamp: now() }, { agent: agentName });
             if (ev.name === "handoff_requested") {
-              handoffRows.set(call.id, this.auditStart(thread.id, call.id, call.name, agentName, call.arguments));
-              bus.publish({ type: "step", threadId: thread.id, step: { tool: call.name, label: "Handing over", status: "running", toolCallId: call.id } });
+              handoffRows.set(call.id, this.app.audit.start(thread.id, { toolCallId: call.id, tool: call.name, agent: agentName, args: call.arguments }));
+              this.app.bus.publish({ type: "step", threadId: thread.id, step: { tool: call.name, label: "Handing over", status: "running", toolCallId: call.id } });
             }
           } else if (ev.name === "tool_output" || ev.name === "handoff_occurred") {
             const callId = raw.callId ?? "";
-            const text = outputText(raw.output);
-            const details = this.details.get(callId) ?? {};
-            this.details.delete(callId);
+            const result = this.app.gate.take(callId) ?? { text: outputText(raw.output), isError: false, details: {} };
             this.app.threads.addMessage(
               thread.id,
-              { role: "toolResult", toolCallId: callId, toolName: raw.name ?? "", content: [{ type: "text", text }], isError: Boolean(details.isError), details, timestamp: now() },
+              {
+                role: "toolResult",
+                toolCallId: callId,
+                toolName: raw.name ?? "",
+                content: [{ type: "text", text: result.text }],
+                source: result.source,
+                isError: result.isError,
+                details: result.details,
+                timestamp: now(),
+              },
               { agent: agentName },
             );
             const row = handoffRows.get(callId);
             if (row) {
-              this.auditEnd(row, "ok", text);
-              bus.publish({ type: "step", threadId: thread.id, step: { tool: raw.name ?? "", label: raw.name ?? "", status: "ok", toolCallId: callId } });
+              this.app.audit.end(row, "ok", result.text);
+              this.app.bus.publish({ type: "step", threadId: thread.id, step: { tool: raw.name ?? "", label: raw.name ?? "", status: "ok", toolCallId: callId } });
             }
           }
         }
@@ -239,33 +250,6 @@ export class Runner {
       else if (err instanceof MaxTurnsExceededError) this.app.threads.addNotice(thread.id, "error", "This took more steps than allowed for one run, so I stopped. Tell me to continue if you want me to keep going.");
       else this.app.threads.addNotice(thread.id, "error", `The model returned an error: ${errorMessage(err)}`);
     }
-  }
-
-  /** Per tool call: confirmation and error flags, attached to the stored tool result. */
-  private readonly details = new Map<string, Record<string, unknown>>();
-
-  private auditStart(threadId: string, callId: string, toolName: string, agent: string, args: unknown): number {
-    return this.app.db.run(
-      "INSERT INTO tool_calls (thread_id, tool_call_id, tool, agent, args, status, started_at) VALUES (?, ?, ?, ?, ?, 'running', ?)",
-      threadId,
-      callId,
-      toolName,
-      agent,
-      this.app.vault.redact(JSON.stringify(args ?? {})),
-      now(),
-    ).lastInsertRowid;
-  }
-
-  private auditEnd(rowId: number, status: string, text: string): void {
-    const started = this.app.db.get<{ started_at: number }>("SELECT started_at FROM tool_calls WHERE id = ?", rowId)?.started_at ?? now();
-    this.app.db.run(
-      "UPDATE tool_calls SET status = ?, result = ?, ended_at = ?, duration_ms = ? WHERE id = ?",
-      status,
-      this.app.vault.redact(truncate(text, 4000)),
-      now(),
-      now() - started,
-      rowId,
-    );
   }
 
   private moveToEnd(messageId: number): void {
@@ -288,145 +272,20 @@ export class Runner {
       if (name === "open_thread" && ctx.thread.id !== OVERVIEW_ID) continue;
       if (name === "complete_thread" && ctx.thread.id === OVERVIEW_ID) continue;
       if (t.writesMemory && ctx.thread.temporary) continue;
-      tools.push(this.wrap(t, ctx));
+      tools.push(this.app.gate.wrap(t, ctx));
     }
     return tools;
   }
 
-  /** Enforces confirmation (S1), audits every call, and redacts secrets from what the model sees. */
-  private wrap(t: ToolDef, ctx: ToolContext): FunctionTool<ToolContext> {
-    const schema = JSON.parse(JSON.stringify(t.parameters)) as Record<string, unknown>;
-    return tool({
-      name: t.name,
-      description: t.description,
-      strict: false,
-      parameters: { required: [], additionalProperties: true, ...schema, type: "object", properties: (schema.properties as object) ?? {} } as never,
-      errorFunction: null,
-      execute: async (input, _runContext, details) => {
-        const args = (typeof input === "string" ? safeJson(input, {}) : (input ?? {})) as Record<string, unknown>;
-        const callId = details?.toolCall?.callId ?? newId("call");
-        const row = this.auditStart(ctx.thread.id, callId, t.name, ctx.agent, args);
-        this.app.threads.setStatus(ctx.thread.id, `${t.label}…`);
-        bus.publish({ type: "step", threadId: ctx.thread.id, step: { tool: t.name, label: t.label, status: "running", toolCallId: callId } });
-        const done = (status: string, text: string, extra: Record<string, unknown> = {}) => {
-          this.details.set(callId, extra);
-          this.auditEnd(row, status, text);
-          bus.publish({ type: "step", threadId: ctx.thread.id, step: { tool: t.name, label: t.label, status, toolCallId: callId } });
-          return text;
-        };
-        try {
-          if (t.confirm && (await t.confirm(args as never, ctx))) {
-            const summary = t.summarize?.(args as never) ?? t.label;
-            const action = this.app.actions.create(ctx.thread.id, t.name, args, summary);
-            return done(
-              "awaiting_confirmation",
-              `Not executed yet: this needs the owner's confirmation. A confirmation card is now shown to the owner (action ${action.id}: "${summary}"). Do not call this tool again for this action. In one or two sentences, tell the owner what is ready and awaiting their confirmation, then stop.`,
-              { awaitingConfirmation: action.id },
-            );
-          }
-          const out = await t.run(args as never, { ...ctx, signal: details?.signal });
-          return done(out.failed ? "error" : "ok", this.app.vault.redact(out.text), out.failed ? { ...out.details, isError: true } : (out.details ?? {}));
-        } catch (err) {
-          return done("error", `Error: ${this.app.vault.redact(errorMessage(err))}`, { isError: true });
-        }
-      },
-    });
-  }
-
-  /** Updates the status line and "Needs you" after a run, and notifies when appropriate. */
-  private finish(threadId: string, runStarted: number): void {
-    const thread = this.app.threads.get(threadId);
-    if (!thread) return;
-    const lastAssistant = this.app.threads
-      .messages(threadId, { limit: 6 })
-      .reverse()
-      .find((m) => m.role === "assistant" && messageText(m.body));
-    const text = lastAssistant ? messageText(lastAssistant.body) : "";
-    const statusSetAt = this.app.db.getKv<number>(`thread.status_set.${threadId}`) ?? 0;
-    const patch: Parameters<App["threads"]["update"]>[1] = {};
-    if (statusSetAt < runStarted) {
-      const firstLine = text
-        .replace(/[*_#>`]/g, "")
-        .split(/\n|(?<=[.!?。！？])\s/)[0]
-        ?.trim();
-      patch.status_line = firstLine ? truncate(firstLine, 100) : thread.statusLine === "Working…" ? "" : thread.statusLine;
-    }
-    const asksOwner = /[?？]\s*$/.test(text.trim()) && lastAssistant && lastAssistant.createdAt >= runStarted;
-    if (asksOwner && threadId !== OVERVIEW_ID) patch.needs_you = 1;
-    this.app.threads.update(threadId, patch);
-    const after = this.app.threads.get(threadId)!;
-    if (asksOwner && threadId !== OVERVIEW_ID) {
-      void this.app.push.notify({ title: after.title, body: truncate(text, 140), url: `/#thread/${threadId}`, tag: threadId });
-    } else if (now() - runStarted > 30_000 && lastAssistant && lastAssistant.createdAt >= runStarted) {
-      void this.app.push.notify({ title: `Done: ${after.title}`, body: truncate(text, 140), url: `/#thread/${threadId}`, tag: threadId });
-    }
-    if (!after.temporary) this.app.memoryWorker.afterRun(threadId);
-    const said = this.app.threads
+  /** Tells everyone who follows runs (status line, notifications, memory, chat apps) that one ended. */
+  private finished(threadId: string, startedAt: number): void {
+    const text = this.app.threads
       .messages(threadId, { limit: 20 })
-      .filter((m) => m.role === "assistant" && m.createdAt >= runStarted)
+      .filter((m) => m.role === "assistant" && m.createdAt >= startedAt)
       .map((m) => messageText(m.body))
       .filter(Boolean)
       .join("\n\n");
-    bus.publish({ type: "run.finished", threadId, text: said });
-  }
-
-  /** Names a thread from its first message (e.g. "Book flight to Shanghai, Oct 15"). */
-  async nameThread(threadId: string, firstMessage: string): Promise<void> {
-    this.app.threads.update(threadId, { titled: 1, title: fallbackTitle(firstMessage) });
-    // The fast model first; if it fails or says nothing (a reasoning model can
-    // spend a small budget on thinking), the main model. Else the fallback stays.
-    for (const tier of ["fast", "main"] as const) {
-      try {
-        const title = await this.app.models.complete({
-          task: "thread_title",
-          threadId,
-          tier,
-          system:
-            "Name this matter for a to-do style list. Reply with the title only: at most 7 words, in the same language as the message, specific (include names, places, dates when present), no quotes, no trailing punctuation. Example: Book flight to Shanghai, Oct 15",
-          prompt: firstMessage.slice(0, 2000),
-          maxTokens: 400,
-        });
-        const clean = title.replace(/^["'“”]+|["'“”.。]+$/g, "").split("\n")[0]!.trim();
-        if (clean) {
-          this.app.threads.update(threadId, { title: truncate(clean, 80) });
-          return;
-        }
-      } catch {
-        // try the next tier
-      }
-    }
-  }
-
-  /** Marks a thread done: one-line summary, lasting conclusions to memory (M4). */
-  async complete(threadId: string): Promise<void> {
-    const thread = this.app.threads.get(threadId);
-    if (!thread || thread.id === OVERVIEW_ID || thread.state === "done") return;
-    if (this.active.has(threadId)) await this.active.get(threadId);
-    let summary = thread.statusLine || thread.title;
-    try {
-      summary = await this.app.models.complete({
-        task: "thread_summary",
-        threadId,
-        system:
-          "Summarise the outcome of this matter in one line (max 20 words), in the language of the conversation. State what was decided or done, not the process.",
-        prompt: this.app.threads.transcript(threadId, { maxChars: 10000 }),
-        maxTokens: 80,
-      });
-    } catch {
-      // keep the fallback summary
-    }
-    summary = truncate(summary.split("\n")[0]!.trim(), 200);
-    this.app.threads.update(threadId, { state: "done", done_at: now(), summary, status_line: summary, needs_you: 0 });
-    this.app.threads.addNotice(threadId, "done", `Marked done: ${summary}`);
-    void this.app.browser.closeThread(threadId);
-    if (!thread.temporary) await this.app.memoryWorker.distill(threadId, summary);
-  }
-
-  reopen(threadId: string): void {
-    const thread = this.app.threads.get(threadId);
-    if (!thread || thread.state !== "done") return;
-    this.app.threads.update(threadId, { state: "active", done_at: null });
-    this.app.threads.addNotice(threadId, "reopened", "Reopened");
+    this.app.bus.publish({ type: "run.finished", threadId, startedAt, text });
   }
 }
 
@@ -461,7 +320,7 @@ export function toInputItems(messages: AgentMessage[]): AgentInputItem[] {
       }
     } else if (m.role === "toolResult") {
       if (!called.has(m.toolCallId)) continue;
-      out.push({ type: "function_call_result", callId: m.toolCallId, name: m.toolName, status: "completed", output: m.content.map((c) => c.text).join("\n") });
+      out.push({ type: "function_call_result", callId: m.toolCallId, name: m.toolName, status: "completed", output: forModel(m.content.map((c) => c.text).join("\n"), m.source) });
     }
   }
   return out;
@@ -491,10 +350,4 @@ export function fitContext(messages: AgentMessage[], budget = CONTEXT_CHARS): Ag
     while (out.length && out[0]!.role !== "user" && out[0]!.role !== "notice") out = out.slice(1);
   }
   return out;
-}
-
-function fallbackTitle(text: string): string {
-  const firstLine = text.trim().split("\n")[0] ?? "";
-  const cjk = /[㐀-鿿]/.test(firstLine);
-  return truncate(cjk ? firstLine.slice(0, 20) : firstLine.split(/\s+/).slice(0, 7).join(" "), 80) || "New thread";
 }

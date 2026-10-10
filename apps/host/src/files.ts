@@ -1,6 +1,6 @@
 import { readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { extname, join } from "node:path";
-import { bus } from "./bus.js";
+import type { Bus } from "./bus.js";
 import type { Db } from "./db.js";
 import { newId, now } from "./util.js";
 
@@ -21,6 +21,7 @@ export class Files {
   constructor(
     private readonly db: Db,
     private readonly dataDir: string,
+    private readonly bus: Bus,
   ) {}
 
   save(opts: { threadId: string | null; name: string; mime: string; data: Buffer; origin: "upload" | "produced" }): FileInfo {
@@ -48,7 +49,7 @@ export class Files {
         id,
         now(),
       );
-      bus.publish({ type: "thread.updated", threadId: opts.threadId });
+      this.bus.publish({ type: "thread.updated", threadId: opts.threadId });
     }
     return this.get(id)!;
   }

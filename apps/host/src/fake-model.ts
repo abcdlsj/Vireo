@@ -185,7 +185,7 @@ function agentTurn(context: FakeContext): AssistantMessage {
 function noticeTurn(t: Turn): AssistantMessage {
   const n = t.owner;
   if (/owner (edited and )?confirmed/i.test(n)) {
-    const result = n.match(/Result: ([\s\S]*?)\. Continue the task/)?.[1] ?? "";
+    const result = n.match(/Result: ([\s\S]*?)\.?\s*Continue the task/)?.[1] ?? "";
     if (/Failed/i.test(result)) return reply(`That didn't go through: ${result}`);
     if (/Booking confirmed/i.test(result)) return reply(`Done — ${(result.match(/Booking confirmed for[^\n]*/) ?? result.match(/Booking confirmed[^\n]*/))?.[0] ?? "the booking is confirmed"}.`);
     if (/sent/i.test(result)) return reply("Sent. ✅");

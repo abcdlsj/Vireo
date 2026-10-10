@@ -59,7 +59,7 @@ export class Scheduler {
           ? r.thread_id
           : this.app.threads.create({ title: `Reminder: ${r.text}`.slice(0, 80), origin: { kind: "reminder", reminderId: r.id } }).id;
       const thread = this.app.threads.get(threadId)!;
-      if (thread.state === "done") this.app.runner.reopen(threadId);
+      if (thread.state === "done") this.app.lifecycle.reopen(threadId);
       if (r.kind === "follow_up") {
         this.app.threads.addNotice(threadId, "follow_up", `Follow-up due: ${r.text}. Check whether this is resolved, act if you can, and update the owner.`, {
           llm: true,

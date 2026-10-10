@@ -4,7 +4,7 @@ import { getDefaultEnvironment, StdioClientTransport } from "@modelcontextprotoc
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { TSchema } from "typebox";
 import type { AgentDef } from "../../agents.js";
-import { defineTool, untrustedBlock, type ToolDef } from "../../tools/types.js";
+import { defineTool, type ToolDef } from "../../tools/types.js";
 import { errorMessage, truncate } from "../../util.js";
 import type { PluginDef, PluginStatus } from "../types.js";
 
@@ -160,7 +160,6 @@ export const mcpPlugin: PluginDef = {
           label: `${name}: ${t.annotations?.title ?? t.title ?? t.name}`,
           description: truncate(`[${name}] ${t.description ?? t.name}`, 1000),
           parameters: (t.inputSchema ?? { type: "object", properties: {} }) as unknown as TSchema,
-          untrusted: true,
           confirm: () => (mode === "all" ? true : mode === "none" ? false : t.annotations?.readOnlyHint !== true),
           summarize: (args) => `${name} → ${t.name}${Object.keys(args ?? {}).length ? ` ${truncate(JSON.stringify(args), 160)}` : ""}`,
           async run(args, tctx) {
@@ -172,7 +171,7 @@ export const mcpPlugin: PluginDef = {
             const structured = !text && res.structuredContent ? JSON.stringify(res.structuredContent, null, 2) : "";
             const body = truncate(text || structured || "(no output)", 20_000);
             if (res.isError) throw new Error(`${name} ${t.name} failed: ${truncate(body, 2000)}`);
-            return { text: untrustedBlock(`MCP ${name} ${t.name}`, body) };
+            return { text: body, source: `MCP ${name} ${t.name}` };
           },
         }),
       );

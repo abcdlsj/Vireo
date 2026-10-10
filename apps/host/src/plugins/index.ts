@@ -3,7 +3,6 @@ import { join } from "node:path";
 import type { Hono } from "hono";
 import type { AgentDef } from "../agents.js";
 import type { App } from "../app.js";
-import { bus } from "../bus.js";
 import type { Notification } from "../push.js";
 import type { ToolDef } from "../tools/types.js";
 import { errorMessage, now } from "../util.js";
@@ -206,7 +205,7 @@ export class Plugins {
 
   private changed(): void {
     this.app.tools = this.app.buildTools();
-    bus.publish({ type: "plugins.updated" });
+    this.app.bus.publish({ type: "plugins.updated" });
   }
 
   async list(req: RequestInfo): Promise<PluginView[]> {

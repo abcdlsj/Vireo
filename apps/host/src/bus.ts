@@ -15,17 +15,30 @@ export type BusEvent =
   | { type: "procedure.updated" }
   | { type: "plugins.updated" }
   /** Server-side only: a run ended; text is what the assistant said in it. */
-  | { type: "run.finished"; threadId: string; text: string };
+  | { type: "run.finished"; threadId: string; startedAt: number; text: string };
 
-class Bus extends EventEmitter {
+/**
+ * One per app: services announce what changed, and SSE clients, chat apps and
+ * follow-up work subscribe. A failing subscriber is logged and never stops the
+ * others.
+ */
+export class Bus extends EventEmitter {
+  constructor() {
+    super();
+    this.setMaxListeners(1000);
+  }
+
   publish(event: BusEvent): void {
-    this.emit("event", event);
+    for (const fn of this.listeners("event") as ((e: BusEvent) => void)[]) {
+      try {
+        fn(event);
+      } catch (err) {
+        console.error(`[bus] ${event.type} subscriber failed:`, err);
+      }
+    }
   }
   subscribe(fn: (event: BusEvent) => void): () => void {
     this.on("event", fn);
     return () => this.off("event", fn);
   }
 }
-
-export const bus = new Bus();
-bus.setMaxListeners(1000);

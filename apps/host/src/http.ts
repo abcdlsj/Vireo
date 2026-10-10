@@ -6,7 +6,7 @@ import type { IncomingMessage } from "node:http";
 import type { App } from "./app.js";
 import type { OwnerInput } from "./browser.js";
 import { seenContexts } from "./fake-model.js";
-import { bus, type BusEvent } from "./bus.js";
+import type { BusEvent } from "./bus.js";
 import { hostName, hostUrls, pairingInstructions } from "./pairing.js";
 import { OVERVIEW_ID, type StoredMessage } from "./threads.js";
 import { errorMessage, newId, now, truncate } from "./util.js";
@@ -222,7 +222,7 @@ export function createHttp(app: App): Hono<Env> {
     streamSSE(c, async (stream) => {
       const queue: BusEvent[] = [];
       let wake: (() => void) | undefined;
-      const unsubscribe = bus.subscribe((e) => {
+      const unsubscribe = app.bus.subscribe((e) => {
         queue.push(e);
         wake?.();
       });
@@ -308,11 +308,11 @@ export function createHttp(app: App): Hono<Env> {
   });
 
   api.post("/api/threads/:id/done", async (c) => {
-    await app.runner.complete(c.req.param("id"));
+    await app.lifecycle.complete(c.req.param("id"));
     return c.json({ thread: app.threads.get(c.req.param("id")) });
   });
   api.post("/api/threads/:id/reopen", (c) => {
-    app.runner.reopen(c.req.param("id"));
+    app.lifecycle.reopen(c.req.param("id"));
     return c.json({ thread: app.threads.get(c.req.param("id")) });
   });
   api.post("/api/threads/:id/stop", (c) => {
@@ -481,7 +481,7 @@ export function createHttp(app: App): Hono<Env> {
   api.post("/api/procedures/:id/:decision{approve|reject}", (c) => {
     const status = c.req.param("decision") === "approve" ? "approved" : "rejected";
     app.db.run("UPDATE procedures SET status = ?, updated_at = ? WHERE id = ?", status, now(), c.req.param("id"));
-    bus.publish({ type: "procedure.updated" });
+    app.bus.publish({ type: "procedure.updated" });
     return c.json({ ok: true });
   });
   api.patch("/api/procedures/:id", async (c) => {
@@ -496,12 +496,12 @@ export function createHttp(app: App): Hono<Env> {
       now(),
       c.req.param("id"),
     );
-    bus.publish({ type: "procedure.updated" });
+    app.bus.publish({ type: "procedure.updated" });
     return c.json({ ok: true });
   });
   api.delete("/api/procedures/:id", (c) => {
     app.db.run("DELETE FROM procedures WHERE id = ?", c.req.param("id"));
-    bus.publish({ type: "procedure.updated" });
+    app.bus.publish({ type: "procedure.updated" });
     return c.json({ ok: true });
   });
 
@@ -569,7 +569,7 @@ export function createHttp(app: App): Hono<Env> {
     if (!r) return c.json({ error: "Not found" }, 404);
     app.db.run("UPDATE reminders SET status = 'cancelled' WHERE id = ?", id);
     if (r.thread_id) app.threads.changed(r.thread_id);
-    bus.publish({ type: "card.updated", threadId: r.thread_id ?? OVERVIEW_ID, cardId: `reminder:${id}` });
+    app.bus.publish({ type: "card.updated", threadId: r.thread_id ?? OVERVIEW_ID, cardId: `reminder:${id}` });
     return c.json({ ok: true });
   });
   api.get("/api/reminders", (c) => c.json({ reminders: app.db.all("SELECT * FROM reminders WHERE status = 'scheduled' ORDER BY due_at") }));

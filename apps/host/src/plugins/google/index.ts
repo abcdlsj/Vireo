@@ -1,5 +1,5 @@
 import { Type } from "typebox";
-import { defineTool, untrustedBlock, type ToolContext } from "../../tools/types.js";
+import { defineTool, type ToolContext } from "../../tools/types.js";
 import { newId, truncate } from "../../util.js";
 import type { PluginDef, PluginStatus, RequestInfo } from "../types.js";
 import { DRIVE_SCOPE } from "./api.js";
@@ -28,15 +28,12 @@ const driveTools = [
     label: "Search Google Drive",
     description: "Search the owner's Google Drive by file name and content. Returns file ids for drive_read.",
     parameters: Type.Object({ query: Type.String(), max_results: Type.Optional(Type.Number({ minimum: 1, maximum: 25 })) }),
-    untrusted: true,
     async run(args, ctx) {
       const files = await drive(ctx).search(args.query, args.max_results ?? 10);
       if (files.length === 0) return { text: "No matching files in Drive." };
       return {
-        text: untrustedBlock(
-          "Google Drive search",
-          files.map((f) => `- ${f.id} | ${f.name} | ${f.mimeType.replace("application/vnd.google-apps.", "google ")} | modified ${f.modifiedTime ?? "?"}${f.webViewLink ? ` | ${f.webViewLink}` : ""}`).join("\n"),
-        ),
+        text: files.map((f) => `- ${f.id} | ${f.name} | ${f.mimeType.replace("application/vnd.google-apps.", "google ")} | modified ${f.modifiedTime ?? "?"}${f.webViewLink ? ` | ${f.webViewLink}` : ""}`).join("\n"),
+        source: "Google Drive search",
       };
     },
   }),
@@ -45,11 +42,10 @@ const driveTools = [
     label: "Read a Drive file",
     description: "Read a Google Drive file as text by id (Docs as text, Sheets as CSV, Slides as text, plain text files as is).",
     parameters: Type.Object({ file_id: Type.String() }),
-    untrusted: true,
     async run(args, ctx) {
       const { file, text } = await drive(ctx).read(args.file_id);
       ctx.app.threads.addRelated(ctx.thread.id, { kind: "page", title: file.name, url: file.webViewLink, ref: file.id });
-      return { text: untrustedBlock(`Google Drive file "${file.name}"`, truncate(text, 20000)) };
+      return { text: truncate(text, 20000), source: `Google Drive file "${file.name}"` };
     },
   }),
 ];

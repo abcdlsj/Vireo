@@ -1,6 +1,6 @@
 import { Type } from "typebox";
 import { truncate } from "../util.js";
-import { defineTool, untrustedBlock, type ToolContext } from "./types.js";
+import { defineTool, type ToolContext } from "./types.js";
 
 function mail(ctx: ToolContext) {
   const m = ctx.app.integrations.mail();
@@ -14,15 +14,12 @@ export const emailTools = [
     label: "Search email",
     description: "Search the owner's email (Gmail query syntax, e.g. 'from:anna newer_than:7d' or 'is:unread').",
     parameters: Type.Object({ query: Type.String(), max_results: Type.Optional(Type.Number({ minimum: 1, maximum: 25 })) }),
-    untrusted: true,
     async run(args, ctx) {
       const results = await mail(ctx).search(args.query, args.max_results ?? 10);
       if (results.length === 0) return { text: "No matching email." };
       return {
-        text: untrustedBlock(
-          "email search",
-          results.map((m) => `- ${m.id} | ${m.date} | from ${m.from} | "${m.subject}" ${m.unread ? "[unread]" : ""}\n  ${m.snippet}`).join("\n"),
-        ),
+        text: results.map((m) => `- ${m.id} | ${m.date} | from ${m.from} | "${m.subject}" ${m.unread ? "[unread]" : ""}\n  ${m.snippet}`).join("\n"),
+        source: "email search",
       };
     },
   }),
@@ -31,12 +28,12 @@ export const emailTools = [
     label: "Read email",
     description: "Read one email by id.",
     parameters: Type.Object({ id: Type.String() }),
-    untrusted: true,
     async run(args, ctx) {
       const m = await mail(ctx).get(args.id);
       ctx.app.threads.addRelated(ctx.thread.id, { kind: "email", title: m.subject || "(no subject)", ref: m.id, data: { from: m.from, date: m.date } });
       return {
-        text: untrustedBlock(`email from ${m.from}`, `From: ${m.from}\nTo: ${m.to}\nDate: ${m.date}\nSubject: ${m.subject}\n\n${truncate(m.body, 12000)}`),
+        text: `From: ${m.from}\nTo: ${m.to}\nDate: ${m.date}\nSubject: ${m.subject}\n\n${truncate(m.body, 12000)}`,
+        source: `email from ${m.from}`,
       };
     },
   }),

@@ -71,7 +71,7 @@ export const threadTools = [
     async run(_args, ctx) {
       if (ctx.thread.id === OVERVIEW_ID) throw new Error("Overview cannot be completed");
       // Run after the current turn so the closing reply is part of the summary.
-      setTimeout(() => void ctx.app.runner.complete(ctx.thread.id), 0);
+      setTimeout(() => void ctx.app.lifecycle.complete(ctx.thread.id), 0);
       return { text: "The thread will be marked done after this reply." };
     },
   }),

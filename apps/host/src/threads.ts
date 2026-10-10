@@ -1,5 +1,5 @@
 import type { AgentMessage, NoticeBody } from "./messages.js";
-import { bus } from "./bus.js";
+import type { Bus } from "./bus.js";
 import type { Db } from "./db.js";
 import { newId, now, safeJson, scoreText, searchTerms } from "./util.js";
 
@@ -56,7 +56,10 @@ export interface StoredMessage {
 }
 
 export class ThreadStore {
-  constructor(private readonly db: Db) {
+  constructor(
+    private readonly db: Db,
+    private readonly bus: Bus,
+  ) {
     this.ensureOverview();
   }
 
@@ -152,11 +155,11 @@ export class ThreadStore {
   delete(id: string): void {
     if (id === OVERVIEW_ID) throw new Error("The Overview thread cannot be deleted");
     this.db.run("DELETE FROM threads WHERE id = ?", id);
-    bus.publish({ type: "thread.deleted", threadId: id });
+    this.bus.publish({ type: "thread.deleted", threadId: id });
   }
 
   changed(id: string): void {
-    bus.publish({ type: "thread.updated", threadId: id });
+    this.bus.publish({ type: "thread.updated", threadId: id });
   }
 
   // ---- related items shown in the side panel ----
@@ -207,7 +210,7 @@ export class ThreadStore {
       t,
     );
     this.db.run("UPDATE threads SET updated_at = ? WHERE id = ?", t, threadId);
-    bus.publish({ type: "message.created", threadId, messageId: r.lastInsertRowid });
+    this.bus.publish({ type: "message.created", threadId, messageId: r.lastInsertRowid });
     this.changed(threadId);
     return { id: r.lastInsertRowid, threadId, role, agent: opts.agent ?? null, llm: opts.llm !== false, body, createdAt: t };
   }

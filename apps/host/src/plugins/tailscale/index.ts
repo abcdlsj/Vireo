@@ -5,7 +5,7 @@ import https from "node:https";
 import { join } from "node:path";
 import { Type } from "typebox";
 import type { AgentDef } from "../../agents.js";
-import { defineTool, untrustedBlock } from "../../tools/types.js";
+import { defineTool } from "../../tools/types.js";
 import { pairingInstructions } from "../../pairing.js";
 import { truncate } from "../../util.js";
 import type { PluginDef, PluginStatus } from "../types.js";
@@ -274,7 +274,6 @@ export const tailscalePlugin: PluginDef = {
           headers: Type.Optional(Type.Record(Type.String(), Type.String())),
           body: Type.Optional(Type.String()),
         }),
-        untrusted: true,
         confirm: (args) => !["GET", "HEAD"].includes((args.method ?? "GET").toUpperCase()),
         summarize: (args) => `${(args.method ?? "GET").toUpperCase()} ${args.https ? "https" : "http"}://${args.machine}${args.port ? `:${args.port}` : ""}${args.path ?? "/"}`,
         async run(args, tctx) {
@@ -314,7 +313,8 @@ export const tailscalePlugin: PluginDef = {
           });
           const type = String(res.headers["content-type"] ?? "");
           return {
-            text: untrustedBlock(`http://${m.name}:${port}${path}`, `HTTP ${res.status}${type ? ` (${type})` : ""}\n\n${truncate(res.body, 12000)}`),
+            text: `HTTP ${res.status}${type ? ` (${type})` : ""}\n\n${truncate(res.body, 12000)}`,
+            source: `http://${m.name}:${port}${path}`,
           };
         },
       }),
@@ -328,7 +328,6 @@ export const tailscalePlugin: PluginDef = {
           user: Type.Optional(Type.String({ description: "Default from Settings." })),
           timeout_seconds: Type.Optional(Type.Number({ minimum: 5, maximum: 600 })),
         }),
-        untrusted: true,
         confirm: () => true,
         summarize: (args) => `Run on ${args.machine}: ${truncate(args.command, 160)}`,
         async run(args, tctx) {
@@ -370,7 +369,8 @@ export const tailscalePlugin: PluginDef = {
           else if (out.code !== 0) note = `Exited with code ${out.code}.`;
           else if (!output) note = "Finished with no output.";
           return {
-            text: untrustedBlock(`ssh ${m.name}`, lines.join("\n")),
+            text: lines.join("\n"),
+            source: `ssh ${m.name}`,
             display: { output: output ? truncate(output, 12000) : undefined, note },
             failed: out.code !== 0,
           };

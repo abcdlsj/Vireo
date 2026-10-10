@@ -1,5 +1,4 @@
 import type { App } from "../app.js";
-import { bus } from "../bus.js";
 import { messageText, OVERVIEW_ID, type Thread } from "../threads.js";
 import { newId, now, safeJson, truncate } from "../util.js";
 import { diffCard, type CardChange } from "./diff.js";
@@ -142,7 +141,7 @@ export class Cards {
   }
 
   changed(threadId: string, cardId: string): void {
-    bus.publish({ type: "card.updated", threadId, cardId });
+    this.app.bus.publish({ type: "card.updated", threadId, cardId });
   }
 
   /** Everything the home page shows, most urgent first. */

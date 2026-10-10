@@ -1,4 +1,4 @@
-import { bus } from "./bus.js";
+import type { Bus } from "./bus.js";
 import type { Db } from "./db.js";
 import { newId, now, scoreText, searchTerms } from "./util.js";
 
@@ -88,7 +88,10 @@ export function normaliseKey(key: string): string {
 }
 
 export class MemoryStore {
-  constructor(private readonly db: Db) {
+  constructor(
+    private readonly db: Db,
+    private readonly bus: Bus,
+  ) {
     if (!this.db.get("SELECT id FROM entities WHERE id = ?", OWNER_ENTITY_ID)) {
       const t = now();
       this.db.run(
@@ -202,7 +205,7 @@ export class MemoryStore {
         this.db.run("UPDATE facts SET invalidated_at = ?, superseded_by = ?, updated_at = ? WHERE id = ?", t, id, t, old.id);
       }
     });
-    bus.publish({ type: "memory.updated" });
+    this.bus.publish({ type: "memory.updated" });
     return { fact: this.fact(id)!, superseded: current.map((r) => this.toFact(r)), unchanged: false };
   }
 
@@ -303,7 +306,7 @@ export class MemoryStore {
 
   delete(factId: string): boolean {
     const r = this.db.run("DELETE FROM facts WHERE id = ?", factId);
-    if (r.changes > 0) bus.publish({ type: "memory.updated" });
+    if (r.changes > 0) this.bus.publish({ type: "memory.updated" });
     return r.changes > 0;
   }
 
@@ -313,14 +316,14 @@ export class MemoryStore {
     } else {
       this.db.run("DELETE FROM entities WHERE id = ?", entityId);
     }
-    bus.publish({ type: "memory.updated" });
+    this.bus.publish({ type: "memory.updated" });
   }
 
   /** Everything derived from one thread (used when a thread is deleted or forgotten). */
   forgetThread(threadId: string): void {
     this.db.run("DELETE FROM facts WHERE source_thread_id = ?", threadId);
     this.db.run("DELETE FROM episodes WHERE thread_id = ?", threadId);
-    bus.publish({ type: "memory.updated" });
+    this.bus.publish({ type: "memory.updated" });
   }
 
   /** Current facts about the owner, newest first (the always-on profile). */

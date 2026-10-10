@@ -161,7 +161,7 @@ describe("tailscale plugin", () => {
     const out = await app.tools.get("tailnet_http")!.run({ machine: "nas", port, path: "/health" }, { app, thread, agent: "tailnet" });
     expect(out.text).toContain("HTTP 200");
     expect(out.text).toContain("nas is healthy");
-    expect(out.text).toContain("<untrusted_content");
+    expect(out.source).toBe(`http://nas:${port}/health`);
   });
 
   it("asks the owner before running a command over SSH", async () => {

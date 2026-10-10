@@ -3,7 +3,7 @@ import { parseHTML } from "linkedom";
 import { Type } from "typebox";
 import type { Config } from "../config.js";
 import { truncate } from "../util.js";
-import { defineTool, untrustedBlock } from "./types.js";
+import { defineTool } from "./types.js";
 
 export interface SearchResult {
   title: string;
@@ -108,7 +108,6 @@ export const researchTools = [
       query: Type.String(),
       max_results: Type.Optional(Type.Number({ minimum: 1, maximum: 10 })),
     }),
-    untrusted: true,
     async run(args, ctx) {
       const max = args.max_results ?? 6;
       let note = "";
@@ -119,10 +118,8 @@ export const researchTools = [
       results ??= await webSearch(ctx.app.config, args.query, max);
       if (results.length === 0) return { text: `${note}No results.` };
       return {
-        text: untrustedBlock(
-          "web search",
-          note + results.map((r, i) => `${i + 1}. ${r.title}\n   ${r.url}\n   ${r.snippet}`).join("\n"),
-        ),
+        text: note + results.map((r, i) => `${i + 1}. ${r.title}\n   ${r.url}\n   ${r.snippet}`).join("\n"),
+        source: "web search",
         details: { results },
       };
     },
@@ -132,7 +129,6 @@ export const researchTools = [
     label: "Read page",
     description: "Fetch a web page or document and return its readable text.",
     parameters: Type.Object({ url: Type.String() }),
-    untrusted: true,
     async run(args, ctx) {
       // A reader plugin (Jina Reader) handles every page, or the ones Vireo can't read itself.
       const reader = ctx.app.plugins.reader();
@@ -149,7 +145,8 @@ export const researchTools = [
       }
       ctx.app.threads.addRelated(ctx.thread.id, { kind: "page", title: page.title, url: page.url });
       return {
-        text: untrustedBlock(page.url, `Title: ${page.title}\nURL: ${page.url}\n\n${truncate(page.text, 15000)}`),
+        text: `Title: ${page.title}\nURL: ${page.url}\n\n${truncate(page.text, 15000)}`,
+        source: page.url,
         details: { url: page.url, title: page.title },
       };
     },

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { api, ApiError, onEvent, type Action, type Message, type ThreadDetail } from "../api";
-import { dateTime, prettyDates, shortTime, readableResult, stepOutcome, stepSubject, toolLabel } from "../format";
+import { dateTime, prettyDates, shortTime, stepOutcome, stepSubject, toolLabel } from "../format";
 import { Markdown } from "../markdown";
 import { go } from "../route";
 import { ActionCard } from "./ActionCard";
@@ -524,7 +524,7 @@ function Step({ step: s }: { step: { name: string; args: Record<string, unknown>
           </div>
           {s.result ? (
             <div className="step-result">
-              <Fields value={parseJson(readableResult(s.result.text))} />
+              <Fields value={parseJson(s.result.text)} />
             </div>
           ) : null}
         </div>
