@@ -36,7 +36,7 @@ export default defineConfig({
       reuseExistingServer: false,
     },
     {
-      command: `rm -rf .vireo-test/cloud && node --disable-warning=ExperimentalWarning apps/cloud/dist/index.js`,
+      command: `rm -rf .vireo-test/cloud && node --disable-warning=ExperimentalWarning apps/cloud/dist/node/index.js`,
       port: PORT,
       reuseExistingServer: false,
       env: {

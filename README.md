@@ -12,7 +12,7 @@ Vireo is three pieces:
 |---|---|---|---|
 | **node** | `apps/node` (npm: `vireo-node`) | Your agent: threads, memory, plugins, model settings and the browser it drives. Everything you tell Vireo stays here. | Your own machine: a laptop, a home server, a VPS |
 | **app** | `apps/web` | The UI, a static React PWA. Holds no data. | Vercel (or the cloud serves it) |
-| **cloud** | `apps/cloud` | Signs people in with GitHub, keeps which nodes belong to whom, issues short-lived tokens for them, and relays the app's requests to nodes. Stores none of your conversations. | One server, in Docker |
+| **cloud** | `apps/cloud` | Signs people in with GitHub, keeps which nodes belong to whom, issues short-lived tokens for them, and relays the app's requests to nodes. Stores none of your conversations. | Cloudflare Workers, with D1 and Durable Objects (or a server, in Docker) |
 
 Everyone signs in to the same app with GitHub and runs their own node. Each account reaches only its own nodes, and each node only accepts tokens signed for it and its owner.
 
@@ -86,7 +86,7 @@ Node (`npx vireo-node` options override these):
 | `VIREO_FAKE_MODEL` | – | Use the scripted model, for demos and tests |
 | `VIREO_FAKE_GOOGLE` | – | Use an in-memory calendar and mailbox |
 
-Cloud:
+Cloud (on Cloudflare these are `vars` in `apps/cloud/wrangler.jsonc`, and `GITHUB_CLIENT_SECRET` a secret):
 
 | Variable | Default | Purpose |
 |---|---|---|
@@ -125,6 +125,7 @@ packages/protocol      @vireo/protocol: types shared by the node, the cloud and 
 apps/node              vireo-node: the CLI, Hono HTTP + SSE, runner, agents, memory, scheduler, tools
 apps/node/src/plugins  Community plugins (Google, Tailscale, ...): tools, agents, settings
 apps/cloud             @vireo/cloud: GitHub sign-in, nodes, linking, access tokens, the relay
+                       src/core shared; src/worker for Cloudflare; src/node for a Node server
 apps/web               @vireo/web: the React PWA, a static build
 deploy/vps             Compose for the cloud on a VPS behind Caddy (optional node and LiteLLM)
 Dockerfile             Two targets: cloud and node

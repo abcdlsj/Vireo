@@ -1,8 +1,11 @@
 /**
- * Frames on the relay socket between the cloud and a node. The cloud turns an
- * HTTP request for /n/:nodeId/... into a "request" frame; the node answers it
- * with its own HTTP handler and streams the response back, so server-sent
- * events and downloads pass through unchanged. Bodies are base64.
+ * Frames on the relay socket between the cloud and a node. The node opens the
+ * socket at /api/nodes/:nodeId/connect and says hello with its secret. The
+ * cloud turns an HTTP request for /n/:nodeId/... into a "req" frame (its body
+ * follows in "body" frames); the node answers it with its own HTTP handler
+ * and streams the response back, so server-sent events and downloads pass
+ * through unchanged. Bodies are base64, in pieces small enough for any
+ * socket (Cloudflare caps a message at 1 MiB).
  */
 
 /** The node's first frame after the socket opens. */
@@ -28,7 +31,15 @@ export interface RelayRequest {
   /** Path and query on the node, e.g. "/api/threads?x=1". */
   path: string;
   headers: Record<string, string>;
-  body?: string;
+  /** A body follows in "body" frames, the last one with `end`. */
+  hasBody: boolean;
+}
+
+export interface RelayRequestBody {
+  t: "body";
+  id: number;
+  data?: string;
+  end?: true;
 }
 
 /** The cloud no longer wants a response (the browser went away). */
@@ -56,7 +67,10 @@ export interface RelayResponseEnd {
   error?: string;
 }
 
-/** Either side checks the other is still there; the answer is a pong. */
+/**
+ * The node checks the socket is alive, sent exactly as `{"t":"ping"}` so the
+ * cloud can answer without waking up; the answer is exactly `{"t":"pong"}`.
+ */
 export interface RelayPing {
   t: "ping";
 }
@@ -70,5 +84,5 @@ export interface RelayWelcome {
   nodeId: string;
 }
 
-export type CloudToNode = RelayWelcome | RelayRequest | RelayCancel | RelayPing | RelayPong;
-export type NodeToCloud = RelayHello | RelayUpdate | RelayResponseHead | RelayResponseChunk | RelayResponseEnd | RelayPing | RelayPong;
+export type CloudToNode = RelayWelcome | RelayRequest | RelayRequestBody | RelayCancel | RelayPong;
+export type NodeToCloud = RelayHello | RelayUpdate | RelayResponseHead | RelayResponseChunk | RelayResponseEnd | RelayPing;

@@ -16,7 +16,7 @@
   ],
   "scripts": {
     "dev": "concurrently -k -n cloud,node,web \"npm:dev:cloud\" \"npm:dev:node\" \"npm:dev:web\"",
-    "dev:cloud": "VIREO_DEV_LOGIN=1 VIREO_CLOUD_URL=http://localhost:5173 tsx watch --env-file-if-exists=.env apps/cloud/src/index.ts",
+    "dev:cloud": "VIREO_DEV_LOGIN=1 VIREO_CLOUD_URL=http://localhost:5173 tsx watch --env-file-if-exists=.env apps/cloud/src/node/index.ts",
     "dev:node": "VIREO_CLOUD_URL=http://localhost:8700 tsx watch --env-file-if-exists=.env apps/node/src/index.ts",
     "dev:web": "npm run dev -w @vireo/web",
     "build": "npm run build:web && npm run build:cloud && npm run build:node",
@@ -24,7 +24,7 @@
     "build:cloud": "npm run build -w @vireo/cloud",
     "build:node": "npm run build -w vireo-node",
     "start": "node scripts/start.mjs",
-    "cloud": "node --env-file-if-exists=.env --disable-warning=ExperimentalWarning apps/cloud/dist/index.js",
+    "cloud": "node --env-file-if-exists=.env --disable-warning=ExperimentalWarning apps/cloud/dist/node/index.js",
     "node": "node --env-file-if-exists=.env --disable-warning=ExperimentalWarning apps/node/dist/cli.js",
     "typecheck": "npm run typecheck --workspaces",
     "test": "vitest run",
