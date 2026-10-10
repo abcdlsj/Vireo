@@ -536,9 +536,20 @@
   .shell .main {
     border-left: none;
   }
+}
 
-  .shell .side-panel {
+/* A phone held sideways is wide but short: the details stay a sheet (see styles.css). */
+@media (max-width: 760px), (pointer: coarse) and (max-height: 560px) {
+  .shell .side-panel,
+  .shell .side-panel:not(.wide) {
+    width: auto;
+    margin: 0;
+    border-radius: 18px 18px 0 0;
     background: var(--c-paper);
+  }
+
+  .shell .side-panel .panel-tabs {
+    margin-top: 6px;
   }
 }
 
@@ -1041,9 +1052,13 @@
   box-shadow: none !important;
 }
 
-/* Each page fades in when you move to it. */
+/*
+ * Each page fades in when you move to it. Filled backwards only: an opacity
+ * animation still in effect afterwards keeps a stacking context, and the
+ * details sheet would then sit under the sidebar.
+ */
 .shell .main > * {
-  animation: c-fade 0.22s ease both;
+  animation: c-fade 0.22s ease backwards;
 }
 
 /* ⌘K, menus and the peek sheet spring open and come into focus. */

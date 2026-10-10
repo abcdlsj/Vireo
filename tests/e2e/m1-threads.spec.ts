@@ -222,6 +222,59 @@ test.describe("Milestone 1 — Threads that think", () => {
     await context.close();
   });
 
+  test("[Thread] on a phone the details are a sheet that drags taller and closes every way", async ({ browser, baseURL, request }) => {
+    const thread = (await (await request.post("/api/threads", { data: { text: "What is a good name for a fern?" } })).json()).thread;
+    await settle(request);
+    const { defaultBrowserType: _, ...phone } = devices["iPhone 13"];
+    const context = await browser.newContext({ ...phone, baseURL, storageState: ".vireo-test/owner.json" });
+    const page = await context.newPage();
+    /** Waits for the sheet to stop moving (its rise, or growing and shrinking). */
+    const settled = () => page.evaluate(() => Promise.all(document.querySelector("[data-testid=side-panel]")?.getAnimations().map((a) => a.finished) ?? []));
+    /** Drags the sheet's handle by dy (pointer events, as a finger sends them). */
+    const drag = async (dy: number) => {
+      const b = (await page.getByTestId("sheet-grab").boundingBox())!;
+      const x = b.x + b.width / 2;
+      const y = b.y + b.height / 2;
+      await page.mouse.move(x, y);
+      await page.mouse.down();
+      await page.mouse.move(x, y + dy, { steps: 8 });
+      await page.mouse.up();
+      await page.waitForTimeout(50);
+      await settled();
+    };
+    await page.goto(`/#thread/${thread.id}`);
+    const panel = page.getByTestId("side-panel");
+    const open = async () => {
+      await page.getByTestId("toggle-panel").tap();
+      await expect(panel).toBeVisible();
+      await settled();
+    };
+    await open();
+    const start = (await panel.boundingBox())!.height;
+    // Up makes room; down from there shrinks it back, and down again puts it away.
+    await drag(-200);
+    await expect.poll(async () => (await panel.boundingBox())!.height).toBeGreaterThan(start + 100);
+    await drag(150);
+    await expect.poll(async () => Math.round((await panel.boundingBox())!.height)).toBe(Math.round(start));
+    await drag(200);
+    await expect(panel).toHaveCount(0);
+    // Tabs still switch, and the X and a tap beside the sheet both close it.
+    await open();
+    await page.getByTestId("tab-activity").tap();
+    await expect(page.locator(".panel-tabs button.on")).toHaveText("Activity");
+    await page.getByRole("button", { name: "Close" }).tap();
+    await expect(panel).toHaveCount(0);
+    await open();
+    await page.getByTestId("sheet-backdrop").tap({ position: { x: 20, y: 20 } });
+    await expect(panel).toHaveCount(0);
+    // Held sideways the phone is wide, but the details still rise from the bottom.
+    await page.setViewportSize({ width: 844, height: 390 });
+    await open();
+    await expect(page.getByTestId("sheet-grab")).toBeVisible();
+    expect((await panel.boundingBox())!.width).toBe(844);
+    await context.close();
+  });
+
   test("[M1.5] model access is configurable", async ({ page, request }) => {
     // The endpoint's models are listed over the OpenAI API, and the owner can pick per tier.
     const models = await (await request.get("/api/models")).json();

@@ -1,10 +1,80 @@
-import { useEffect, useRef, useState, type ClipboardEvent, type CompositionEvent, type DragEvent, type KeyboardEvent, type MouseEvent, type PointerEvent } from "react";
+import { useEffect, useRef, useState, type ClipboardEvent, type CSSProperties, type RefObject, type CompositionEvent, type DragEvent, type KeyboardEvent, type MouseEvent, type PointerEvent } from "react";
 import { api, fileUrl, type LlmCallRecord, type ThreadAudit, type ThreadDetail, type ThreadUsage, type ModelUsage, type ToolCallRecord } from "../api";
 import { authedUrl } from "../nodes";
 import { bytes, compact, dateTime, duration, purposeLabel, shortTime, stepOutcome, stepSubject, tokens, toolLabel, usd } from "../format";
 import { AttachIcon, CalendarIcon, CloseIcon, FullscreenIcon, GlobeIcon, MailIcon, NarrowIcon, WidenIcon } from "../icons";
 
 const WIDE_KEY = "vireo.panel.wide";
+
+/** Where the details are a sheet rising from the bottom: phones, held either way. Keep in step with styles.css. */
+export const SHEET_QUERY = "(max-width: 760px), (pointer: coarse) and (max-height: 560px)";
+
+export function useSheet(): boolean {
+  const [sheet, setSheet] = useState(() => window.matchMedia(SHEET_QUERY).matches);
+  useEffect(() => {
+    const mq = window.matchMedia(SHEET_QUERY);
+    const on = () => setSheet(mq.matches);
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, []);
+  return sheet;
+}
+
+/** How far a finger has to move the sheet before letting go changes it. */
+const SNAP = 60;
+
+/**
+ * Drags the sheet by its handle and tab strip: up for the full height, down
+ * to shrink it back or put it away. Taps on the tabs still work; a drag that
+ * started on one does not also switch tab.
+ */
+function useSheetDrag(sheetEl: RefObject<HTMLElement | null>, full: boolean, setFull: (on: boolean) => void, onClose: () => void) {
+  const [offset, setOffset] = useState<{ dy: number; height: number } | null>(null);
+  const moved = useRef(false);
+  const onPointerDown = (e: PointerEvent) => {
+    const el = sheetEl.current;
+    if (!el || (e.pointerType === "mouse" && e.button !== 0)) return;
+    const startY = e.clientY;
+    const height = el.offsetHeight;
+    moved.current = false;
+    const move = (ev: globalThis.PointerEvent) => {
+      const dy = ev.clientY - startY;
+      if (!moved.current && Math.abs(dy) < 6) return;
+      moved.current = true;
+      setOffset({ dy, height });
+    };
+    const up = (ev: globalThis.PointerEvent) => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
+      setOffset(null);
+      if (!moved.current) return;
+      const dy = ev.type === "pointercancel" ? 0 : ev.clientY - startY;
+      if (dy < -SNAP) setFull(true);
+      else if (dy > SNAP) {
+        // From full height a short pull shrinks it; a long one, or any pull from the start height, puts it away.
+        if (full && dy < height / 2) setFull(false);
+        else onClose();
+      }
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
+  };
+  const onClickCapture = (e: MouseEvent) => {
+    if (!moved.current) return;
+    moved.current = false;
+    e.preventDefault();
+    e.stopPropagation();
+  };
+  // Pulled up, the sheet grows under the finger; pulled down, it slides away with it.
+  const style: CSSProperties | undefined = offset
+    ? offset.dy < 0
+      ? { height: Math.min(offset.height - offset.dy, window.innerHeight - 24) }
+      : { height: offset.height, transform: `translateY(${offset.dy}px)` }
+    : undefined;
+  return { dragging: offset !== null, style, handlers: { onPointerDown, onClickCapture } };
+}
 
 /** Everything related to the thread: pages, emails, events, files, and the full audit trail (S6, N7). */
 export function SidePanel({ detail, running, browsing, onClose }: { detail: ThreadDetail; running: boolean; browsing: boolean; onClose: () => void }) {
@@ -19,6 +89,11 @@ export function SidePanel({ detail, running, browsing, onClose }: { detail: Thre
   };
   const [audit, setAudit] = useState<ThreadAudit | null>(null);
   const tid = detail.thread.id;
+  const sheet = useSheet();
+  const [full, setFull] = useState(false);
+  const aside = useRef<HTMLElement>(null);
+  const drag = useSheetDrag(aside, full, setFull, onClose);
+  const grab = sheet ? drag.handlers : {};
 
   useEffect(() => {
     if (tab === "activity") void api.get<ThreadAudit>(`/api/threads/${tid}/audit`).then(setAudit);
@@ -28,152 +103,163 @@ export function SidePanel({ detail, running, browsing, onClose }: { detail: Thre
   const totalTokens = audit?.llmCalls.reduce((n, c) => n + c.inputTokens + c.outputTokens, 0) ?? 0;
 
   return (
-    <aside className={`side-panel ${wide ? "wide" : ""}`} data-testid="side-panel">
-      <div className="panel-tabs">
-        <button className={tab === "related" ? "on" : ""} onClick={() => setTab("related")}>
-          Related
-        </button>
-        <button className={tab === "browser" ? "on" : ""} onClick={() => setTab("browser")} data-testid="tab-browser">
-          Browser
-        </button>
-        <button className={tab === "activity" ? "on" : ""} onClick={() => setTab("activity")} data-testid="tab-activity">
-          Activity
-        </button>
-        <button className={tab === "usage" ? "on" : ""} onClick={() => setTab("usage")} data-testid="tab-usage">
-          Usage
-        </button>
-        <button className="close widen" onClick={() => setWide(!wide)} aria-label={wide ? "Narrow panel" : "Widen panel"} title={wide ? "Narrow" : "Widen"} aria-pressed={wide} data-testid="widen-panel">
-          {wide ? <NarrowIcon /> : <WidenIcon />}
-        </button>
-        <button className="close" onClick={onClose} aria-label="Close">
-          <CloseIcon />
-        </button>
-      </div>
-      {tab === "related" ? (
-        <div className="panel-body">
-          {detail.related.length === 0 && detail.files.length === 0 ? <p className="muted">Pages, emails, events and files used in this thread show up here.</p> : null}
-          {detail.files.length ? (
-            <section>
-              <h4>Files</h4>
-              {detail.files.map((f) => (
-                <a key={f.id} className="related-item" href={fileUrl(f.id)} target="_blank" rel="noreferrer">
-                  {f.mime.startsWith("image/") ? (
-                    <img src={fileUrl(f.id)} alt="" className="thumb" />
-                  ) : (
-                    <span className="kind-tile">
-                      <AttachIcon />
-                    </span>
-                  )}
-                  <span className="related-text">
-                    {f.name}
-                    <small className="muted"> · {bytes(f.size)}</small>
-                  </span>
-                </a>
-              ))}
-            </section>
-          ) : null}
-          {(["event", "email", "page"] as const).map((kind) => {
-            const list = detail.related.filter((r) => r.kind === kind);
-            if (!list.length) return null;
-            return (
-              <section key={kind}>
-                <h4>{kind === "event" ? "Events" : kind === "email" ? "Emails" : "Web pages"}</h4>
-                {list.map((r) => (
-                  <a key={r.id} className="related-item" href={r.url ?? undefined} target="_blank" rel="noreferrer">
-                    <span className={`kind-tile ${kind}`}>{kind === "event" ? <CalendarIcon /> : kind === "email" ? <MailIcon /> : <GlobeIcon />}</span>
+    <>
+      {sheet ? <div className="sheet-backdrop" onClick={onClose} data-testid="sheet-backdrop" /> : null}
+      <aside
+        ref={aside}
+        className={`side-panel ${wide ? "wide" : ""} ${sheet && full ? "full" : ""} ${drag.dragging ? "dragging" : ""}`}
+        style={sheet ? drag.style : undefined}
+        data-testid="side-panel"
+      >
+        {sheet ? (
+          <button className="sheet-grab" onClick={() => setFull(!full)} aria-label={full ? "Make details smaller" : "Make details taller"} data-testid="sheet-grab" {...grab} />
+        ) : null}
+        <div className="panel-tabs" {...grab}>
+          <button className={tab === "related" ? "on" : ""} onClick={() => setTab("related")}>
+            Related
+          </button>
+          <button className={tab === "browser" ? "on" : ""} onClick={() => setTab("browser")} data-testid="tab-browser">
+            Browser
+          </button>
+          <button className={tab === "activity" ? "on" : ""} onClick={() => setTab("activity")} data-testid="tab-activity">
+            Activity
+          </button>
+          <button className={tab === "usage" ? "on" : ""} onClick={() => setTab("usage")} data-testid="tab-usage">
+            Usage
+          </button>
+          <button className="close widen" onClick={() => setWide(!wide)} aria-label={wide ? "Narrow panel" : "Widen panel"} title={wide ? "Narrow" : "Widen"} aria-pressed={wide} data-testid="widen-panel">
+            {wide ? <NarrowIcon /> : <WidenIcon />}
+          </button>
+          <button className="close" onClick={onClose} aria-label="Close">
+            <CloseIcon />
+          </button>
+        </div>
+        {tab === "related" ? (
+          <div className="panel-body">
+            {detail.related.length === 0 && detail.files.length === 0 ? <p className="muted">Pages, emails, events and files used in this thread show up here.</p> : null}
+            {detail.files.length ? (
+              <section>
+                <h4>Files</h4>
+                {detail.files.map((f) => (
+                  <a key={f.id} className="related-item" href={fileUrl(f.id)} target="_blank" rel="noreferrer">
+                    {f.mime.startsWith("image/") ? (
+                      <img src={fileUrl(f.id)} alt="" className="thumb" />
+                    ) : (
+                      <span className="kind-tile">
+                        <AttachIcon />
+                      </span>
+                    )}
                     <span className="related-text">
-                      {r.title}
-                      {r.data && "start" in r.data ? <small className="muted"> · {dateTime(Date.parse(String(r.data.start)))}</small> : null}
-                      {r.url && kind === "page" ? <small className="muted url">{r.url}</small> : null}
+                      {f.name}
+                      <small className="muted"> · {bytes(f.size)}</small>
                     </span>
                   </a>
                 ))}
               </section>
-            );
-          })}
-        </div>
-      ) : tab === "browser" ? (
-        <BrowserView threadId={tid} running={running} />
-      ) : tab === "usage" ? (
-        <UsageView threadId={tid} detail={detail} />
-      ) : (
-        <div className="panel-body" data-testid="audit">
-          {!audit ? (
-            <p className="muted">Loading…</p>
-          ) : (
-            <>
-              <div className="audit-stats">
-                <div>
-                  <b>{audit.toolCalls.length}</b>
-                  <span>actions</span>
-                </div>
-                <div>
-                  <b>{audit.llmCalls.length}</b>
-                  <span>model calls</span>
-                </div>
-                <div>
-                  <b>{compact(totalTokens)}</b>
-                  <span>tokens</span>
-                </div>
-                <div>
-                  <b>{usd(totalCost)}</b>
-                  <span>cost</span>
-                </div>
-              </div>
-              <h4>
-                Actions <span className="count">{audit.toolCalls.length}</span>
-              </h4>
-              <div className="audit-list">
-                {[...audit.toolCalls].reverse().map((c) =>
-                  c.tool.startsWith("transfer_to_") ? (
-                    <div key={c.id} className="audit-handoff">
-                      {c.tool.slice(12)} agent took over · {shortTime(c.startedAt)}
-                    </div>
-                  ) : (
-                    <ActionRow key={c.id} c={c} />
-                  ),
-                )}
-              </div>
-              <h4>
-                Model calls <span className="count">{audit.llmCalls.length}</span>
-              </h4>
-              <div className="audit-list">
-                {groupCalls(audit.llmCalls).map((g) => (
-                  <details key={g.key} className={`audit-llm ${g.errors ? "error" : ""}`}>
-                    <summary>
-                      <span className="audit-title">
-                        {g.label}
-                        {g.calls.length > 1 ? <span className="times">×{g.calls.length}</span> : null}
+            ) : null}
+            {(["event", "email", "page"] as const).map((kind) => {
+              const list = detail.related.filter((r) => r.kind === kind);
+              if (!list.length) return null;
+              return (
+                <section key={kind}>
+                  <h4>{kind === "event" ? "Events" : kind === "email" ? "Emails" : "Web pages"}</h4>
+                  {list.map((r) => (
+                    <a key={r.id} className="related-item" href={r.url ?? undefined} target="_blank" rel="noreferrer">
+                      <span className={`kind-tile ${kind}`}>{kind === "event" ? <CalendarIcon /> : kind === "email" ? <MailIcon /> : <GlobeIcon />}</span>
+                      <span className="related-text">
+                        {r.title}
+                        {r.data && "start" in r.data ? <small className="muted"> · {dateTime(Date.parse(String(r.data.start)))}</small> : null}
+                        {r.url && kind === "page" ? <small className="muted url">{r.url}</small> : null}
                       </span>
-                      <span className="num">
-                        {compact(g.input)} → {compact(g.output)}
-                      </span>
-                      <span className="audit-meta">
-                        {g.model} · {g.cost === null ? "no price" : usd(g.cost)}
-                        {g.errors ? ` · ${g.errors} failed` : ""}
-                      </span>
-                    </summary>
-                    <ol className="llm-calls">
-                      {g.calls.map((c) => (
-                        <li key={c.id}>
-                          <span>{shortTime(c.createdAt)}</span>
-                          <span>
-                            {compact(c.inputTokens)} → {compact(c.outputTokens)}
-                            {c.cachedTokens ? ` · ${compact(c.cachedTokens)} cached` : ""}
-                          </span>
-                          <span>{duration(c.durationMs)}</span>
-                          {c.error ? <span className="err">{c.error}</span> : null}
-                        </li>
-                      ))}
-                    </ol>
-                  </details>
-                ))}
-              </div>
-            </>
-          )}
-        </div>
-      )}
-    </aside>
+                    </a>
+                  ))}
+                </section>
+              );
+            })}
+          </div>
+        ) : tab === "browser" ? (
+          <BrowserView threadId={tid} running={running} />
+        ) : tab === "usage" ? (
+          <UsageView threadId={tid} detail={detail} />
+        ) : (
+          <div className="panel-body" data-testid="audit">
+            {!audit ? (
+              <p className="muted">Loading…</p>
+            ) : (
+              <>
+                <div className="audit-stats">
+                  <div>
+                    <b>{audit.toolCalls.length}</b>
+                    <span>actions</span>
+                  </div>
+                  <div>
+                    <b>{audit.llmCalls.length}</b>
+                    <span>model calls</span>
+                  </div>
+                  <div>
+                    <b>{compact(totalTokens)}</b>
+                    <span>tokens</span>
+                  </div>
+                  <div>
+                    <b>{usd(totalCost)}</b>
+                    <span>cost</span>
+                  </div>
+                </div>
+                <h4>
+                  Actions <span className="count">{audit.toolCalls.length}</span>
+                </h4>
+                <div className="audit-list">
+                  {[...audit.toolCalls].reverse().map((c) =>
+                    c.tool.startsWith("transfer_to_") ? (
+                      <div key={c.id} className="audit-handoff">
+                        {c.tool.slice(12)} agent took over · {shortTime(c.startedAt)}
+                      </div>
+                    ) : (
+                      <ActionRow key={c.id} c={c} />
+                    ),
+                  )}
+                </div>
+                <h4>
+                  Model calls <span className="count">{audit.llmCalls.length}</span>
+                </h4>
+                <div className="audit-list">
+                  {groupCalls(audit.llmCalls).map((g) => (
+                    <details key={g.key} className={`audit-llm ${g.errors ? "error" : ""}`}>
+                      <summary>
+                        <span className="audit-title">
+                          {g.label}
+                          {g.calls.length > 1 ? <span className="times">×{g.calls.length}</span> : null}
+                        </span>
+                        <span className="num">
+                          {compact(g.input)} → {compact(g.output)}
+                        </span>
+                        <span className="audit-meta">
+                          {g.model} · {g.cost === null ? "no price" : usd(g.cost)}
+                          {g.errors ? ` · ${g.errors} failed` : ""}
+                        </span>
+                      </summary>
+                      <ol className="llm-calls">
+                        {g.calls.map((c) => (
+                          <li key={c.id}>
+                            <span>{shortTime(c.createdAt)}</span>
+                            <span>
+                              {compact(c.inputTokens)} → {compact(c.outputTokens)}
+                              {c.cachedTokens ? ` · ${compact(c.cachedTokens)} cached` : ""}
+                            </span>
+                            <span>{duration(c.durationMs)}</span>
+                            {c.error ? <span className="err">{c.error}</span> : null}
+                          </li>
+                        ))}
+                      </ol>
+                    </details>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+      </aside>
+    </>
   );
 }
 
