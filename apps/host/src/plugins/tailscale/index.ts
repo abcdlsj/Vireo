@@ -358,10 +358,22 @@ export const tailscalePlugin: PluginDef = {
           const lines = [`$ ${args.command}   (${user}@${m.name}, exit ${out.code})`];
           if (out.stdout) lines.push(truncate(out.stdout, 12000));
           if (out.stderr) lines.push(`[stderr]\n${truncate(out.stderr, 4000)}`);
+          // ssh's own chatter about known hosts is noise to the owner.
+          const stderr = out.stderr.replace(/^Warning: Permanently added .*known hosts\.\r?\n?/gm, "").trim();
+          const output = [out.stdout.trimEnd(), stderr].filter(Boolean).join("\n");
+          let note: string | undefined;
           if (out.code === 255 && /Permission denied|publickey/i.test(out.stderr)) {
-            lines.push("SSH sign-in was refused. Enable Tailscale SSH on that machine (`tailscale set --ssh`) or add an SSH key in Settings → Plugins → Tailscale.");
-          }
-          return { text: untrustedBlock(`ssh ${m.name}`, lines.join("\n")) };
+            note = "SSH sign-in was refused. Enable Tailscale SSH on that machine (`tailscale set --ssh`) or add an SSH key in Settings → Plugins → Tailscale.";
+            lines.push(note);
+          } else if (out.code === "ENOENT") note = "ssh isn't installed on the Vireo host.";
+          else if (out.code === "timeout") note = `Timed out after ${timeout / 1000} s.`;
+          else if (out.code !== 0) note = `Exited with code ${out.code}.`;
+          else if (!output) note = "Finished with no output.";
+          return {
+            text: untrustedBlock(`ssh ${m.name}`, lines.join("\n")),
+            display: { output: output ? truncate(output, 12000) : undefined, note },
+            failed: out.code !== 0,
+          };
         },
       }),
       defineTool({

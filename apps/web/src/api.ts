@@ -44,6 +44,8 @@ export interface Action {
   summary: string;
   status: "pending" | "executing" | "done" | "failed" | "cancelled";
   result: string | null;
+  /** Raw output (shown like a terminal) and a plain note, when the tool gave them. */
+  display?: { output?: string; note?: string } | null;
   createdAt: number;
   resolvedAt: number | null;
 }

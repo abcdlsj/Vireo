@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { api, type Action } from "../api";
-import { prettyDates, toolLabel } from "../format";
+import { prettyDates, readableResult, toolLabel } from "../format";
+import { Markdown } from "../markdown";
 import { AlertIcon, CheckIcon, ToolIcon, XCircleIcon } from "../icons";
 
 const LONG_FIELDS = new Set(["body", "description", "steps", "text"]);
@@ -60,7 +61,7 @@ export function ActionCard({ action, onChange }: { action: Action; onChange: () 
           </div>
         ))}
       </dl>
-      {action.result && !pending ? <div className="action-result">{prettyDates(action.result)}</div> : null}
+      {!pending ? <ActionResult action={action} /> : null}
       {error ? <div className="error">{error}</div> : null}
       {pending ? (
         <div className="action-buttons">
@@ -84,6 +85,25 @@ export function ActionCard({ action, onChange }: { action: Action; onChange: () 
       ) : null}
     </div>
   );
+}
+
+/** What came back: raw output like a terminal, then a plain note; else the result as text. */
+function ActionResult({ action }: { action: Action }) {
+  const d = action.display;
+  if (d && (d.output || d.note)) {
+    return (
+      <div className="action-result" data-testid="action-result">
+        {d.output ? <pre className="action-output">{d.output}</pre> : null}
+        {d.note ? <Markdown className="action-note" text={d.note} /> : null}
+      </div>
+    );
+  }
+  const text = action.result ? readableResult(action.result) : "";
+  return text ? (
+    <div className="action-result" data-testid="action-result">
+      {prettyDates(text)}
+    </div>
+  ) : null;
 }
 
 /** Pending needs no label: the Confirm button already says it. */

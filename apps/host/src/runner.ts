@@ -325,7 +325,7 @@ export class Runner {
             );
           }
           const out = await t.run(args as never, { ...ctx, signal: details?.signal });
-          return done("ok", this.app.vault.redact(out.text), out.details ?? {});
+          return done(out.failed ? "error" : "ok", this.app.vault.redact(out.text), out.failed ? { ...out.details, isError: true } : (out.details ?? {}));
         } catch (err) {
           return done("error", `Error: ${this.app.vault.redact(errorMessage(err))}`, { isError: true });
         }

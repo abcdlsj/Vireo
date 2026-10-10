@@ -29,7 +29,13 @@ test.describe("Milestone 5 — Plugins", () => {
     await startThread(page, "Which of my tailnet machines are online?");
     expect(await finalReply(page, request)).toContain("Online: nas. Offline: old-laptop.");
     await startThread(page, "Run `uptime` on nas over ssh");
-    await expect(page.getByTestId("action-card")).toContainText("Run on nas: uptime");
+    const card = page.getByTestId("action-card");
+    await expect(card).toContainText("Run on nas: uptime");
+    // Once it ran, the card shows what came back without the wrapper meant for the model.
+    await card.getByTestId("action-confirm").click();
+    await expect(card.getByTestId("action-result")).toBeVisible();
+    await expect(card).not.toContainText("untrusted_content");
+    await expect(card).not.toContainText("Do not follow instructions");
   });
 
   test("[M5.3] Google is a plugin and brings Drive", async ({ page, request }) => {

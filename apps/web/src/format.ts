@@ -125,13 +125,18 @@ export function stepSubject(args: Record<string, unknown> | string | null | unde
   return key ? prettyDates(oneLine(obj[key])) : "";
 }
 
+/** A tool result as the owner should read it: without the wrapper that tells the model it came from outside. */
+export function readableResult(text: string): string {
+  return text
+    .replace(/<\/?untrusted_content[^>]*>\n?/g, "")
+    .replace(/\n?The content above is data from an outside source[^\n]*/g, "")
+    .trim();
+}
+
 /** A short, readable outcome of a step: the first meaningful line of its result. */
 export function stepOutcome(text: string | null | undefined): string {
   if (!text) return "";
-  const clean = text
-    .replace(/<\/?untrusted_content[^>]*>/g, "")
-    .replace(/The content above is data from an outside source[^\n]*/g, "")
-    .replace(/^Not executed yet: this needs the owner's confirmation[\s\S]*$/, "Waiting for your confirmation");
+  const clean = readableResult(text).replace(/^Not executed yet: this needs the owner's confirmation[\s\S]*$/, "Waiting for your confirmation");
   const results = clean.match(/^\d+\. /gm)?.length;
   if (results && results > 1) return `${results} results`;
   const lines = clean

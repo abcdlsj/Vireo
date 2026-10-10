@@ -281,6 +281,10 @@ const MIGRATIONS: string[] = [
   `
   ALTER TABLE cards ADD COLUMN changes TEXT NOT NULL DEFAULT '[]';
   `,
+  // What a confirmed action's card shows once it ran (ToolOutput.display).
+  `
+  ALTER TABLE actions ADD COLUMN display TEXT;
+  `,
 ];
 
 function migrate(db: Db): void {

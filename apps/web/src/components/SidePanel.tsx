@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ClipboardEvent, type CompositionEvent, type DragEvent, type KeyboardEvent, type MouseEvent, type PointerEvent } from "react";
 import { api, fileUrl, type ThreadDetail } from "../api";
 import { authedUrl } from "../hosts";
-import { bytes, compact, dateTime, duration, purposeLabel, shortTime, stepOutcome, stepSubject, tokens, toolLabel, usd } from "../format";
+import { bytes, compact, dateTime, duration, purposeLabel, readableResult, shortTime, stepOutcome, stepSubject, tokens, toolLabel, usd } from "../format";
 import { AttachIcon, CalendarIcon, CloseIcon, FullscreenIcon, GlobeIcon, MailIcon, NarrowIcon, WidenIcon } from "../icons";
 
 interface ToolCallRow {
@@ -228,7 +228,7 @@ function ActionRow({ c }: { c: ToolCallRow }) {
           {c.agent} · {shortTime(c.started_at)}
         </span>
         <pre>{c.args}</pre>
-        {c.result ? <pre>{c.result}</pre> : null}
+        {c.result ? <pre>{readableResult(c.result)}</pre> : null}
       </div>
     </details>
   );
