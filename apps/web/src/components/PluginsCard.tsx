@@ -102,12 +102,15 @@ function SetUpWithVireo({ plugin, run, primary }: { plugin: PluginView; run: (fn
 const STATE_LABEL: Record<string, string> = { ready: "Ready", setup: "Needs setup", login: "Sign in needed", starting: "Starting", error: "Error" };
 
 function Plugin({ plugin: p, run, focused }: { plugin: PluginView; run: (fn: () => Promise<unknown>) => Promise<void>; focused: boolean }) {
-  const [open, setOpen] = useState(p.status?.state === "setup" || (focused && p.status?.state !== "ready"));
+  const st = p.status;
+  // A plugin that needs setup or is failing opens its settings, so the field
+  // that fixes it (e.g. Tailscale's Connection) is the first thing in view.
+  const needsAttention = st?.state === "setup" || st?.state === "error";
+  const [open, setOpen] = useState(needsAttention || (focused && st?.state !== "ready"));
   const [form, setForm] = useState<Record<string, unknown>>({});
   const [note, setNote] = useState("");
   const value = (f: PluginField) => (f.key in form ? form[f.key] : f.type === "secret" ? "" : (p.config[f.key] ?? f.default ?? ""));
   const set = (k: string, v: unknown) => setForm((s) => ({ ...s, [k]: v }));
-  const st = p.status;
 
   return (
     <div className={`plugin${focused ? " focused" : ""}`} data-testid={`plugin-${p.id}`} data-plugin={p.id}>
@@ -151,7 +154,12 @@ function Plugin({ plugin: p, run, focused }: { plugin: PluginView; run: (fn: () 
             {a.label}
           </button>
         ))}
-        <button className="btn small ghost" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+        <button
+          className={`btn small${!open && needsAttention ? " primary" : " ghost"}`}
+          aria-expanded={open}
+          onClick={() => setOpen((o) => !o)}
+          data-testid={`plugin-${p.id}-settings`}
+        >
           {open ? "Hide settings" : "Settings"}
         </button>
         <button

@@ -13,8 +13,10 @@ test.describe("Milestone 5 — Plugins", () => {
     await page.getByTestId("add-plugin-tailscale").click();
     const ts = page.getByTestId("plugin-tailscale");
     await expect(ts).toBeVisible();
-    await ts.getByRole("button", { name: "Settings" }).click();
-    await ts.getByLabel("Connection").selectOption("system");
+    const connection = ts.getByLabel("Connection");
+    // A plugin that needs attention opens its settings by itself.
+    if (!(await connection.isVisible())) await ts.getByTestId("plugin-tailscale-settings").click();
+    await connection.selectOption("system");
     await ts.getByLabel("Tailscale binaries directory").fill(FAKE_TS);
     await ts.getByLabel("API access token").fill("tskey-api-e2e-secret");
     await ts.getByRole("button", { name: "Save" }).click();
