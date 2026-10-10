@@ -683,7 +683,7 @@
   flex-wrap: wrap;
   gap: 4px 14px;
   margin: 12px 0 0;
-  font-size: 12.5px;
+  font-size: 12px;
   line-height: 1.4;
   animation: c-rise 0.32s cubic-bezier(0.2, 0.7, 0.2, 1) both;
 }
@@ -1355,7 +1355,7 @@
 
 .g-facts dd {
   margin: 0;
-  font-size: 24px;
+  font-size: 22px;
   line-height: 30px;
   font-weight: 600;
   letter-spacing: -0.02em;
@@ -1446,7 +1446,7 @@
 }
 
 .g-detail {
-  font-size: 12.5px;
+  font-size: 12px;
   line-height: 18px;
   color: var(--c-ink-2);
   white-space: nowrap;
@@ -1880,7 +1880,7 @@
 }
 
 .event-clock {
-  font-size: 34px;
+  font-size: 32px;
   line-height: 38px;
   font-weight: 600;
   letter-spacing: -0.03em;
@@ -2205,7 +2205,7 @@
   border-radius: 6px;
   background: #fbe9e6;
   color: #9a2f22;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   display: flex;
   align-items: flex-end;
@@ -2317,7 +2317,7 @@
 }
 
 .reminder-time {
-  font-size: 44px;
+  font-size: 40px;
   line-height: 48px;
   font-weight: 600;
   letter-spacing: -0.03em;
@@ -2394,7 +2394,7 @@
   }
 
   .pass-code {
-    font-size: 30px;
+    font-size: 26px;
     line-height: 34px;
   }
 
@@ -2670,7 +2670,7 @@
   }
 
   .return-price {
-    font-size: 10px;
+    font-size: 11px;
     letter-spacing: -0.02em;
   }
 

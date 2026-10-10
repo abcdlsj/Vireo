@@ -143,8 +143,8 @@
 .shell .page-head h1,
 .shell .page-title,
 .shell .title-input {
-  font-size: 30px;
-  line-height: 36px;
+  font-size: 28px;
+  line-height: 34px;
   font-weight: 650;
   letter-spacing: -0.018em;
   text-wrap: balance;
@@ -956,14 +956,14 @@
 }
 
 .qj-title {
-  font-size: 14.5px;
+  font-size: 14px;
   line-height: 20px;
   font-weight: 500;
   color: var(--c-ink);
 }
 
 .qj-sub {
-  font-size: 12.5px;
+  font-size: 12px;
   line-height: 17px;
   color: var(--c-ink-3);
 }
@@ -1113,4 +1113,40 @@
   .menu {
     animation: none;
   }
+}
+
+/* ---------- type: Inter for reading, Manrope for headings and figures ---------- */
+:is(
+    .home-greet h1,
+    .shell .page-head h1,
+    .shell .page-title,
+    .shell .title-input,
+    .settings .card h3,
+    .md :is(h1, h2),
+    .c-title,
+    .event-title,
+    .event-clock,
+    .tearoff-day,
+    .reminder-time,
+    .stat-value,
+    .watch-value,
+    .trip-total,
+    .leg-price,
+    .qj-title
+  ) {
+  font-family: var(--font-display);
+  font-feature-settings: normal;
+}
+
+/* Manrope runs wider than Inter, so headings need less tightening. */
+:is(.home-greet h1, .shell .page-head h1, .shell .page-title, .shell .title-input) {
+  font-weight: 700;
+  letter-spacing: -0.012em;
+}
+
+.c-title,
+.event-title,
+.settings .card h3 {
+  font-weight: 700;
+  letter-spacing: -0.005em;
 }
