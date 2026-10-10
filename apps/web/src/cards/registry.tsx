@@ -5,7 +5,7 @@ import type { Card, CardButton } from "./types";
 /**
  * Every card kind is one file in ./kinds that default-exports defineCard({...}).
  * Files are picked up automatically, so adding a kind means adding that file
- * (and its data shape in server/src/cards/kinds.ts); nothing else changes.
+ * (and its data shape in apps/host/src/cards/kinds.ts); nothing else changes.
  */
 export interface CardKindView {
   kind: string;

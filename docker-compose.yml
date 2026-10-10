@@ -1,21 +1,22 @@
-# Vireo plus a LiteLLM proxy, so any model provider works through one
-# OpenAI-compatible endpoint.
+# Vireo on one machine: host, app and a LiteLLM proxy, built from source.
 #
 #   cp .env.example .env    # add at least one provider key and pick a model
 #   docker compose up -d    # then open http://localhost:8780
 #
-# vireo is the host (agent + API, :8787); app is the UI (:8780). On a VPS that
-# you reach from the Vireo app on another machine, run only the host:
-#   docker compose up -d vireo litellm
-# and pair with the code in `docker compose logs vireo`.
+# host is the agent + API (:8787); app is the UI (:8780), proxying /api to the
+# host. For a VPS that only runs the host behind HTTPS, use deploy/vps.
 #
 # Using OpenAI (or any compatible endpoint) directly? Set VIREO_LLM_BASE_URL
-# and VIREO_LLM_API_KEY in .env and skip LiteLLM: docker compose up -d vireo app
+# and VIREO_LLM_API_KEY in .env and skip LiteLLM: docker compose up -d host app
 services:
-  vireo:
-    build: .
-    image: vireo:latest
+  host:
+    build:
+      context: .
+      target: host
+    image: vireo-host:local
+    init: true
     restart: unless-stopped
+    shm_size: 1gb
     ports:
       - "8787:8787"
     volumes:
@@ -29,25 +30,29 @@ services:
       VIREO_NAME: ${VIREO_NAME:-}
       TZ: ${TZ:-UTC}
     depends_on:
-      - litellm
+      litellm:
+        condition: service_started
+        required: false
 
   app:
-    image: vireo:latest
+    build:
+      context: .
+      target: web
+    image: vireo-web:local
     restart: unless-stopped
-    command: ["node", "web/serve.mjs"]
     ports:
       - "8780:8780"
     environment:
-      VIREO_HOST_URL: http://vireo:8787
+      VIREO_HOST_URL: http://host:8787
     depends_on:
-      - vireo
+      - host
 
   litellm:
     image: ghcr.io/berriai/litellm:main-v1.83.14-stable
     restart: unless-stopped
     command: ["--config", "/app/config.yaml", "--port", "4000"]
     volumes:
-      - ./litellm.config.yaml:/app/config.yaml:ro
+      - ./deploy/litellm.config.yaml:/app/config.yaml:ro
     env_file:
       - path: .env
         required: false

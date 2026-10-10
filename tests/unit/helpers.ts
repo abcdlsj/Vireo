@@ -1,9 +1,9 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createApp, type App } from "../../server/src/app.js";
-import { loadConfig } from "../../server/src/config.js";
-import { Db } from "../../server/src/db.js";
+import { createApp, type App } from "../../apps/host/src/app.js";
+import { loadConfig } from "../../apps/host/src/config.js";
+import { Db } from "../../apps/host/src/db.js";
 
 export function tempDir(): string {
   return mkdtempSync(join(tmpdir(), "vireo-unit-"));

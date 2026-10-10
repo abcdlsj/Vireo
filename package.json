@@ -8,51 +8,33 @@
   "engines": {
     "node": ">=22.13"
   },
+  "workspaces": [
+    "apps/host",
+    "apps/web"
+  ],
   "scripts": {
-    "dev": "concurrently -k -n server,web \"npm:dev:server\" \"npm:dev:web\"",
-    "dev:server": "tsx watch --env-file-if-exists=.env server/src/index.ts",
-    "dev:web": "vite --config web/vite.config.ts",
-    "build": "npm run build:web && npm run build:server",
-    "build:web": "vite build --config web/vite.config.ts",
-    "build:server": "tsc -p server/tsconfig.json",
+    "dev": "concurrently -k -n host,web \"npm:dev:host\" \"npm:dev:web\"",
+    "dev:host": "tsx watch --env-file-if-exists=.env apps/host/src/index.ts",
+    "dev:web": "npm run dev -w @vireo/web",
+    "build": "npm run build:web && npm run build:host",
+    "build:web": "npm run build -w @vireo/web",
+    "build:host": "npm run build -w @vireo/host",
     "start": "node scripts/start.mjs",
-    "typecheck": "tsc -p server/tsconfig.json --noEmit && tsc -p web/tsconfig.json --noEmit",
+    "host": "node --env-file-if-exists=.env --disable-warning=ExperimentalWarning apps/host/dist/index.js",
+    "app": "node apps/web/serve.mjs",
+    "pair": "node --env-file-if-exists=.env --disable-warning=ExperimentalWarning apps/host/dist/pair.js",
+    "typecheck": "npm run typecheck --workspaces",
     "test": "vitest run",
     "test:e2e": "playwright test",
     "acceptance": "npm run build && node scripts/acceptance.mjs",
-    "host": "node --env-file-if-exists=.env --disable-warning=ExperimentalWarning dist/server/index.js",
-    "app": "node web/serve.mjs",
-    "deploy": "scripts/deploy.sh",
-    "pair": "node --env-file-if-exists=.env --disable-warning=ExperimentalWarning dist/server/pair.js"
-  },
-  "dependencies": {
-    "@hono/node-server": "^2.1.4",
-    "@modelcontextprotocol/sdk": "1.32.1",
-    "@mozilla/readability": "^0.6.0",
-    "@openai/agents": "^0.19.0",
-    "hono": "^4.13.13",
-    "linkedom": "^0.18.13",
-    "openai": "^7.30.1",
-    "playwright": "1.56.1",
-    "typebox": "^1.1.24",
-    "web-push": "^3.6.7"
+    "deploy": "scripts/deploy.sh"
   },
   "devDependencies": {
-    "@fontsource-variable/inter": "^5.3.0",
     "@playwright/test": "1.56.1",
     "@types/node": "^22.20.5",
-    "@types/react": "^19.3.0",
-    "@types/react-dom": "^19.3.0",
-    "@types/web-push": "^3.6.4",
-    "@vitejs/plugin-react": "^6.1.2",
     "concurrently": "^10.0.5",
-    "dompurify": "^3.4.16",
-    "marked": "^18.1.0",
-    "react": "^19.3.0",
-    "react-dom": "^19.3.0",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
-    "vite": "^8.3.3",
     "vitest": "^5.0.3"
   }
 }

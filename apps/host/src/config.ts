@@ -36,6 +36,8 @@ export interface Config {
   testMode: boolean;
   /** Name paired devices show for this host. Defaults to the machine's hostname. */
   hostName?: string;
+  /** Where the Vireo app is served (e.g. on Vercel), so pairing links open it directly. */
+  appUrl?: string;
 }
 
 function bool(v: string | undefined, fallback: boolean): boolean {
@@ -62,5 +64,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     browserHeadless: bool(env.VIREO_BROWSER_HEADLESS, true),
     testMode: bool(env.VIREO_TEST_MODE, false),
     hostName: env.VIREO_NAME?.trim() || undefined,
+    appUrl: env.VIREO_APP_URL?.replace(/\/$/, "") || undefined,
   };
 }

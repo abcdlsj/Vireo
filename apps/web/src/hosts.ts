@@ -45,21 +45,55 @@ function stored(): Host[] {
 }
 
 let hasLocal = true;
+/** A host the deployment offers before any pairing (VITE_VIREO_HOST at build time). */
+let defaultHost: Host | undefined;
+export const DEFAULT_ID = "default";
 
-/** Asks the app server whether it proxies a host on this machine. */
+/** A pairing link the app was opened with that did not pair, for the add-host form to show. */
+export let pendingPairing: { url: string; code: string; error: string } | undefined;
+
+/**
+ * Reads the app config: serve.mjs answers whether it proxies a host on this
+ * machine; a static build (Vercel, Cloudflare) ships a file saying it does
+ * not, and may name a default host.
+ */
 export async function initHosts(): Promise<void> {
   try {
     const r = await fetch("/app-config.json", { cache: "no-store" });
-    const cfg = (await r.json()) as { localHost?: boolean };
+    const cfg = (await r.json()) as { localHost?: boolean; defaultHost?: string };
     hasLocal = cfg.localHost !== false;
+    if (cfg.defaultHost) {
+      const url = new URL(cfg.defaultHost).origin;
+      defaultHost = { id: DEFAULT_ID, name: new URL(url).hostname, url };
+    }
   } catch {
     // Vite's dev server has no app config and proxies /api to the local host.
     hasLocal = true;
   }
+  await pairFromLink();
+}
+
+/**
+ * Opening the app at #pair=CODE&host=URL (the link a host prints when it
+ * knows the app's address) pairs with that host in one step.
+ */
+async function pairFromLink(): Promise<void> {
+  const params = new URLSearchParams(location.hash.slice(1));
+  const code = params.get("pair");
+  const url = params.get("host");
+  if (!code || !url) return;
+  history.replaceState(null, "", location.pathname + location.search);
+  try {
+    await pairHost(url, code);
+  } catch (err) {
+    pendingPairing = { url, code, error: err instanceof Error ? err.message : String(err) };
+  }
 }
 
 export function hosts(): Host[] {
-  return [...(hasLocal ? [local()] : []), ...stored()];
+  const list = stored();
+  const offered = defaultHost && !list.some((h) => h.url === defaultHost!.url) ? [defaultHost] : [];
+  return [...(hasLocal ? [local()] : []), ...offered, ...list];
 }
 
 export function currentHost(): Host | undefined {

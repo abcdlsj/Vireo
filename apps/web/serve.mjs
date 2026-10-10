@@ -6,15 +6,18 @@
 //   VIREO_APP_PORT  port to listen on (default 8780)
 //   VIREO_APP_HOST  bind address (default 0.0.0.0)
 //   VIREO_HOST_URL  host to proxy /api to (default http://127.0.0.1:8787; "none" disables)
-//   VIREO_WEB_DIR   built UI (default dist/web)
+//   VIREO_WEB_DIR   built UI (default dist next to this file)
+//
+// On Vercel or Cloudflare this file is not used: the build is a static site.
 import { existsSync, readFileSync, statSync } from "node:fs";
 import http from "node:http";
 import https from "node:https";
 import { extname, join, normalize, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const port = Number(process.env.VIREO_APP_PORT ?? 8780);
 const bind = process.env.VIREO_APP_HOST ?? "0.0.0.0";
-const root = resolve(process.env.VIREO_WEB_DIR ?? join(process.cwd(), "dist", "web"));
+const root = resolve(process.env.VIREO_WEB_DIR ?? fileURLToPath(new URL("dist", import.meta.url)));
 const hostSetting = process.env.VIREO_HOST_URL ?? "http://127.0.0.1:8787";
 const upstream = hostSetting === "none" || hostSetting === "" ? undefined : new URL(hostSetting);
 

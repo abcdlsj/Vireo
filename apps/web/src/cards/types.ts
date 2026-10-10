@@ -13,7 +13,7 @@ export interface CardButton {
   primary?: boolean;
 }
 
-/** Mirrors server/src/cards/store.ts. `data` is shaped by the kind. */
+/** Mirrors apps/host/src/cards/store.ts. `data` is shaped by the kind. */
 export interface Card {
   id: string;
   threadId: string;

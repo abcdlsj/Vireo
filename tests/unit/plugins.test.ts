@@ -2,11 +2,11 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import type { App } from "../../server/src/app.js";
-import { AGENTS } from "../../server/src/agents.js";
-import { Db } from "../../server/src/db.js";
-import { buildSystemPrompt } from "../../server/src/prompt.js";
-import { messageText } from "../../server/src/threads.js";
+import type { App } from "../../apps/host/src/app.js";
+import { AGENTS } from "../../apps/host/src/agents.js";
+import { Db } from "../../apps/host/src/db.js";
+import { buildSystemPrompt } from "../../apps/host/src/prompt.js";
+import { messageText } from "../../apps/host/src/threads.js";
 import { tempDir, testApp } from "./helpers.js";
 
 const FAKE_TS = resolve("tests/fixtures/fake-tailscale");

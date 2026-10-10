@@ -34,7 +34,7 @@ export default defineConfig({
       reuseExistingServer: false,
     },
     {
-      command: `rm -rf ${DATA} .vireo-test/server.log && node --disable-warning=ExperimentalWarning dist/server/index.js`,
+      command: `rm -rf ${DATA} .vireo-test/server.log && node --disable-warning=ExperimentalWarning apps/host/dist/index.js`,
       port: HOST_PORT,
       reuseExistingServer: false,
       stdout: "pipe",
@@ -51,7 +51,7 @@ export default defineConfig({
       },
     },
     {
-      command: `node web/serve.mjs`,
+      command: `node apps/web/serve.mjs`,
       port: PORT,
       reuseExistingServer: false,
       env: { VIREO_APP_PORT: String(PORT), VIREO_HOST_URL: `http://127.0.0.1:${HOST_PORT}` },

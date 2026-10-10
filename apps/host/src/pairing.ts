@@ -85,8 +85,9 @@ export function pairingInstructions(config: Config, code: string): string[] {
   return [
     `  Pair a device with this host (code valid for 15 minutes, single use):`,
     `    Code: ${code}`,
+    ...(config.appUrl ? [`    Open: ${config.appUrl}/#pair=${normalizeCode(code)}&host=${encodeURIComponent(urls[0]!)}`] : []),
     `    In Vireo, choose Hosts → Add host and paste: ${urls[0]}#pair=${normalizeCode(code)}`,
     ...(urls.length > 1 ? [`    Other addresses: ${urls.slice(1).join(", ")}`] : []),
-    `    New code: npm run pair (Docker: docker compose exec vireo npm run pair)`,
+    `    New code: npm run pair (Docker: docker compose exec host npm run pair)`,
   ];
 }

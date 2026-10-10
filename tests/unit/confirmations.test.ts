@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import type { App } from "../../server/src/app.js";
+import type { App } from "../../apps/host/src/app.js";
 import { tempDir, testApp } from "./helpers.js";
 
 let apps: App[] = [];

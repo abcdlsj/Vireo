@@ -5,8 +5,8 @@ import { spawn } from "node:child_process";
 
 const node = [process.execPath, "--env-file-if-exists=.env", "--disable-warning=ExperimentalWarning"];
 const children = [
-  spawn(node[0], [...node.slice(1), "dist/server/index.js"], { stdio: "inherit" }),
-  spawn(node[0], [...node.slice(1), "web/serve.mjs"], { stdio: "inherit" }),
+  spawn(node[0], [...node.slice(1), "apps/host/dist/index.js"], { stdio: "inherit" }),
+  spawn(node[0], [...node.slice(1), "apps/web/serve.mjs"], { stdio: "inherit" }),
 ];
 let exiting = false;
 const stop = (code) => {

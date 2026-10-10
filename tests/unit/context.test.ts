@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import type { AgentMessage } from "../../server/src/messages.js";
-import { extractJson } from "../../server/src/models.js";
-import { fitContext, toInputItems } from "../../server/src/runner.js";
+import type { AgentMessage } from "../../apps/host/src/messages.js";
+import { extractJson } from "../../apps/host/src/models.js";
+import { fitContext, toInputItems } from "../../apps/host/src/runner.js";
 
 function turn(i: number, size: number): AgentMessage[] {
   return [

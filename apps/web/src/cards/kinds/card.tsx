@@ -7,7 +7,7 @@ import type { Card } from "../types";
 import { field } from "../types";
 import { isHttp } from "../util";
 
-/** Mirrors server/src/cards/blocks.ts. Every field comes from the model, so each is read defensively. */
+/** Mirrors apps/host/src/cards/blocks.ts. Every field comes from the model, so each is read defensively. */
 type Mark = "picked" | "best" | "attention" | "done";
 type Block =
   | { type: "facts"; items?: { value?: string; label?: string; tone?: "good" | "attention" }[] }

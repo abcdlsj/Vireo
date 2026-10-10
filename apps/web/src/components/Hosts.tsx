@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
-import { currentHost, hosts, HOSTS_CHANGED, LOCAL_DEFAULT_NAME, LOCAL_ID, pairHost, removeHost, renameHost, switchHost, type Host } from "../hosts";
+import { currentHost, hosts, HOSTS_CHANGED, LOCAL_DEFAULT_NAME, LOCAL_ID, pairHost, pendingPairing, removeHost, renameHost, switchHost, type Host } from "../hosts";
 import { ChevronDown, PlusIcon } from "../icons";
 
 /** Sidebar control showing the current host; switches between paired hosts. */
@@ -63,9 +63,10 @@ export function HostSwitcher() {
 
 /** Address (or pairing link) plus code; on success the app reloads into the new host. */
 export function AddHostForm({ onCancel, host }: { onCancel?: () => void; host?: Host }) {
-  const [address, setAddress] = useState(host?.url ?? "");
-  const [code, setCode] = useState("");
-  const [error, setError] = useState("");
+  const pending = host ? undefined : pendingPairing;
+  const [address, setAddress] = useState(host?.url ?? pending?.url ?? "");
+  const [code, setCode] = useState(pending?.code ?? "");
+  const [error, setError] = useState(pending?.error ?? "");
   const [busy, setBusy] = useState(false);
   return (
     <form

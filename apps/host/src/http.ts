@@ -594,9 +594,9 @@ export function createHttp(app: App): Hono<Env> {
 
   if (app.config.testMode) mountTestRoutes(api, app);
 
-  // The host has no UI; the Vireo app (web/) is served separately.
+  // The host has no UI; the Vireo app (apps/web) is served separately.
   api.get("*", (c) =>
-    c.text(`${hostName(app.config)} is a Vireo host. Open the Vireo app and choose Add host, then enter this address and a pairing code from the host's log (or run \`npm run pair\` on it).\n`),
+    c.text(`${hostName(app.config)} is a Vireo host. Open the Vireo app${app.config.appUrl ? ` (${app.config.appUrl})` : ""} and choose Add host, then enter this address and a pairing code from the host's log (or run \`npm run pair\` on it).\n`),
   );
   return api;
 }

@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, it } from "vitest";
-import type { App } from "../../server/src/app.js";
-import { BLOCK_KINDS } from "../../server/src/cards/blocks.js";
-import { CARD_KINDS } from "../../server/src/cards/kinds.js";
-import { OVERVIEW_ID } from "../../server/src/threads.js";
-import { toZonedIso, zonedToUtc } from "../../server/src/time.js";
-import { shapeOf } from "../../server/src/tools/cards.js";
+import type { App } from "../../apps/host/src/app.js";
+import { BLOCK_KINDS } from "../../apps/host/src/cards/blocks.js";
+import { CARD_KINDS } from "../../apps/host/src/cards/kinds.js";
+import { OVERVIEW_ID } from "../../apps/host/src/threads.js";
+import { toZonedIso, zonedToUtc } from "../../apps/host/src/time.js";
+import { shapeOf } from "../../apps/host/src/tools/cards.js";
 import { testApp } from "./helpers.js";
 
 let apps: App[] = [];

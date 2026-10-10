@@ -1,10 +1,10 @@
-// Renders web/public/icon.svg into the PNG icons the PWA manifest needs.
+// Renders apps/web/public/icon.svg into the PNG icons the PWA manifest needs.
 // Run with: node scripts/icons.mjs
 import { chromium } from "playwright";
 import { readFileSync } from "node:fs";
 
-const svg = readFileSync(new URL("../web/public/icon.svg", import.meta.url), "utf8");
-const out = (name) => new URL(`../web/public/${name}`, import.meta.url).pathname;
+const svg = readFileSync(new URL("../apps/apps/web/public/icon.svg", import.meta.url), "utf8");
+const out = (name) => new URL(`../apps/web/public/${name}`, import.meta.url).pathname;
 const browser = await chromium.launch();
 const page = await browser.newPage();
 // [file, size, padding, opaque background]

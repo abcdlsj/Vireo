@@ -1,9 +1,9 @@
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { loadConfig } from "../../server/src/config.js";
-import { cacheTokens } from "../../server/src/models.js";
-import { Pricing } from "../../server/src/pricing.js";
+import { loadConfig } from "../../apps/host/src/config.js";
+import { cacheTokens } from "../../apps/host/src/models.js";
+import { Pricing } from "../../apps/host/src/pricing.js";
 import { tempDir, testApp } from "./helpers.js";
 
 const CATALOG = {

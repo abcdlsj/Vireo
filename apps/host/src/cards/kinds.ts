@@ -7,7 +7,7 @@ import { Type, type TSchema } from "typebox";
  * everything else is the general "card", composed from blocks (blocks.ts).
  * A kind is a name, a sentence telling the model when to use it, and the
  * shape of its data; the web app has one component per kind
- * (web/src/cards/kinds/<name>.tsx). Cards of kinds that were retired keep
+ * (apps/web/src/cards/kinds/<name>.tsx). Cards of kinds that were retired keep
  * rendering with their old components.
  *
  * Cards are glanced at, not read, so every text field has a length limit and

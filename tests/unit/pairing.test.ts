@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeCode, Pairing } from "../../server/src/pairing.js";
+import { normalizeCode, Pairing } from "../../apps/host/src/pairing.js";
 import { tempDb } from "./helpers.js";
 
 describe("host pairing codes", () => {

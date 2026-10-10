@@ -15,17 +15,17 @@ OPENAI_API_KEY=sk-... npm start
 
 Open http://localhost:8780, choose a password, and start a thread.
 
-`npm start` runs two processes: the **host** (the agent, its data and the API, on :8787) and the **app** (the UI, on :8780). They are separate on purpose, so one app can drive several hosts.
+`npm start` runs two processes: the **host** (`apps/host`: the agent, its data and the API, on :8787) and the **app** (`apps/web`: the UI, on :8780). They are separate on purpose, so one app can drive several hosts, and they deploy separately: the host to a VPS in Docker, the app as a static site on Vercel or Cloudflare. See [deploy/README.md](deploy/README.md).
 
 ## Hosts: Vireo on a VPS or another machine
 
 A host is a headless Vireo with its own threads, memory, plugins and model settings. Run one wherever the agent should live, and pair the app with it:
 
-1. On the VPS or machine: `npm install && npm run build && OPENAI_API_KEY=sk-... npm run host` (or `docker compose up -d vireo`).
+1. On the VPS or machine: `cd deploy/vps && docker compose up -d` (host behind Caddy with HTTPS, see [deploy/README.md](deploy/README.md)), or `npm install && npm run build:host && OPENAI_API_KEY=sk-... npm run host`.
 2. The host prints a pairing code and a link, for example `http://203.0.113.5:8787#pair=K7QM2XPA`.
 3. In the app, open the host name at the top of the sidebar → **Add host**, and paste the link (or the address plus the code).
 
-Codes are single use and expire after 15 minutes. For another code, run `npm run pair` on the host (Docker: `docker compose exec vireo npm run pair`), or open **Settings → Hosts → Get a pairing code** on a device already paired with it. Switch hosts from the same sidebar menu; **Settings → Hosts** renames and removes them.
+Codes are single use and expire after 15 minutes. For another code, run `npm run pair` on the host (Docker: `docker compose exec host npm run pair`), or open **Settings → Hosts → Get a pairing code** on a device already paired with it. Switch hosts from the same sidebar menu; **Settings → Hosts** renames and removes them.
 
 The app reaches remote hosts directly from the browser, so the host's port must be reachable from your device. An app served over HTTPS can only use HTTPS hosts; `tailscale serve --bg 8787` on the host is the simplest way to get one.
 
@@ -48,17 +48,17 @@ docker compose up -d
 That starts the host, the app and LiteLLM, and stores everything in `./data`. Then open http://localhost:8780.
 
 - **vireo** is the app, with Node and Chromium included.
-- **litellm** is a [LiteLLM](https://docs.litellm.ai/) proxy configured by `litellm.config.yaml`. It routes `openai/*`, `anthropic/*`, `gemini/*`, `openrouter/*`, `deepseek/*` and `ollama/*` model names to their providers, using the keys in `.env`. Set `VIREO_MODEL` and `VIREO_FAST_MODEL` to names like `anthropic/claude-sonnet-4-5`.
+- **litellm** is a [LiteLLM](https://docs.litellm.ai/) proxy configured by `deploy/litellm.config.yaml`. It routes `openai/*`, `anthropic/*`, `gemini/*`, `openrouter/*`, `deepseek/*` and `ollama/*` model names to their providers, using the keys in `.env`. Set `VIREO_MODEL` and `VIREO_FAST_MODEL` to names like `anthropic/claude-sonnet-4-5`.
 
-To skip LiteLLM and use an OpenAI-compatible endpoint directly, set `VIREO_LLM_BASE_URL` and `VIREO_LLM_API_KEY` in `.env` and run `docker compose up -d vireo`. Without Compose:
+To skip LiteLLM and use an OpenAI-compatible endpoint directly, set `VIREO_LLM_BASE_URL` and `VIREO_LLM_API_KEY` in `.env` and run `docker compose up -d host app`. Without Compose:
 
 ```bash
-docker build -t vireo .
+docker build --target host -t vireo-host .
 docker run -d --name vireo -p 8787:8787 -v "$PWD/data:/data" \
   -e OPENAI_API_KEY=sk-... vireo
 ```
 
-That runs the host only; pair with the code in `docker logs vireo`. Add the app with `docker run -d -p 8780:8780 -e VIREO_HOST_URL=none vireo node web/serve.mjs`, or use an app elsewhere.
+That runs the host only; pair with the code in `docker logs vireo`. Add the app with `docker build --target web -t vireo-web . && docker run -d -p 8780:8780 -e VIREO_HOST_URL=none vireo-web`, or use an app elsewhere (Vercel, Cloudflare). Published images: `ghcr.io/abcdlsj/vireo-host` and `ghcr.io/abcdlsj/vireo-web`.
 
 ### Reaching it from your phone
 
@@ -93,6 +93,8 @@ Only model access needs setting up, either here or in **Settings → Model**, wh
 | `VIREO_DATA_DIR` | `./data` | Database, files, browser profile, keys |
 | `VIREO_PASSWORD` | – | Fixed owner password (skips the setup screen) |
 | `VIREO_PUBLIC_URL` | detected | Public base URL, used for OAuth redirects |
+| `VIREO_APP_URL` | – | Where the app is served (e.g. on Vercel); pairing links then open it and pair in one click |
+| `VITE_VIREO_HOST` | – | Build-time, for a static app: a host to offer by default |
 | `VIREO_SEARXNG_URL` | – | Use a SearXNG instance for web search |
 | `BRAVE_API_KEY` | – | Use the Brave Search API for web search |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | – | Google OAuth client; this can also be entered in Settings |
@@ -119,11 +121,13 @@ Preferences such as time zone, working hours and which proactive checks run are 
 - **Audit:** every tool call, confirmation and model call is recorded per thread, in **Activity** in the side panel.
 
 ```
-server/src     The host: Hono HTTP + SSE, runner, agents, memory, scheduler, tools, pairing
-server/src/plugins  Community plugins (Google, Tailscale): tools, agents, settings
-web/src        The app: React PWA for one host at a time; web/serve.mjs serves it
-tests/unit     Vitest: memory, time, vault, context, confirmations
-tests/e2e      Playwright: one test per PRD acceptance criterion
+apps/host          @vireo/host: Hono HTTP + SSE, runner, agents, memory, scheduler, tools, pairing
+apps/host/src/plugins  Community plugins (Google, Tailscale, ...): tools, agents, settings
+apps/web           @vireo/web: the React PWA, a static build; serve.mjs serves it when self-hosted
+deploy/vps         Compose for a host on a VPS (Caddy HTTPS, optional UI and LiteLLM)
+Dockerfile         Two targets: host (default) and web
+tests/unit         Vitest: memory, time, vault, context, confirmations
+tests/e2e          Playwright: one test per PRD acceptance criterion
 ```
 
 ### Differences from the PRD draft

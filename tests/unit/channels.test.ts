@@ -3,12 +3,12 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import type { App } from "../../server/src/app.js";
-import { split } from "../../server/src/plugins/chat.js";
-import { decryptFeishu } from "../../server/src/plugins/feishu/index.js";
-import { parseServers, parseSecrets, toolName } from "../../server/src/plugins/mcp/index.js";
-import { createHttp } from "../../server/src/http.js";
-import { messageText, OVERVIEW_ID } from "../../server/src/threads.js";
+import type { App } from "../../apps/host/src/app.js";
+import { split } from "../../apps/host/src/plugins/chat.js";
+import { decryptFeishu } from "../../apps/host/src/plugins/feishu/index.js";
+import { parseServers, parseSecrets, toolName } from "../../apps/host/src/plugins/mcp/index.js";
+import { createHttp } from "../../apps/host/src/http.js";
+import { messageText, OVERVIEW_ID } from "../../apps/host/src/threads.js";
 import { testApp } from "./helpers.js";
 
 let apps: App[] = [];

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MemoryStore, normaliseKey } from "../../server/src/memory.js";
+import { MemoryStore, normaliseKey } from "../../apps/host/src/memory.js";
 import { tempDb } from "./helpers.js";
 
 describe("memory graph", () => {
