@@ -1,4 +1,5 @@
-import { request as http } from "@playwright/test";
+import { devices, request as http } from "@playwright/test";
+import { DatabaseSync } from "node:sqlite";
 import { expect, finalReply, linked, NODE, sendMessage, settle, signIn, startThread, test, threadDetail } from "./helpers";
 
 test.describe("Milestone 1 — Threads that think", () => {
@@ -174,6 +175,51 @@ test.describe("Milestone 1 — Threads that think", () => {
     await page.keyboard.press("Enter");
     await expect(page).toHaveURL(new RegExp(`#thread/${threadId}`));
     await expect(page.getByTestId("quick-jump")).toHaveCount(0);
+  });
+
+  test("[Home] a long card shows its summary, and its quick replies answer from the board on a phone", async ({ browser, baseURL, request }) => {
+    const thread = (await (await request.post("/api/threads", { data: { title: "Flights to Shanghai" } })).json()).thread;
+    // A card as a model would show it: many rows, one marked best, a note, and quick replies.
+    const now = Date.now();
+    const flights = ["CA1831", "MU5102", "HO1252", "CZ3907", "FM9108", "CA1557", "MU5138", "9C8846"];
+    const data = {
+      blocks: [
+        { type: "rows", items: flights.map((title, i) => ({ title, value: `¥${1000 + i * 10}`, mark: title === "FM9108" ? "best" : undefined })) },
+        { type: "text", text: "FM9108 is the best value." },
+      ],
+    };
+    const db = new DatabaseSync(".vireo-test/data/vireo.db");
+    db.prepare("INSERT INTO cards (id, thread_id, kind, title, status, data, buttons, archived, created_at, updated_at) VALUES (?, ?, 'card', ?, 'needs_you', ?, ?, 0, ?, ?)").run(
+      "c_flights",
+      thread.id,
+      "Beijing to Shanghai, Friday",
+      JSON.stringify(data),
+      JSON.stringify([{ label: "Book FM9108", reply: "Book FM9108", primary: true }, { label: "Later flights", reply: "Show later flights" }]),
+      now,
+      now,
+    );
+    db.close();
+
+    const { defaultBrowserType: _, ...phone } = devices["iPhone 13"];
+    const context = await browser.newContext({ ...phone, baseURL, storageState: ".vireo-test/owner.json" });
+    const page = await context.newPage();
+    await page.goto("/");
+    const card = page.getByTestId("board").locator(`[data-thread-id="${thread.id}"]`);
+    // The board shows the top rows and the best one; the rest wait in the peek.
+    await expect(card.locator(".g-rows li")).toHaveCount(3);
+    await expect(card).toContainText("FM9108");
+    await expect(card.getByTestId("card-more")).toHaveText("5 more");
+    // A tap on a quick reply answers the matter without opening it.
+    await card.getByRole("button", { name: "Book FM9108" }).tap();
+    await expect(card.getByTestId("card-sent")).toContainText("Book FM9108");
+    await expect(page.getByTestId("peek")).toHaveCount(0);
+    await settle(request);
+    const messages = (await threadDetail(request, thread.id)).messages as { role: string; text: string }[];
+    expect(messages.some((m) => m.role === "user" && m.text === "Book FM9108")).toBe(true);
+    // Opening the card shows every row.
+    await card.locator(".c-title").tap();
+    await expect(page.getByTestId("peek").locator(".g-rows li")).toHaveCount(8);
+    await context.close();
   });
 
   test("[M1.5] model access is configurable", async ({ page, request }) => {

@@ -221,6 +221,14 @@ export function Status({ card, grouped }: { card: Card; grouped?: boolean }) {
 export function Buttons({ card, buttons }: { card: Card; buttons: CardButton[] }) {
   const [busy, setBusy] = useState<number | null>(null);
   const [sent, setSent] = useState("");
+  const [failed, setFailed] = useState(false);
+  // A new version of the card brings its own buttons; the last answer was to the old one.
+  const seen = useRef(card.updatedAt);
+  useEffect(() => {
+    if (card.updatedAt === seen.current) return;
+    seen.current = card.updatedAt;
+    setSent("");
+  }, [card.updatedAt]);
   if (sent) {
     return (
       <span className="vcard-sent" data-testid="card-sent">
@@ -235,19 +243,29 @@ export function Buttons({ card, buttons }: { card: Card; buttons: CardButton[] }
       {buttons.map((b, i) => (
         <button
           key={i}
+          type="button"
           className={`cbtn ${b.primary || (i === 0 && buttons.length > 0 && !buttons.some((x) => x.primary)) ? "primary" : ""}`}
           disabled={busy !== null}
           aria-busy={busy === i}
-          onClick={() => {
+          onClick={(e) => {
+            // The answer is the whole action: the card around it does not open too.
+            e.stopPropagation();
             setBusy(i);
+            setFailed(false);
             void pressButton(card, b)
               .then(() => b.reply && setSent(b.label))
+              .catch(() => setFailed(true))
               .finally(() => setBusy(null));
           }}
         >
           {b.label}
         </button>
       ))}
+      {failed ? (
+        <span className="vcard-error" role="alert" data-testid="card-send-failed">
+          Couldn't send that. Try again.
+        </span>
+      ) : null}
     </div>
   );
 }
