@@ -10,3 +10,4 @@ acceptance-report.md
 .deploy/
 .wrangler/
 .vercel/
+.env*.local
