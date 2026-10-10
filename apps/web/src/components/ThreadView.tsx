@@ -6,7 +6,7 @@ import { go } from "../route";
 import { ActionCard } from "./ActionCard";
 import { Composer } from "./Composer";
 import { ProcedureCard } from "./ProcedureCard";
-import { SidePanel } from "./SidePanel";
+import { SHEET_QUERY, SidePanel } from "./SidePanel";
 import { CardSlot } from "../cards/CardSlot";
 import { Status } from "../cards/Frame";
 import type { Card } from "@vireo/protocol";
@@ -125,8 +125,12 @@ export function ThreadView({ id }: { id: string }) {
 
   const browsing = Boolean(detail?.thread.running) && liveSteps.some((s) => s.tool.startsWith("browser_"));
   useEffect(() => setPanelChoice(null), [id]);
-  // While the agent works in the browser the live view opens whatever was chosen before.
-  const panel = browsing || (panelChoice ?? panelAuto(detail));
+  // When the agent starts working in the browser the live view opens, whatever was chosen
+  // before; closing it then keeps it closed. On a phone it would cover the conversation, so it waits to be asked for.
+  useEffect(() => {
+    if (browsing && !window.matchMedia(SHEET_QUERY).matches) setPanelChoice(true);
+  }, [browsing]);
+  const panel = panelChoice ?? panelAuto(detail);
 
   const setPanel = (open: boolean) => {
     setPanelChoice(open);
@@ -353,7 +357,7 @@ const PANEL_KEY = "vireo.panel";
  * and stays closed until asked for.
  */
 function panelAuto(detail: ThreadDetail | null): boolean {
-  if (!detail || window.matchMedia("(max-width: 760px)").matches) return false;
+  if (!detail || window.matchMedia(SHEET_QUERY).matches) return false;
   if (localStorage.getItem(PANEL_KEY) === "closed") return false;
   return detail.related.length > 0 || detail.files.length > 0;
 }

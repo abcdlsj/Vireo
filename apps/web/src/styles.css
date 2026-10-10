@@ -2492,6 +2492,105 @@ ul.rows {
   margin: 0;
 }
 
+.sheet-backdrop,
+.sheet-grab {
+  display: none;
+}
+
+/*
+ * ---------- details as a sheet ----------
+ * On a phone, held either way, the details rise from the bottom over the
+ * conversation instead of taking a column beside it. Keep this query in step
+ * with SHEET_QUERY in SidePanel.tsx.
+ */
+@media (max-width: 760px), (pointer: coarse) and (max-height: 560px) {
+  .panel-tabs .close.widen {
+    display: none;
+  }
+
+  .panel-tabs .close.widen + .close {
+    margin-left: auto;
+  }
+
+  .side-panel,
+  .side-panel.wide {
+    position: fixed;
+    inset: auto 0 0 0;
+    width: auto;
+    height: 62dvh;
+    max-height: calc(100dvh - 24px);
+    border-left: none;
+    border-radius: 16px 16px 0 0;
+    box-shadow: var(--shadow-pop);
+    z-index: 11;
+    padding-bottom: env(safe-area-inset-bottom);
+    transition:
+      height 0.24s cubic-bezier(0.2, 0.7, 0.2, 1),
+      transform 0.24s cubic-bezier(0.2, 0.7, 0.2, 1);
+    animation: sheet-rise 0.26s cubic-bezier(0.2, 0.7, 0.2, 1);
+  }
+
+  .side-panel.full {
+    height: calc(100dvh - 24px);
+  }
+
+  /* While a finger moves it, the sheet follows without easing. */
+  .side-panel.dragging {
+    transition: none;
+  }
+
+  .side-panel .panel-body {
+    flex: 1;
+    min-height: 0;
+    overscroll-behavior: contain;
+  }
+
+  .sheet-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 10;
+    background: rgba(20, 20, 15, 0.22);
+    animation: sheet-fade 0.2s ease;
+  }
+
+  /* The handle says the sheet moves: drag it up for more room, down to put it away. */
+  .sheet-grab {
+    display: flex;
+    justify-content: center;
+    flex-shrink: 0;
+    padding: 8px 0 2px;
+    border: none;
+    background: none;
+    cursor: grab;
+    touch-action: none;
+  }
+
+  .sheet-grab::before {
+    content: "";
+    width: 38px;
+    height: 5px;
+    border-radius: 3px;
+    background: var(--line-strong, rgba(120, 120, 110, 0.35));
+  }
+
+  .side-panel .panel-tabs {
+    touch-action: none;
+  }
+}
+
+@keyframes sheet-rise {
+  from {
+    transform: translateY(100%);
+  }
+}
+
+@keyframes sheet-fade {
+  from {
+    opacity: 0;
+  }
+}
+
 /* ---------- phone ---------- */
 @media (max-width: 760px) {
   .shell {
@@ -2521,30 +2620,6 @@ ul.rows {
 
   .head-actions .label {
     display: none;
-  }
-
-  .panel-tabs .close.widen {
-    display: none;
-  }
-
-  .side-panel.wide {
-    width: auto;
-  }
-
-  .panel-tabs .close.widen + .close {
-    margin-left: auto;
-  }
-
-  .side-panel {
-    position: fixed;
-    inset: auto 0 0 0;
-    width: auto;
-    height: 72dvh;
-    border-left: none;
-    border-radius: 12px 12px 0 0;
-    box-shadow: var(--shadow-pop);
-    z-index: 10;
-    padding-bottom: env(safe-area-inset-bottom);
   }
 
   .grid2 {
