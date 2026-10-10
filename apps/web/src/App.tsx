@@ -65,7 +65,7 @@ export function App({ signInError }: { signInError?: string }) {
 
   if (state.name === "signed-out") return <SignIn error={signInError} onDone={() => void connect()} />;
   if (route.name === "link") return <ApproveNode code={route.code} />;
-  if (state.name === "loading") return <div className="splash">Vireo</div>;
+  if (state.name === "loading") return <div className="splash" aria-busy="true" />;
   if (state.name === "no-nodes") return <NoNodes />;
   if (state.name === "unreachable") return <Unreachable node={state.node} message={state.message} onRetry={() => void connect()} />;
   return <Shell user={user} />;
