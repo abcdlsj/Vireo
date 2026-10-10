@@ -57,7 +57,7 @@ describe("plugins", () => {
     expect(app.tools.has("tailnet_machines")).toBe(false);
   });
 
-  it("serves the host on the tailnet once HTTPS is allowed, and pairs at that address", async () => {
+  it("serves the node on the tailnet once HTTPS is allowed", async () => {
     const gate = `${tempDir()}/allowed`;
     process.env.FAKE_TS_SERVE_GATE = gate;
     try {
@@ -67,9 +67,9 @@ describe("plugins", () => {
       await expect.poll(async () => (await status()).link?.href).toBe("https://login.tailscale.com/f/serve?node=n0");
       writeFileSync(gate, "");
       await expect.poll(async () => (await status()).details?.find((d) => d.label === "This host on the tailnet")?.value, { timeout: 10_000 }).toBe("https://vireo.tail-test.ts.net");
-      expect(app.config.publicUrl).toBe("https://vireo.tail-test.ts.net");
+      expect(app.address.directUrl).toBe("https://vireo.tail-test.ts.net");
       await app.plugins.configure("tailscale", { serve: false });
-      expect(app.config.publicUrl).toBeUndefined();
+      expect(app.address.directUrl).toBeUndefined();
     } finally {
       delete process.env.FAKE_TS_SERVE_GATE;
     }
@@ -90,19 +90,6 @@ describe("plugins", () => {
     expect(app.plugins.config("tailscale").api_key).toBe("tskey-api-SECRET123");
     await app.plugins.configure("tailscale", { api_key: "" });
     expect(app.plugins.config("tailscale").api_key).toBe("");
-  });
-
-  it("moves a Google connection made before plugins into the Google plugin", () => {
-    const dir = tempDir();
-    const db = Db.open(dir);
-    db.setKv("google.client", { clientId: "cid.apps.googleusercontent.com", clientSecret: "gsecret-1" });
-    db.setKv("google.tokens", { access_token: "at", refresh_token: "rt", expires_at: Date.now() + 3600_000, email: "owner@example.com" });
-    db.close();
-    const app = open(dir);
-    expect(app.plugins.installed("google")).toBe(true);
-    expect(app.plugins.config("google")).toMatchObject({ client_id: "cid.apps.googleusercontent.com", client_secret: "gsecret-1" });
-    expect(app.db.getKv("google.client")).toBeUndefined();
-    expect(app.integrations.status().google).toMatchObject({ installed: true, connected: true, email: "owner@example.com" });
   });
 });
 

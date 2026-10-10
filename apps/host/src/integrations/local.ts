@@ -3,6 +3,8 @@ import { newId, now, safeJson } from "../util.js";
 import type {
   CalendarEvent,
   CalendarProvider,
+  DriveFile,
+  DriveProvider,
   Email,
   EmailSummary,
   MailProvider,
@@ -146,5 +148,42 @@ export class FakeMail implements MailProvider {
 
   async ownerAddress(): Promise<string | undefined> {
     return "owner@example.com";
+  }
+}
+
+/** In-memory Drive for tests and demos (VIREO_FAKE_GOOGLE=1). */
+export class FakeDrive implements DriveProvider {
+  readonly files: (DriveFile & { text: string })[] = [
+    {
+      id: "doc_trip",
+      name: "Lisbon trip plan",
+      mimeType: "application/vnd.google-apps.document",
+      modifiedTime: "2026-09-30T10:00:00Z",
+      webViewLink: "https://docs.google.com/document/d/doc_trip",
+      text: "Lisbon, 12–16 November. Hotel: Casa do Rio, confirmation LX-4821. Dinner booked at Taberna on the 13th.",
+    },
+    {
+      id: "sheet_budget",
+      name: "2026 budget",
+      mimeType: "application/vnd.google-apps.spreadsheet",
+      modifiedTime: "2026-09-12T08:00:00Z",
+      webViewLink: "https://docs.google.com/spreadsheets/d/sheet_budget",
+      text: "Category,Amount\nTravel,2400\nBooks,300",
+    },
+  ];
+
+  async search(query: string, max: number): Promise<DriveFile[]> {
+    const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+    return this.files
+      .filter((f) => terms.some((t) => `${f.name} ${f.text}`.toLowerCase().includes(t)))
+      .slice(0, max)
+      .map(({ text: _text, ...rest }) => rest);
+  }
+
+  async read(id: string): Promise<{ file: DriveFile; text: string }> {
+    const f = this.files.find((x) => x.id === id);
+    if (!f) throw new Error(`No Drive file ${id}`);
+    const { text, ...file } = f;
+    return { file, text };
   }
 }

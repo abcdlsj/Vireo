@@ -244,7 +244,7 @@ function Setup({ me }: { me: Me }) {
   });
   const steps = [
     { done: me.models.ready, label: "Connect a model", why: "Vireo needs one to do anything.", href: "#settings/model" },
-    { done: me.integrations.google.connected, label: "Connect Google", why: "Calendar and mail, so Vireo can schedule and answer for you.", href: "#settings/plugins/google" },
+    { done: me.capabilities?.some((c) => c.id === "google" && c.state === "ready"), label: "Connect Google", why: "Calendar and mail, so Vireo can schedule and answer for you.", href: "#settings/plugins/google" },
     { done: me.push.subscriptions > 0, label: "Turn on notifications", why: "Hear about what needs you without opening Vireo.", href: "#settings/notifications" },
     // Plugins the owner added but did not finish; Google is already a step above.
     ...(me.capabilities ?? [])

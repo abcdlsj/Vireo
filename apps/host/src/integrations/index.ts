@@ -1,30 +1,27 @@
 import type { Config } from "../config.js";
 import type { Db } from "../db.js";
-import { FakeDrive, GoogleAuth, GoogleCalendar, GoogleDrive, GoogleMail, type DriveProvider, type GoogleClient } from "../plugins/google/api.js";
-import { FakeMail, LocalCalendar } from "./local.js";
-import type { CalendarProvider, MailProvider } from "./types.js";
+import type { Providers } from "../plugins/types.js";
+import { FakeDrive, FakeMail, LocalCalendar } from "./local.js";
+import type { CalendarProvider, DriveProvider, MailProvider } from "./types.js";
 
 export * from "./types.js";
 
 /**
- * Picks the calendar, mail and Drive backends that are available right now.
- * Google backends come from the Google plugin; without it Vireo keeps events
- * in its own calendar.
+ * Picks the calendar, mail and Drive backends that are available right now:
+ * the first added plugin that provides one (Google), else Vireo's own
+ * calendar. Demo mode uses an in-memory mailbox and Drive.
  */
 export class Integrations {
-  readonly google: GoogleAuth;
   readonly localCalendar: LocalCalendar;
   readonly fakeMail?: FakeMail;
   readonly fakeDrive?: FakeDrive;
-  /** Set once plugins are loaded. */
-  googleEnabled: () => boolean = () => false;
-  googleClient: () => GoogleClient | undefined = () => undefined;
 
   constructor(
-    private readonly config: Config,
+    config: Config,
     db: Db,
+    /** Providers of the plugins the owner has added. */
+    private readonly fromPlugins: () => Providers[],
   ) {
-    this.google = new GoogleAuth(db, () => this.googleClient());
     this.localCalendar = new LocalCalendar(db);
     if (config.fakeGoogle) {
       this.fakeMail = new FakeMail();
@@ -32,37 +29,27 @@ export class Integrations {
     }
   }
 
-  private googleConnected(): boolean {
-    return this.googleEnabled() && this.google.connected();
+  private first<T>(pick: (p: Providers) => T | undefined): T | undefined {
+    for (const p of this.fromPlugins()) {
+      const hit = pick(p);
+      if (hit) return hit;
+    }
+    return undefined;
   }
 
   calendar(): CalendarProvider {
-    if (!this.config.fakeGoogle && this.googleConnected()) return new GoogleCalendar(this.google);
-    return this.localCalendar;
+    return this.first((p) => p.calendar?.()) ?? this.localCalendar;
   }
 
   mail(): MailProvider | undefined {
-    if (this.fakeMail) return this.fakeMail;
-    if (this.googleConnected()) return new GoogleMail(this.google);
-    return undefined;
+    return this.fakeMail ?? this.first((p) => p.mail?.());
   }
 
   drive(): DriveProvider | undefined {
-    if (this.fakeDrive) return this.fakeDrive;
-    if (this.googleConnected()) return new GoogleDrive(this.google);
-    return undefined;
+    return this.fakeDrive ?? this.first((p) => p.drive?.());
   }
 
-  status(): { calendar: string; mail: string | null; google: { installed: boolean; configured: boolean; connected: boolean; email?: string } } {
-    return {
-      calendar: this.calendar().name,
-      mail: this.mail()?.name ?? null,
-      google: {
-        installed: this.googleEnabled(),
-        configured: Boolean(this.google.client()),
-        connected: this.googleConnected(),
-        email: this.google.tokens()?.email,
-      },
-    };
+  status(): { calendar: string; mail: string | null; drive: boolean } {
+    return { calendar: this.calendar().name, mail: this.mail()?.name ?? null, drive: Boolean(this.drive()) };
   }
 }

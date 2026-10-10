@@ -132,7 +132,6 @@ export const feishuPlugin: PluginDef = {
     { key: "encrypt_key", label: "Encrypt key", type: "secret", help: "Optional, but recommended: events are encrypted and signed." },
   ],
   create(ctx) {
-    const { app } = ctx;
     const cfg = () => ctx.config<FsConfig>();
     let client: FeishuApi | undefined;
     let clientKey = "";
@@ -158,7 +157,7 @@ export const feishuPlugin: PluginDef = {
         },
       };
     };
-    const bridge = new ChatBridge(app, "feishu", transport);
+    const bridge = new ChatBridge(ctx, transport);
     let bot: { app_name: string } | undefined;
     let lastError = "";
     let lastEventAt = 0;
@@ -208,7 +207,7 @@ export const feishuPlugin: PluginDef = {
       },
       async status(req?: RequestInfo): Promise<PluginStatus> {
         const c = cfg();
-        const url = `${app.config.publicUrl ?? req?.origin ?? ""}${EVENTS}`;
+        const url = `${ctx.host.publicUrl(req)}${EVENTS}`;
         const details = [
           { label: "Event URL", value: url },
           { label: "Events", value: "im.message.receive_v1, card.action.trigger" },
@@ -235,7 +234,7 @@ export const feishuPlugin: PluginDef = {
       // Feishu posts events here; each request is checked against the app's token (and signature when encrypted).
       publicRoutes(routes) {
         routes.post(EVENTS, async (c) => {
-          if (!app.plugins.installed("feishu")) return c.json({ error: "Not enabled" }, 404);
+          if (!ctx.enabled()) return c.json({ error: "Not enabled" }, 404);
           const conf = cfg();
           const raw = await c.req.text();
           let body = JSON.parse(raw || "{}") as FsEvent & { encrypt?: string };

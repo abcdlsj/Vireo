@@ -1,8 +1,10 @@
 import type { Hono } from "hono";
 import type { AgentDef } from "../agents.js";
-import type { App } from "../app.js";
+import type { Actions } from "../actions.js";
+import type { CalendarProvider, DriveProvider, MailProvider } from "../integrations/types.js";
 import type { Notification } from "../push.js";
 import type { SearchResult } from "../tools/research.js";
+import type { ThreadStore } from "../threads.js";
 import type { ToolDef } from "../tools/types.js";
 
 /**
@@ -59,8 +61,37 @@ export interface RequestInfo {
   appOrigin?: string;
 }
 
+/** Plugin-private state that survives restarts; keys never collide with other plugins. */
+export interface PluginState {
+  get<T>(key: string): T | undefined;
+  set(key: string, value: unknown): void;
+  delete(key: string): void;
+}
+
+/**
+ * What Vireo offers a plugin. Plugins get this narrow surface, not Vireo's
+ * internals, so they stay replaceable and can later ship on their own.
+ */
+export interface PluginHost {
+  /** Where browsers reach this node, for OAuth redirect URIs and webhooks. */
+  publicUrl(req?: RequestInfo): string;
+  /** This node's HTTP server on the loopback interface (e.g. for `tailscale serve`). */
+  localUrl(): string;
+  /** A plugin made this node reachable at a direct address (Tailscale), or no longer is. */
+  setDirectUrl(url: string | undefined): void;
+  /** Demo mode: in-memory calendar, mailbox and Drive instead of real accounts. */
+  demo: boolean;
+  threads: Pick<ThreadStore, "get" | "list" | "create">;
+  /** Posts a message in a thread as the owner and gets Vireo working on it. */
+  send(threadId: string, text: string): void;
+  actions: Pick<Actions, "get" | "pending" | "confirm" | "cancel">;
+  /** Called with what Vireo said whenever a run in any thread ends. */
+  onRunFinished(fn: (threadId: string, text: string) => void): () => void;
+  /** Scrubs every known secret from text leaving the node. */
+  redact(text: string): string;
+}
+
 export interface PluginContext {
-  app: App;
   id: string;
   /** Private directory under the data directory. */
   dir: string;
@@ -68,8 +99,19 @@ export interface PluginContext {
   config<T = Record<string, unknown>>(): T;
   /** Persists settings the plugin manages itself (e.g. migrated values). */
   setConfig(patch: Record<string, unknown>): void;
+  /** Whether the owner has the plugin added right now. */
+  enabled(): boolean;
   /** Tells Vireo the plugin's tools or agents changed (e.g. after connecting). */
   changed(): void;
+  state: PluginState;
+  host: PluginHost;
+}
+
+/** Accounts a plugin connects, used by the built-in calendar and email tools. */
+export interface Providers {
+  calendar?(): CalendarProvider | undefined;
+  mail?(): MailProvider | undefined;
+  drive?(): DriveProvider | undefined;
 }
 
 export interface PluginRuntime {
@@ -94,6 +136,8 @@ export interface PluginRuntime {
   notify?(n: Notification): void;
   /** Replaces the built-in web search; undefined means "not configured, use the built-in one". */
   search?(query: string, max: number): Promise<SearchResult[] | undefined>;
+  /** Calendar, mail and Drive backed by the plugin's account. */
+  providers?: Providers;
   /** Reads pages the built-in reader cannot (or every page, with always). */
   reader?(): { always: boolean; read(url: string): Promise<{ title: string; text: string; url: string }> } | undefined;
 }

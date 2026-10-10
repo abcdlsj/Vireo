@@ -1,8 +1,10 @@
-import type { Db } from "../../db.js";
 import { now } from "../../util.js";
+import type { PluginState } from "../types.js";
 import type {
   CalendarEvent,
   CalendarProvider,
+  DriveFile,
+  DriveProvider,
   Email,
   EmailSummary,
   MailProvider,
@@ -42,7 +44,7 @@ interface GoogleTokens {
 
 export class GoogleAuth {
   constructor(
-    private readonly db: Db,
+    private readonly state: PluginState,
     /** The OAuth client from the Google plugin's settings. */
     private readonly stored: () => GoogleClient | undefined,
   ) {}
@@ -61,7 +63,7 @@ export class GoogleAuth {
   }
 
   tokens(): GoogleTokens | undefined {
-    return this.db.getKv<GoogleTokens>("google.tokens");
+    return this.state.get<GoogleTokens>("tokens");
   }
 
   connected(): boolean {
@@ -69,7 +71,7 @@ export class GoogleAuth {
   }
 
   disconnect(): void {
-    this.db.deleteKv("google.tokens");
+    this.state.delete("tokens");
   }
 
   authUrl(redirectUri: string, state: string): string {
@@ -111,7 +113,7 @@ export class GoogleAuth {
         // email is informational only
       }
     }
-    this.db.setKv("google.tokens", {
+    this.state.set("tokens", {
       access_token: body.access_token,
       refresh_token: body.refresh_token,
       expires_at: now() + body.expires_in * 1000,
@@ -138,7 +140,7 @@ export class GoogleAuth {
     });
     if (!res.ok) throw new Error(`Google token refresh failed: ${res.status}`);
     const body = (await res.json()) as { access_token: string; expires_in: number };
-    this.db.setKv("google.tokens", { ...tokens, access_token: body.access_token, expires_at: now() + body.expires_in * 1000 });
+    this.state.set("tokens", { ...tokens, access_token: body.access_token, expires_at: now() + body.expires_in * 1000 });
     return body.access_token;
   }
 
@@ -363,26 +365,12 @@ export class GoogleMail implements MailProvider {
 
 const DRIVE = "https://www.googleapis.com/drive/v3/files";
 
-export interface DriveFile {
-  id: string;
-  name: string;
-  mimeType: string;
-  modifiedTime?: string;
-  webViewLink?: string;
-  owners?: { emailAddress?: string; displayName?: string }[];
-}
-
 /** Export formats for Google's own document types. */
 const EXPORT: Record<string, string> = {
   "application/vnd.google-apps.document": "text/plain",
   "application/vnd.google-apps.spreadsheet": "text/csv",
   "application/vnd.google-apps.presentation": "text/plain",
 };
-
-export interface DriveProvider {
-  search(query: string, max: number): Promise<DriveFile[]>;
-  read(id: string): Promise<{ file: DriveFile; text: string }>;
-}
 
 export class GoogleDrive implements DriveProvider {
   constructor(private readonly auth: GoogleAuth) {}
@@ -411,42 +399,5 @@ export class GoogleDrive implements DriveProvider {
     const res = await fetch(url, { headers: { authorization: `Bearer ${await this.auth.accessToken()}` } });
     if (!res.ok) throw new Error(`Google Drive ${res.status}: ${(await res.text()).slice(0, 300)}`);
     return { file, text: (await res.text()).slice(0, 40_000) };
-  }
-}
-
-/** In-memory Drive for tests and demos (VIREO_FAKE_GOOGLE=1). */
-export class FakeDrive implements DriveProvider {
-  readonly files: (DriveFile & { text: string })[] = [
-    {
-      id: "doc_trip",
-      name: "Lisbon trip plan",
-      mimeType: "application/vnd.google-apps.document",
-      modifiedTime: "2026-09-30T10:00:00Z",
-      webViewLink: "https://docs.google.com/document/d/doc_trip",
-      text: "Lisbon, 12–16 November. Hotel: Casa do Rio, confirmation LX-4821. Dinner booked at Taberna on the 13th.",
-    },
-    {
-      id: "sheet_budget",
-      name: "2026 budget",
-      mimeType: "application/vnd.google-apps.spreadsheet",
-      modifiedTime: "2026-09-12T08:00:00Z",
-      webViewLink: "https://docs.google.com/spreadsheets/d/sheet_budget",
-      text: "Category,Amount\nTravel,2400\nBooks,300",
-    },
-  ];
-
-  async search(query: string, max: number): Promise<DriveFile[]> {
-    const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
-    return this.files
-      .filter((f) => terms.some((t) => `${f.name} ${f.text}`.toLowerCase().includes(t)))
-      .slice(0, max)
-      .map(({ text: _text, ...rest }) => rest);
-  }
-
-  async read(id: string): Promise<{ file: DriveFile; text: string }> {
-    const f = this.files.find((x) => x.id === id);
-    if (!f) throw new Error(`No Drive file ${id}`);
-    const { text, ...file } = f;
-    return { file, text };
   }
 }

@@ -49,7 +49,6 @@ export const telegramPlugin: PluginDef = {
     { key: "api_url", label: "Bot API server", type: "text", placeholder: "https://api.telegram.org", help: "Only for a self-hosted Bot API server." },
   ],
   create(ctx) {
-    const { app } = ctx;
     const cfg = () => ctx.config<TgConfig>();
     const api = () => {
       const c = cfg();
@@ -71,7 +70,7 @@ export const telegramPlugin: PluginDef = {
         },
       };
     };
-    const bridge = new ChatBridge(app, "telegram", transport);
+    const bridge = new ChatBridge(ctx, transport);
 
     let abort: AbortController | undefined;
     let loop: Promise<void> | undefined;
@@ -96,7 +95,7 @@ export const telegramPlugin: PluginDef = {
     }
 
     async function poll(a: TelegramApi, signal: AbortSignal): Promise<void> {
-      let offset = app.db.getKv<number>("telegram.offset") ?? 0;
+      let offset = ctx.state.get<number>("offset") ?? 0;
       let backoff = 1000;
       while (!signal.aborted) {
         try {
@@ -105,7 +104,7 @@ export const telegramPlugin: PluginDef = {
           backoff = 1000;
           for (const u of updates) {
             offset = u.update_id + 1;
-            app.db.setKv("telegram.offset", offset);
+            ctx.state.set("offset", offset);
             await handle(a, u).catch((err) => console.warn(`[telegram] ${errorMessage(err)}`));
           }
         } catch (err) {

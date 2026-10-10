@@ -137,7 +137,7 @@ export interface OwnerSettings {
 export interface Me {
   settings: OwnerSettings;
   models: ModelStatus;
-  integrations: { calendar: string; mail: string | null; google: { installed: boolean; configured: boolean; connected: boolean; email?: string } };
+  integrations: { calendar: string; mail: string | null; drive: boolean };
   push: { publicKey: string; subscriptions: number };
   /** Every community plugin and whether Vireo can use it now. */
   capabilities: Capability[];

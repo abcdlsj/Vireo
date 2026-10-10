@@ -6,7 +6,6 @@ import { join } from "node:path";
 import { Type } from "typebox";
 import type { AgentDef } from "../../agents.js";
 import { defineTool } from "../../tools/types.js";
-import { pairingInstructions } from "../../pairing.js";
 import { truncate } from "../../util.js";
 import type { PluginDef, PluginStatus } from "../types.js";
 import { TailscaleApi, type ApiDevice } from "./api.js";
@@ -136,7 +135,7 @@ export const tailscalePlugin: PluginDef = {
     // Serving this host on the tailnet: wait for the node to be signed in,
     // then `tailscale serve` the API. The log carries each link the owner
     // needs (sign in, allow HTTPS, pair), so a fresh VPS needs no UI at all.
-    let served: { url?: string; enableUrl?: string; error?: string; ownsPublicUrl?: boolean } = {};
+    let served: { url?: string; enableUrl?: string; error?: string } = {};
     let syncing = false;
     let announced = "";
     let watch: NodeJS.Timeout | undefined;
@@ -158,18 +157,15 @@ export const tailscalePlugin: PluginDef = {
         const name = st.Self?.DNSName?.replace(/\.$/, "");
         if (!name || daemon.serveWaiting) return;
         const url = `https://${name}`;
-        const r = await daemon.serve(`http://127.0.0.1:${ctx.app.config.port}`);
+        const r = await daemon.serve(ctx.host.localUrl());
         if ("enableUrl" in r) {
           served = { enableUrl: r.enableUrl };
           announce(r.enableUrl, `  [tailscale] Allow HTTPS on your tailnet so this host can be reached at ${url}: ${r.enableUrl}`);
           return;
         }
-        const config = ctx.app.config;
-        served = { url, ownsPublicUrl: !config.publicUrl || config.publicUrl === url };
-        if (served.ownsPublicUrl) config.publicUrl = url;
-        const lines = [`  [tailscale] This host is on your tailnet at ${url}`];
-        if (ctx.app.auth.sessions().length === 0) lines.push(...pairingInstructions(config, ctx.app.pairing.create().code));
-        announce(url, lines.join("\n"));
+        served = { url };
+        ctx.host.setDirectUrl(url);
+        announce(url, `  [tailscale] This node is on your tailnet at ${url}`);
       } catch (err) {
         served = { error: (err as Error).message };
       } finally {
@@ -187,7 +183,7 @@ export const tailscalePlugin: PluginDef = {
     const stopServing = () => {
       clearInterval(watch);
       watch = undefined;
-      if (served.ownsPublicUrl && ctx.app.config.publicUrl === served.url) ctx.app.config.publicUrl = undefined;
+      if (served.url) ctx.host.setDirectUrl(undefined);
       served = {};
     };
 

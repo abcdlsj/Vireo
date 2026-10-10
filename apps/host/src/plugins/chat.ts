@@ -1,4 +1,4 @@
-import type { App } from "../app.js";
+import type { PluginContext } from "./types.js";
 import type { Notification } from "../push.js";
 import { OVERVIEW_ID } from "../threads.js";
 import { errorMessage, truncate } from "../util.js";
@@ -73,19 +73,18 @@ export class ChatBridge {
   private unsubscribe?: () => void;
 
   constructor(
-    private readonly app: App,
-    private readonly key: string,
+    private readonly ctx: PluginContext,
     private readonly transport: () => Transport | undefined,
   ) {}
 
   private state(): State {
-    const s = this.app.db.getKv<State>(`chat.${this.key}`);
+    const s = this.ctx.state.get<State>("chat");
     return { chats: s?.chats ?? [], link: s?.link, sent: s?.sent ?? [], watching: s?.watching ?? {} };
   }
 
   private save(s: State): void {
     s.sent = s.sent.slice(-500);
-    this.app.db.setKv(`chat.${this.key}`, s);
+    this.ctx.state.set("chat", s);
   }
 
   chats(): Linked[] {
@@ -108,9 +107,7 @@ export class ChatBridge {
 
   start(): void {
     this.unsubscribe?.();
-    this.unsubscribe = this.app.bus.subscribe((e) => {
-      if (e.type === "run.finished") void this.afterRun(e.threadId, e.text);
-    });
+    this.unsubscribe = this.ctx.host.onRunFinished((threadId, text) => void this.afterRun(threadId, text));
   }
 
   stop(): void {
@@ -150,7 +147,7 @@ export class ChatBridge {
         await this.reply(m.chatId, "Now in Overview.");
         return true;
       case "/new": {
-        const t = this.app.threads.create({ origin: { kind: "chat", via: this.key } });
+        const t = this.ctx.host.threads.create({ origin: { kind: "chat", via: this.ctx.id } });
         this.setThread(m.chatId, t.id);
         if (arg) this.post(m.chatId, t.id, arg);
         else await this.reply(m.chatId, "New thread. What's it about?");
@@ -174,7 +171,7 @@ export class ChatBridge {
       case "/confirm":
       case "/cancel": {
         const thread = this.threadFor(m);
-        const action = this.app.actions.pending().filter((a) => a.threadId === thread).at(-1);
+        const action = this.ctx.host.actions.pending().filter((a) => a.threadId === thread).at(-1);
         if (!action) await this.reply(m.chatId, "Nothing is waiting for confirmation in this thread.");
         else await this.decide(m.chatId, action.id, cmd!.toLowerCase() === "/confirm");
         return true;
@@ -196,7 +193,7 @@ export class ChatBridge {
   }
 
   private async decide(chatId: string, actionId: string, confirm: boolean): Promise<string> {
-    const before = this.app.actions.get(actionId);
+    const before = this.ctx.host.actions.get(actionId);
     if (!before) return "That confirmation no longer exists.";
     if (before.status !== "pending") {
       const note = `Already ${before.status}: ${before.summary}`;
@@ -204,24 +201,24 @@ export class ChatBridge {
       return note;
     }
     this.watch(before.threadId, chatId);
-    const after = confirm ? await this.app.actions.confirm(actionId) : this.app.actions.cancel(actionId);
+    const after = confirm ? await this.ctx.host.actions.confirm(actionId) : this.ctx.host.actions.cancel(actionId);
     const note = `${confirm ? (after.status === "failed" ? "Failed" : "Confirmed") : "Cancelled"}: ${after.summary}`;
     await this.reply(chatId, note, before.threadId);
     return note;
   }
 
   private openThreads() {
-    return this.app.threads.list().filter((t) => t.state === "active" && t.id !== OVERVIEW_ID && !t.temporary).slice(0, 20);
+    return this.ctx.host.threads.list().filter((t) => t.state === "active" && t.id !== OVERVIEW_ID && !t.temporary).slice(0, 20);
   }
 
   private threadFor(m: Incoming): string {
     const s = this.state();
     if (m.replyTo) {
       const hit = s.sent.find(([id]) => id === m.replyTo);
-      if (hit && this.app.threads.get(hit[1])) return hit[1];
+      if (hit && this.ctx.host.threads.get(hit[1])) return hit[1];
     }
     const cur = s.chats.find((c) => c.chatId === m.chatId)?.thread ?? OVERVIEW_ID;
-    return this.app.threads.get(cur) ? cur : OVERVIEW_ID;
+    return this.ctx.host.threads.get(cur) ? cur : OVERVIEW_ID;
   }
 
   private setThread(chatId: string, thread: string): void {
@@ -239,14 +236,14 @@ export class ChatBridge {
 
   private post(chatId: string, threadId: string, text: string): void {
     this.watch(threadId, chatId);
-    this.app.runner.send(threadId, text);
+    this.ctx.host.send(threadId, text);
   }
 
   /** Sends a run's answer to the chat that asked, unless it is waiting on a confirmation (that card comes separately). */
   private async afterRun(threadId: string, text: string): Promise<void> {
     const chatId = this.state().watching[threadId];
     if (!chatId || !text.trim()) return;
-    const title = threadId === OVERVIEW_ID ? "" : this.app.threads.get(threadId)?.title;
+    const title = threadId === OVERVIEW_ID ? "" : this.ctx.host.threads.get(threadId)?.title;
     await this.reply(chatId, title ? `${text}\n\n— ${title}` : text, threadId);
   }
 
@@ -280,7 +277,7 @@ export class ChatBridge {
   private async sendTracked(chatId: string, msg: OutMessage, threadId?: string): Promise<void> {
     const t = this.transport();
     if (!t) return;
-    const clean = this.app.vault.redact(msg.text);
+    const clean = this.ctx.host.redact(msg.text);
     const parts = split(clean, t.maxLength);
     for (const [i, part] of parts.entries()) {
       try {
@@ -291,7 +288,7 @@ export class ChatBridge {
           this.save(s);
         }
       } catch (err) {
-        console.warn(`[${this.key}] send failed: ${errorMessage(err)}`);
+        console.warn(`[${this.ctx.id}] send failed: ${errorMessage(err)}`);
         return;
       }
     }

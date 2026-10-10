@@ -2,7 +2,7 @@ import { Type } from "typebox";
 import { defineTool, type ToolContext } from "../../tools/types.js";
 import { newId, truncate } from "../../util.js";
 import type { PluginDef, PluginStatus, RequestInfo } from "../types.js";
-import { DRIVE_SCOPE } from "./api.js";
+import { DRIVE_SCOPE, GoogleAuth, GoogleCalendar, GoogleDrive, GoogleMail } from "./api.js";
 
 /**
  * Google Calendar, Gmail and Drive. Calendar and email tools are built in and
@@ -61,51 +61,50 @@ export const googlePlugin: PluginDef = {
     { key: "client_secret", label: "Client secret", type: "secret" },
   ],
   create(ctx) {
-    const { app } = ctx;
-    const auth = () => app.integrations.google;
-    const redirectUri = (req: RequestInfo) => `${app.config.publicUrl ?? req.origin}${CALLBACK}`;
-
-    // Settings saved before plugins existed move into the plugin once.
-    const legacy = app.db.getKv<{ clientId: string; clientSecret: string }>("google.client");
-    const plugins = app.db.getKv<Record<string, unknown>>("plugins") ?? {};
-    if (!plugins.google && (legacy || app.db.getKv("google.tokens"))) {
-      app.db.setKv("plugins", { ...plugins, google: { enabled: true, config: {} } });
-      if (legacy) ctx.setConfig({ client_id: legacy.clientId, client_secret: legacy.clientSecret });
-    }
-    if (legacy) app.db.deleteKv("google.client");
-    app.integrations.googleEnabled = () => app.plugins.installed("google");
-    app.integrations.googleClient = () => {
+    const { host } = ctx;
+    const auth = new GoogleAuth(ctx.state, () => {
       const c = ctx.config<GoogleConfig>();
       return c.client_id && c.client_secret ? { clientId: c.client_id, clientSecret: c.client_secret } : undefined;
-    };
+    });
+    const redirectUri = (req?: RequestInfo) => `${host.publicUrl(req)}${CALLBACK}`;
+    const live = () => !host.demo && auth.connected();
 
     return {
       tools: driveTools,
+      providers: {
+        calendar: () => (live() ? new GoogleCalendar(auth) : undefined),
+        mail: () => (live() ? new GoogleMail(auth) : undefined),
+        drive: () => (live() ? new GoogleDrive(auth) : undefined),
+      },
       grants: { general: ["drive_search", "drive_read"], research: ["drive_search", "drive_read"], email: ["drive_search", "drive_read"] },
 
       async status(req): Promise<PluginStatus> {
         const details = req ? [{ label: "Redirect URI", value: redirectUri(req) }] : [];
-        if (app.config.fakeGoogle) return { state: "ready", message: "Demo mode: in-memory calendar, mailbox and Drive." };
-        if (!auth().client()) {
+        if (host.demo) return { state: "ready", message: "Demo mode: in-memory calendar, mailbox and Drive." };
+        if (!auth.client()) {
           return {
             state: "setup",
             message: "Create an OAuth client (type “Web application”) in Google Cloud Console, enable the Calendar, Gmail and Drive APIs, add the redirect URI below, then save the client ID and secret.",
             details,
           };
         }
-        if (!auth().connected()) return { state: "login", message: "Connect your Google account.", details };
-        const t = auth().tokens();
-        const drive = auth().granted(DRIVE_SCOPE);
+        if (!auth.connected()) return { state: "login", message: "Connect your Google account.", details };
+        const t = auth.tokens();
+        const drive = auth.granted(DRIVE_SCOPE);
         return {
           state: "ready",
           message: drive ? `Connected${t?.email ? ` as ${t.email}` : ""}.` : `Connected${t?.email ? ` as ${t.email}` : ""}. Reconnect to allow Drive.`,
-          details: [{ label: "Calendar", value: app.integrations.calendar().name }, { label: "Email", value: app.integrations.mail()?.name ?? "–" }, { label: "Drive", value: drive ? "Google Drive (read only)" : "not allowed yet" }],
+          details: [
+            { label: "Calendar", value: "Google Calendar" },
+            { label: "Email", value: "Gmail" },
+            { label: "Drive", value: drive ? "Google Drive (read only)" : "not allowed yet" },
+          ],
         };
       },
 
       actions() {
-        if (app.config.fakeGoogle || !auth().client()) return [];
-        return auth().connected()
+        if (host.demo || !auth.client()) return [];
+        return auth.connected()
           ? [
               { id: "connect", label: "Reconnect" },
               { id: "disconnect", label: "Disconnect" },
@@ -115,14 +114,14 @@ export const googlePlugin: PluginDef = {
 
       async runAction(id, req) {
         if (id === "disconnect") {
-          auth().disconnect();
+          auth.disconnect();
           return { message: "Disconnected." };
         }
         if (id === "connect") {
           const state = newId("g");
           const uri = redirectUri(req);
-          app.db.setKv("google.pending", { state, redirectUri: uri, returnTo: req.appOrigin ?? "" });
-          return { redirect: auth().authUrl(uri, state) };
+          ctx.state.set("pending", { state, redirectUri: uri, returnTo: req.appOrigin ?? "" });
+          return { redirect: auth.authUrl(uri, state) };
         }
         throw new Error(`Unknown action: ${id}`);
       },
@@ -131,20 +130,20 @@ export const googlePlugin: PluginDef = {
       publicRoutes(api) {
         api.get(CALLBACK, async (c) => {
           const state = c.req.query("state");
-          const expected = app.db.getKv<{ state: string; redirectUri: string; returnTo?: string }>("google.pending");
+          const expected = ctx.state.get<{ state: string; redirectUri: string; returnTo?: string }>("pending");
           if (!state || !expected || expected.state !== state) return c.text("Invalid or expired sign-in request.", 400);
-          app.db.deleteKv("google.pending");
+          ctx.state.delete("pending");
           const error = c.req.query("error");
           // Back to the Vireo app that started the sign-in.
           const back = `${expected.returnTo ?? ""}/#settings/plugins`;
           if (error) return c.redirect(`${back}?google=${encodeURIComponent(error)}`);
-          await auth().exchange(c.req.query("code") ?? "", expected.redirectUri);
+          await auth.exchange(c.req.query("code") ?? "", expected.redirectUri);
           return c.redirect(`${back}?google=connected`);
         });
       },
 
       secrets() {
-        const t = auth().tokens();
+        const t = auth.tokens();
         return [ctx.config<GoogleConfig>().client_secret, t?.access_token ?? "", t?.refresh_token ?? ""];
       },
     };

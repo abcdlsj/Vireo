@@ -64,3 +64,17 @@ export interface MailProvider {
   send(mail: OutgoingEmail): Promise<{ id: string }>;
   ownerAddress(): Promise<string | undefined>;
 }
+
+export interface DriveFile {
+  id: string;
+  name: string;
+  mimeType: string;
+  modifiedTime?: string;
+  webViewLink?: string;
+  owners?: { emailAddress?: string; displayName?: string }[];
+}
+
+export interface DriveProvider {
+  search(query: string, max: number): Promise<DriveFile[]>;
+  read(id: string): Promise<{ file: DriveFile; text: string }>;
+}

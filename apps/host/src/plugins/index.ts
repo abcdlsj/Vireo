@@ -13,7 +13,7 @@ import { mcpPlugin } from "./mcp/index.js";
 import { searchPlugin } from "./search/index.js";
 import { tailscalePlugin } from "./tailscale/index.js";
 import { telegramPlugin } from "./telegram/index.js";
-import type { ActionResult, PluginDef, PluginRuntime, PluginStatus, RequestInfo } from "./types.js";
+import type { ActionResult, PluginDef, PluginHost, PluginRuntime, PluginState, PluginStatus, Providers, RequestInfo } from "./types.js";
 
 export * from "./types.js";
 
@@ -77,20 +77,48 @@ export class Plugins {
   private again: Promise<void> | undefined;
 
   constructor(private readonly app: App) {
+    const host: PluginHost = {
+      publicUrl: (req) => app.address.publicUrl(req),
+      localUrl: () => app.address.localUrl(),
+      setDirectUrl: (url) => {
+        app.address.directUrl = url;
+      },
+      demo: app.config.fakeGoogle,
+      threads: app.threads,
+      send: (threadId, text) => void app.runner.send(threadId, text),
+      // Actions are wired after plugins; read them when a plugin uses them.
+      get actions() {
+        return app.actions;
+      },
+      onRunFinished: (fn) => app.bus.subscribe((e) => e.type === "run.finished" && fn(e.threadId, e.text)),
+      redact: (text) => app.vault.redact(text),
+    };
     for (const def of CATALOG) {
       const dir = join(app.config.dataDir, "plugins", def.id);
       this.runtimes.set(
         def.id,
         def.create({
-          app,
           id: def.id,
           dir,
           config: <T>() => this.config(def.id) as T,
           setConfig: (patch) => this.write(def.id, patch),
+          enabled: () => this.installed(def.id),
           changed: () => this.changed(),
+          state: this.stateOf(def.id),
+          host,
         }),
       );
     }
+  }
+
+  /** Each plugin's private state lives under its own key prefix. */
+  private stateOf(id: string): PluginState {
+    const key = (k: string) => `plugin.${id}.${k}`;
+    return {
+      get: <T>(k: string) => this.app.db.getKv<T>(key(k)),
+      set: (k, v) => this.app.db.setKv(key(k), v),
+      delete: (k) => this.app.db.deleteKv(key(k)),
+    };
   }
 
   private all(): Record<string, Stored> {
@@ -399,6 +427,11 @@ export class Plugins {
 
   secrets(): string[] {
     return CATALOG.flatMap((d) => this.runtime(d.id)?.secrets?.() ?? []).filter((s) => s.length >= 4);
+  }
+
+  /** Calendar, mail and Drive providers of added plugins. */
+  providers(): Providers[] {
+    return CATALOG.map((d) => this.runtime(d.id)?.providers).filter((p): p is Providers => Boolean(p));
   }
 
   /** Results from an installed search plugin, or undefined to use the built-in search. */

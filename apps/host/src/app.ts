@@ -1,6 +1,7 @@
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { Actions } from "./actions.js";
+import { Address } from "./address.js";
 import { RunAftercare } from "./aftercare.js";
 import { Audit } from "./audit.js";
 import { Auth } from "./auth.js";
@@ -33,6 +34,7 @@ export interface App {
   config: Config;
   db: Db;
   bus: Bus;
+  address: Address;
   settings: Settings;
   auth: Auth;
   pairing: Pairing;
@@ -62,13 +64,13 @@ export interface App {
 export function createApp(config: Config): App {
   mkdirSync(join(config.dataDir, "files"), { recursive: true });
   const db = Db.open(config.dataDir);
-  const app = { config, db, bus: new Bus() } as App;
+  const app = { config, db, bus: new Bus(), address: new Address(config) } as App;
   app.settings = new Settings(db);
   app.auth = new Auth(db, config);
   app.pairing = new Pairing(db);
   app.threads = new ThreadStore(db, app.bus);
   app.memory = new MemoryStore(db, app.bus);
-  app.integrations = new Integrations(config, db);
+  app.integrations = new Integrations(config, db, () => app.plugins.providers());
   app.vault = new Vault(db, config.dataDir);
   app.models = new ModelService(config, db, app.vault);
   app.pricing = new Pricing(config);
