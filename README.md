@@ -18,7 +18,7 @@ Everyone signs in to the same app with GitHub and runs their own node. Each acco
 
 ## Quick start: your own node
 
-1. Open the Vireo app and sign in with GitHub.
+1. Open the Vireo app at https://askvireo.com and sign in with GitHub.
 2. On the machine Vireo should run on (Node 22.13 or newer):
    ```bash
    npx vireo-node
@@ -70,7 +70,7 @@ Node (`npx vireo-node` options override these):
 | `VIREO_MODEL` | picked from the endpoint's list | Main model |
 | `VIREO_FAST_MODEL` | a cheaper sibling of the main model | Model for routine work |
 | `VIREO_LLM_API` | `chat` | `chat` (Chat Completions, works everywhere) or `responses` (OpenAI only) |
-| `VIREO_CLOUD_URL` | the official cloud | The Vireo cloud the node links with and connects to |
+| `VIREO_CLOUD_URL` | `https://cloud.askvireo.com` | The Vireo cloud the node links with and connects to |
 | `VIREO_MODE` | `relay` | `relay` (through the cloud) or `tailscale` (over the tailnet), when linking |
 | `VIREO_NAME` | the machine's hostname | Name suggested for the node in the app |
 | `VIREO_PORT` | `8787` | Local port of the node's API |

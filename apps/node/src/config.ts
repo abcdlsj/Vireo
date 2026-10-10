@@ -48,7 +48,7 @@ function bool(v: string | undefined, fallback: boolean): boolean {
 }
 
 /** The cloud a node uses unless told otherwise (VIREO_CLOUD_URL or --cloud). */
-export const DEFAULT_CLOUD = "http://localhost:8700";
+export const DEFAULT_CLOUD = "https://cloud.askvireo.com";
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const dataDir = resolve(env.VIREO_DATA_DIR ?? join(process.cwd(), "data"));
