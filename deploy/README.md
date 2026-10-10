@@ -1,80 +1,77 @@
 # Deploying Vireo
 
-Vireo is two pieces that deploy separately:
+Vireo is three pieces that deploy separately:
 
 | Piece | Code | What it is | Where it runs |
 |---|---|---|---|
-| **host** | `apps/host` | The agent, its data and the HTTP API (`/api/*`). Stateful, needs Chromium for browser actions. | A VPS or a machine of yours, in Docker |
-| **app** | `apps/web` | The UI, a static React PWA. Holds no data or secrets. | Vercel, Cloudflare, or any static host |
+| **cloud** | `apps/cloud` | GitHub sign-in, which nodes belong to whom, short-lived node tokens, and the relay between the app and nodes. Holds no conversations. | One server, in Docker, behind HTTPS |
+| **app** | `apps/web` | The UI, a static React PWA. Holds no data. | Vercel, Cloudflare, or the cloud itself |
+| **node** | `apps/node` | Each person's agent and data. | Each person's own machine: `npx vireo-node` |
 
-The app talks to hosts straight from the browser with a token it gets by pairing, so one app can drive several hosts. Because the app is served over HTTPS, **a host must be reachable over HTTPS** too.
+You deploy the cloud and the app once; everyone who signs in runs their own node.
 
-## 1. The host on a VPS
+## 1. A GitHub OAuth app
 
-On the server (Docker with Compose):
+At [github.com/settings/developers](https://github.com/settings/developers) → **New OAuth App**:
+
+- **Homepage URL:** the app's address, e.g. `https://vireo.example.com`
+- **Authorization callback URL:** `https://<cloud domain>/auth/github/callback`
+
+Keep the client ID and a client secret for the cloud.
+
+## 2. The cloud on a VPS
+
+The cloud must be a long-running process (nodes keep a WebSocket open to it), so it runs on a server, not as serverless functions. On the server (Docker with Compose), with the cloud's domain pointing at it:
 
 ```bash
 git clone https://github.com/abcdlsj/vireo && cd vireo/deploy/vps
-cp .env.example .env              # optional: VIREO_APP_URL, profiles, domain
-cp host.env.example host.env      # model endpoint and key (or set them later in Settings)
-docker compose up -d              # just the host, on :8787
-docker compose logs host          # the pairing code, and a one-click link if VIREO_APP_URL is set
+cp .env.example .env              # VIREO_DOMAIN=cloud.vireo.example.com
+cp cloud.env.example cloud.env    # VIREO_WEB_URL (the app), GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET
+docker compose up -d              # the cloud behind Caddy, with HTTPS for VIREO_DOMAIN
 ```
 
-### The easy way: Tailscale
+Everything the cloud keeps (accounts, nodes, the key that signs node tokens) is in `deploy/vps/data/cloud`; back it up. Losing the signing key means every node must be linked again.
 
-With `VIREO_TAILSCALE=1` (already set in `.env.example`), the host joins your tailnet by itself and serves itself at `https://vireo.<your tailnet>.ts.net`, reachable only from your own devices. Nothing to install on the VPS, no domain, no open port:
+Optional profiles in `COMPOSE_PROFILES`:
 
-1. `docker compose up -d && docker compose logs -f host`
-2. Open the **Sign in** link the log shows and approve the machine in Tailscale.
-3. The first time, the log may show an **Allow HTTPS** link: open it and enable HTTPS for your tailnet (once per tailnet).
-4. The log then shows the host's address and a pairing link. Open it on a phone or laptop that is on your tailnet. With `VIREO_APP_URL` set it opens the app and pairs in one click.
+- `node`: a node of your own on the same server, around the clock. `docker compose logs node` shows its link; settings (model keys) go in `node.env`.
+- `litellm`: a LiteLLM proxy for that node, for providers without an OpenAI-compatible API (`VIREO_LLM_BASE_URL=http://litellm:4000/v1` in `node.env`).
 
-The same switch is in the app under **Settings → Plugins → Tailscale → Reach this host over the tailnet**, along with the address and any link still needed. The plugin keeps its Tailscale state in `data/`, so it signs in only once.
-
-### Other ways
-
-By default (without Tailscale) only the host runs, published on port 8787. Everything else is an opt-in profile in `COMPOSE_PROFILES`:
-
-- `https`: Caddy with automatic HTTPS for `VIREO_DOMAIN` (DNS pointing at the server). Set `VIREO_BIND=127.0.0.1` so only Caddy reaches the host.
-- `app`: the UI on the server too, on `VIREO_APP_PORT` (8780), proxying `/api` to the host.
-- `litellm`: a LiteLLM proxy for providers without an OpenAI-compatible API; point `VIREO_LLM_BASE_URL` at `http://litellm:4000/v1` in `host.env`. It reads `deploy/litellm.config.yaml`.
-
-An app served over HTTPS (Vercel, Cloudflare) can only reach an HTTPS host. Without the `https` profile, put the host behind your own proxy or `tailscale serve --bg 8787`, and set `VIREO_PUBLIC_URL` to that address.
-
-Update with `git pull && docker compose pull && docker compose up -d`. Everything the host keeps is in `deploy/vps/data`; back that up.
-
-- The image is `ghcr.io/abcdlsj/vireo-host`, published by `.github/workflows/images.yml` on every push to `main` (amd64 and arm64). If the package is private, `docker login ghcr.io` on the server first, or set `VIREO_IMAGE` to your own.
-- A new pairing code: `docker compose exec host npm run pair`.
+Images are `ghcr.io/abcdlsj/vireo-cloud` and `ghcr.io/abcdlsj/vireo-node`, published by `.github/workflows/images.yml` on every push to `main` (amd64 and arm64). If the packages are private, `docker login ghcr.io` on the server first. Update with `docker compose pull && docker compose up -d`.
 
 ### Without a registry: `scripts/deploy.sh`
 
-From your own checkout, `scripts/deploy.sh` builds the host locally, syncs it over SSH and restarts it with the same compose file. The server builds nothing; `compose.sync.yaml` runs the synced build on the Playwright image.
+From your own checkout, `scripts/deploy.sh` builds the cloud locally, syncs it over SSH and restarts it with the same compose file; the server builds nothing.
 
 ```bash
-DEPLOY_HOST=my-vps scripts/deploy.sh    # host plus the UI on the server, at http://<ip>:8780 (as before)
-DEPLOY_HOST=my-vps VIREO_APP_URL=https://vireo.vercel.app VIREO_PUBLIC_URL=https://vps.example.com scripts/deploy.sh
-                                        # host only; the UI is elsewhere
-DEPLOY_HOST=my-vps VIREO_DOMAIN=vireo.example.com scripts/deploy.sh
-                                        # host behind Caddy (opt-in)
+DEPLOY_HOST=my-vps VIREO_DOMAIN=cloud.vireo.example.com scripts/deploy.sh
+DEPLOY_HOST=my-vps VIREO_DOMAIN=cloud.vireo.example.com COMPOSE_PROFILES=node scripts/deploy.sh   # with a node
 ```
 
-`data/` and `host.env` on the server are never touched. This mode runs on the plain Playwright image, which has no Tailscale binaries, so use the published image for `VIREO_TAILSCALE`.
+`data/`, `cloud.env` and `node.env` on the server are never touched.
 
-## 2. The app on Vercel or Cloudflare
+## 3. The app on Vercel or Cloudflare
 
-The app is a static build of `apps/web` (`npm run build` there, output `apps/web/dist`). Optional build-time setting:
+The app is a static build of `apps/web` (`npm run build` there, output `apps/web/dist`). Set at build time:
 
-- `VITE_VIREO_HOST=https://vireo.example.com`: offer this host by default, so the app opens on it and only asks for a pairing code.
+- `VITE_VIREO_CLOUD=https://cloud.vireo.example.com`: the cloud the app signs in with.
 
-**Vercel:** import the repository and set **Root Directory** to `apps/web`. `apps/web/vercel.json` sets the install and build commands, the SPA fallback and cache headers. Add `VITE_VIREO_HOST` under Environment Variables if you want it.
+**Vercel:** import the repository and set **Root Directory** to `apps/web`. `apps/web/vercel.json` sets the install and build commands, the SPA fallback and cache headers. Add `VITE_VIREO_CLOUD` under Environment Variables and redeploy.
 
-**Cloudflare Workers:** `cd apps/web && npm run build && npx wrangler deploy` (configured by `wrangler.jsonc`).
+**Cloudflare Workers:** `cd apps/web && VITE_VIREO_CLOUD=... npm run build && npx wrangler deploy` (configured by `wrangler.jsonc`).
 
-**Cloudflare Pages:** root directory `apps/web`, build command `npm run build`, output directory `dist`. `public/_headers` sets the cache headers; the SPA fallback is built in.
+**Cloudflare Pages:** root directory `apps/web`, build command `npm run build`, output directory `dist`, and `VITE_VIREO_CLOUD` as an environment variable.
 
-Then set `VIREO_APP_URL` on the host to the app's address. The host prints a link like `https://vireo.vercel.app/#pair=K7QM2XPA&host=https%3A%2F%2Fvireo.example.com` that pairs in one click.
+Then set `VIREO_WEB_URL` in `cloud.env` to the app's address (and any preview origins in `VIREO_WEB_ORIGINS`), and restart the cloud.
 
-## 3. Everything on one machine
+Without a separate host for the app, the cloud serves it itself: the `cloud` image includes the built app (with `VITE_VIREO_CLOUD` empty) and serves it on its own origin.
 
-From the repository root, `docker compose up -d` builds and runs the host, the app (on :8780) and LiteLLM. Without Docker: `npm install && npm run build && npm start`.
+## 4. Nodes
+
+Each person signs in to the app and runs `npx vireo-node` on their machine (see the README). A node uses the official cloud unless told otherwise: `npx vireo-node --cloud https://cloud.vireo.example.com`, or `VIREO_CLOUD_URL`.
+
+To publish `vireo-node` to npm, add an `NPM_TOKEN` repository secret and push a `v*` tag; `.github/workflows/npm.yml` builds and publishes it.
+
+## Everything on one machine
+
+From the repository root, `docker compose up -d` builds and runs the cloud (serving the app on :8700), a node and LiteLLM. Without Docker: `npm install && npm run build && npm start`.

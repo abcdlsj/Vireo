@@ -1,6 +1,6 @@
-# Only the API is public; the host serves nothing else. SSE (thread updates)
-# needs no buffering, which reverse_proxy already does for text/event-stream.
+# The cloud's API, sign-in and relay. Node sockets (WebSocket) and live
+# updates (SSE) pass through reverse_proxy unbuffered.
 {$VIREO_DOMAIN} {
 	encode zstd gzip
-	reverse_proxy host:8787
+	reverse_proxy cloud:8700
 }

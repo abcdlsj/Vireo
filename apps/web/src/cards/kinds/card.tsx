@@ -7,7 +7,7 @@ import type { Card } from "@vireo/protocol";
 import { field } from "../util";
 import { isHttp } from "../util";
 
-/** Mirrors apps/host/src/cards/blocks.ts. Every field comes from the model, so each is read defensively. */
+/** Mirrors apps/node/src/cards/blocks.ts. Every field comes from the model, so each is read defensively. */
 type Mark = "picked" | "best" | "attention" | "done";
 type Block =
   | { type: "facts"; items?: { value?: string; label?: string; tone?: "good" | "attention" }[] }

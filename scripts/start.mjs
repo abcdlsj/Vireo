@@ -1,12 +1,15 @@
-// `npm start`: the host (agent + API on :8787) and the app (UI on :8780)
-// together, for running Vireo on one machine. On a VPS that only serves as a
-// host, use `npm run host`.
+// `npm start`: a cloud (sign-in, the app, the relay on :8700) and a node
+// together, for running all of Vireo on one machine. Sign-in needs a GitHub
+// OAuth app (GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET) or VIREO_DEV_LOGIN=1 in
+// .env. Open http://localhost:8700, sign in, and approve the node with the
+// link it prints.
 import { spawn } from "node:child_process";
 
 const node = [process.execPath, "--env-file-if-exists=.env", "--disable-warning=ExperimentalWarning"];
+const cloudUrl = process.env.VIREO_CLOUD_URL ?? "http://localhost:8700";
 const children = [
-  spawn(node[0], [...node.slice(1), "apps/host/dist/index.js"], { stdio: "inherit" }),
-  spawn(node[0], [...node.slice(1), "apps/web/serve.mjs"], { stdio: "inherit" }),
+  spawn(node[0], [...node.slice(1), "apps/cloud/dist/index.js"], { stdio: "inherit", env: { VIREO_WEB_DIR: "apps/web/dist", ...process.env } }),
+  spawn(node[0], [...node.slice(1), "apps/node/dist/index.js"], { stdio: "inherit", env: { ...process.env, VIREO_CLOUD_URL: cloudUrl } }),
 ];
 let exiting = false;
 const stop = (code) => {

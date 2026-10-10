@@ -1,46 +1,35 @@
-# Vireo host on a VPS. The UI is normally served elsewhere (Vercel,
-# Cloudflare) and pairs with this host; see deploy/README.md.
+# The Vireo cloud on a VPS: GitHub sign-in, the nodes each account owns, and
+# the relay between the app and nodes. The app itself is served elsewhere
+# (Vercel); see deploy/README.md.
 #
-#   cp .env.example .env            # optional: profiles, domain, port
-#   cp host.env.example host.env    # model endpoint and keys (or set them in Settings)
+#   cp .env.example .env              # VIREO_DOMAIN
+#   cp cloud.env.example cloud.env    # app address, GitHub OAuth app
 #   docker compose up -d
-#   docker compose logs host        # pairing code
 #
-#   host     the headless host (agent + API) on VIREO_PORT (8787); the only
-#            service that runs by default
-#   caddy    optional, profile "https": TLS for VIREO_DOMAIN, proxying to the host
-#   app      optional, profile "app": the UI on this server too, on VIREO_APP_PORT,
-#            proxying /api to the host (for setups without a domain)
+#   cloud    the cloud on 127.0.0.1:8700, behind caddy
+#   caddy    TLS for VIREO_DOMAIN, proxying to the cloud (WebSockets and SSE pass through)
+#   node     optional, profile "node": a node of your own on this server, linked
+#            to your account like any other (docker compose logs node for its code)
 #   litellm  optional, profile "litellm": for providers without an OpenAI-compatible API
-#
-# Profiles come from COMPOSE_PROFILES in .env. An app served over HTTPS can
-# only use HTTPS hosts: use the https profile, your own proxy, or
-# `tailscale serve --bg 8787`.
 services:
-  host:
-    image: ${VIREO_IMAGE:-ghcr.io/abcdlsj/vireo-host:latest}
+  cloud:
+    image: ${VIREO_CLOUD_IMAGE:-ghcr.io/abcdlsj/vireo-cloud:latest}
     init: true
     restart: unless-stopped
-    shm_size: 1gb
     ports:
-      - "${VIREO_BIND:-0.0.0.0}:${VIREO_PORT:-8787}:8787"
+      - "127.0.0.1:8700:8700"
     volumes:
-      # Everything Vireo keeps: database, files, browser profile, keys.
-      - ./data:/data
+      # Accounts, nodes and the key that signs node tokens.
+      - ./data/cloud:/data
     env_file:
-      - path: ./host.env
+      - path: ./cloud.env
         required: false
     environment:
-      VIREO_PORT: "8787"
-      VIREO_DATA_DIR: /data
-      VIREO_PUBLIC_URL: ${VIREO_PUBLIC_URL:-${VIREO_DOMAIN:+https://${VIREO_DOMAIN}}}
-      VIREO_APP_URL: ${VIREO_APP_URL:-}
-      VIREO_TAILSCALE: ${VIREO_TAILSCALE:-}
-      VIREO_NAME: ${VIREO_NAME:-}
-      TZ: ${TZ:-UTC}
+      VIREO_CLOUD_PORT: "8700"
+      VIREO_CLOUD_DATA_DIR: /data
+      VIREO_CLOUD_URL: https://${VIREO_DOMAIN:?Set VIREO_DOMAIN in .env}
 
   caddy:
-    profiles: ["https"]
     image: caddy:2.10-alpine
     restart: unless-stopped
     ports:
@@ -54,19 +43,27 @@ services:
       - caddy-data:/data
       - caddy-config:/config
     depends_on:
-      - host
+      - cloud
 
-  app:
-    profiles: ["app"]
-    image: ${VIREO_WEB_IMAGE:-ghcr.io/abcdlsj/vireo-web:latest}
+  node:
+    profiles: ["node"]
+    image: ${VIREO_NODE_IMAGE:-ghcr.io/abcdlsj/vireo-node:latest}
     init: true
     restart: unless-stopped
-    ports:
-      - "${VIREO_APP_BIND:-0.0.0.0}:${VIREO_APP_PORT:-8780}:8780"
+    shm_size: 1gb
+    volumes:
+      # Everything the node keeps: its link, database, files, browser profile, keys.
+      - ./data/node:/data
+    env_file:
+      - path: ./node.env
+        required: false
     environment:
-      VIREO_HOST_URL: http://host:8787
+      VIREO_DATA_DIR: /data
+      VIREO_CLOUD_URL: http://cloud:8700
+      VIREO_NAME: ${VIREO_NAME:-}
+      TZ: ${TZ:-UTC}
     depends_on:
-      - host
+      - cloud
 
   litellm:
     profiles: ["litellm"]
@@ -76,7 +73,7 @@ services:
     volumes:
       - ../litellm.config.yaml:/app/config.yaml:ro
     env_file:
-      - path: ./host.env
+      - path: ./node.env
         required: false
 
 volumes:

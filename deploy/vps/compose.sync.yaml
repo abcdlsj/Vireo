@@ -1,29 +1,30 @@
 # Used by scripts/deploy.sh, which copies it to the server as
-# compose.override.yaml: run the build synced to ./app on the Playwright image
-# (Node plus a matching Chromium) instead of the published images.
-x-runtime: &runtime
-  image: mcr.microsoft.com/playwright:v1.56.1-noble
-  pull_policy: missing
-
+# compose.override.yaml: run the builds synced to ./app instead of the
+# published images. The node runs on the Playwright image (Node plus a
+# matching Chromium).
 services:
-  host:
-    <<: *runtime
-    working_dir: /app/apps/host
+  cloud:
+    image: node:22-alpine
+    pull_policy: missing
+    working_dir: /app/apps/cloud
+    command: ["node", "--disable-warning=ExperimentalWarning", "dist/index.js"]
+    volumes:
+      - ./app:/app:ro
+    environment:
+      NODE_ENV: production
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8700/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+
+  node:
+    image: mcr.microsoft.com/playwright:v1.56.1-noble
+    pull_policy: missing
+    working_dir: /app/apps/node
     command: ["node", "--disable-warning=ExperimentalWarning", "dist/index.js"]
     volumes:
       - ./app:/app:ro
     environment:
       NODE_ENV: production
       PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
-    healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8787/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
-      interval: 30s
-      timeout: 5s
-      start_period: 20s
-
-  app:
-    <<: *runtime
-    working_dir: /app/apps/web
-    command: ["node", "serve.mjs"]
-    volumes:
-      - ./app:/app:ro

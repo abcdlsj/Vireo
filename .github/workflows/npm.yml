@@ -1,0 +1,31 @@
+name: Publish vireo-node
+
+# Publishes apps/node to npm as `vireo-node` on version tags, so anyone can
+# run a node with `npx vireo-node`. Needs an NPM_TOKEN repository secret
+# (an npm automation token with publish rights to the package).
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          registry-url: https://registry.npmjs.org
+      - run: npm ci
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+      - run: npm run build -w vireo-node
+      - run: npm publish -w vireo-node --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

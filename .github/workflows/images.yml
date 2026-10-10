@@ -1,9 +1,8 @@
 name: Images
 
-# Publishes the host and app images to GHCR on every push to main and on tags:
-#   ghcr.io/abcdlsj/vireo-host   the agent + API, for deploy/vps
-#   ghcr.io/abcdlsj/vireo-web    the UI served by Node (optional; Vercel or
-#                                Cloudflare can serve apps/web instead)
+# Publishes the images to GHCR on every push to main and on tags:
+#   ghcr.io/abcdlsj/vireo-cloud  sign-in, nodes and the relay (serves the app too), for deploy/vps
+#   ghcr.io/abcdlsj/vireo-node   a node, for a server that runs one around the clock
 on:
   push:
     branches: [main]
@@ -19,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        target: [host, web]
+        target: [cloud, node]
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-qemu-action@v3
