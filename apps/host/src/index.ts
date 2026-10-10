@@ -39,7 +39,14 @@ const server = serve({ fetch: http.fetch, port: config.port, hostname: config.ho
   if (app.auth.sessions().length === 0) lines.push("", ...pairingInstructions(config, app.pairing.create().code));
   else lines.push("  Pair another device: npm run pair");
   console.log(lines.join("\n"), "\n");
-  void app.plugins.start();
+  void app.plugins.start().then(async () => {
+    // VIREO_TAILSCALE: a fresh host joins the owner's tailnet and serves itself
+    // there; the log then shows the sign-in link and, once signed in, its address.
+    if (config.tailscale && !app.plugins.installed("tailscale")) {
+      console.log("  Tailscale: adding this host to your tailnet…");
+      await app.plugins.install("tailscale", { serve: true }).catch((err: Error) => console.warn(`  Tailscale: ${err.message}`));
+    }
+  });
   app.runner.resumeInterrupted();
   app.scheduler.start();
 });

@@ -21,7 +21,20 @@ docker compose up -d              # just the host, on :8787
 docker compose logs host          # the pairing code, and a one-click link if VIREO_APP_URL is set
 ```
 
-By default only the host runs, published on port 8787. Everything else is an opt-in profile in `COMPOSE_PROFILES`:
+### The easy way: Tailscale
+
+With `VIREO_TAILSCALE=1` (already set in `.env.example`), the host joins your tailnet by itself and serves itself at `https://vireo.<your tailnet>.ts.net`, reachable only from your own devices. Nothing to install on the VPS, no domain, no open port:
+
+1. `docker compose up -d && docker compose logs -f host`
+2. Open the **Sign in** link the log shows and approve the machine in Tailscale.
+3. The first time, the log may show an **Allow HTTPS** link: open it and enable HTTPS for your tailnet (once per tailnet).
+4. The log then shows the host's address and a pairing link. Open it on a phone or laptop that is on your tailnet. With `VIREO_APP_URL` set it opens the app and pairs in one click.
+
+The same switch is in the app under **Settings → Plugins → Tailscale → Reach this host over the tailnet**, along with the address and any link still needed. The plugin keeps its Tailscale state in `data/`, so it signs in only once.
+
+### Other ways
+
+By default (without Tailscale) only the host runs, published on port 8787. Everything else is an opt-in profile in `COMPOSE_PROFILES`:
 
 - `https`: Caddy with automatic HTTPS for `VIREO_DOMAIN` (DNS pointing at the server). Set `VIREO_BIND=127.0.0.1` so only Caddy reaches the host.
 - `app`: the UI on the server too, on `VIREO_APP_PORT` (8780), proxying `/api` to the host.
@@ -46,7 +59,7 @@ DEPLOY_HOST=my-vps VIREO_DOMAIN=vireo.example.com scripts/deploy.sh
                                         # host behind Caddy (opt-in)
 ```
 
-`data/` and `host.env` on the server are never touched.
+`data/` and `host.env` on the server are never touched. This mode runs on the plain Playwright image, which has no Tailscale binaries, so use the published image for `VIREO_TAILSCALE`.
 
 ## 2. The app on Vercel or Cloudflare
 

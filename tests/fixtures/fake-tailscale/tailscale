@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // A stand-in for the tailscale CLI used by tests: a two-machine tailnet where
 // every machine's ports are served by 127.0.0.1.
+import fs from "node:fs";
 import net from "node:net";
 const args = process.argv.slice(2).filter((a) => !a.startsWith("--socket="));
 const peers = {
@@ -31,6 +32,20 @@ switch (args[0]) {
     sock.on("close", () => process.exit(0));
     break;
   }
+  case "serve":
+    // FAKE_TS_SERVE_GATE: a file that must exist before HTTPS counts as allowed.
+    if (process.env.FAKE_TS_SERVE_GATE && !fs.existsSync(process.env.FAKE_TS_SERVE_GATE)) {
+      console.log("Serve is not enabled on your tailnet.\nTo enable, visit:\n\n         https://login.tailscale.com/f/serve?node=n0\n");
+      const wait = setInterval(() => {
+        if (fs.existsSync(process.env.FAKE_TS_SERVE_GATE)) {
+          clearInterval(wait);
+          process.exit(0);
+        }
+      }, 100);
+      break;
+    }
+    console.log(`Available within your tailnet:\n\nhttps://vireo.tail-test.ts.net/\n|-- proxy ${args.at(-1)}\n\nServe started and running in the background.\nTo disable the proxy, run: tailscale serve --https=443 off`);
+    break;
   default:
     break;
 }

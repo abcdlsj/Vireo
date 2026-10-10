@@ -93,6 +93,7 @@ Only model access needs setting up, either here or in **Settings → Model**, wh
 | `VIREO_DATA_DIR` | `./data` | Database, files, browser profile, keys |
 | `VIREO_PASSWORD` | – | Fixed owner password (skips the setup screen) |
 | `VIREO_PUBLIC_URL` | detected | Public base URL, used for OAuth redirects |
+| `VIREO_TAILSCALE` | – | Join the owner's tailnet on first start and serve the host at `https://<name>.<tailnet>.ts.net` |
 | `VIREO_APP_URL` | – | Where the app is served (e.g. on Vercel); pairing links then open it and pair in one click |
 | `VITE_VIREO_HOST` | – | Build-time, for a static app: a host to offer by default |
 | `VIREO_SEARXNG_URL` | – | Use a SearXNG instance for web search |

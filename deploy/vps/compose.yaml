@@ -35,6 +35,7 @@ services:
       VIREO_DATA_DIR: /data
       VIREO_PUBLIC_URL: ${VIREO_PUBLIC_URL:-${VIREO_DOMAIN:+https://${VIREO_DOMAIN}}}
       VIREO_APP_URL: ${VIREO_APP_URL:-}
+      VIREO_TAILSCALE: ${VIREO_TAILSCALE:-}
       VIREO_NAME: ${VIREO_NAME:-}
       TZ: ${TZ:-UTC}
 

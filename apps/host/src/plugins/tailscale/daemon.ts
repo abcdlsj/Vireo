@@ -53,6 +53,7 @@ export interface TsStatus {
 export class TailscaleDaemon {
   private daemon?: ChildProcess;
   private login?: ChildProcess;
+  private serving?: ChildProcess;
   private lastError = "";
 
   constructor(private readonly opts: () => DaemonOptions) {}
@@ -168,6 +169,48 @@ export class TailscaleDaemon {
     }
   }
 
+  /**
+   * Serves a local HTTP address at https://<this machine>.<tailnet>.ts.net,
+   * reachable only from the tailnet. Works in userspace mode too. When the
+   * tailnet has not allowed HTTPS certificates yet, the CLI prints a link to
+   * allow them and waits; that link comes back and the CLI keeps waiting in
+   * the background, finishing on its own once the owner allows it.
+   */
+  /** A `tailscale serve` is waiting for the owner to allow HTTPS. */
+  get serveWaiting(): boolean {
+    return Boolean(this.serving && this.serving.exitCode === null);
+  }
+
+  serve(target: string): Promise<{ done: true } | { enableUrl: string }> {
+    this.serving?.kill();
+    return new Promise((resolve, reject) => {
+      const child = spawn(this.bin("tailscale"), [...this.cliPrefix(), "serve", "--bg", target], { stdio: ["ignore", "pipe", "pipe"] });
+      this.serving = child;
+      let out = "";
+      const timer = setTimeout(() => reject(new Error(`tailscale serve did not finish: ${out.trim().slice(-300)}`)), 60_000);
+      const seen = (d: Buffer) => {
+        out += d.toString();
+        const url = /https:\/\/login\.tailscale\.com\/\S+/.exec(out)?.[0];
+        if (url) {
+          clearTimeout(timer);
+          resolve({ enableUrl: url });
+        }
+      };
+      child.stdout!.on("data", seen);
+      child.stderr!.on("data", seen);
+      child.on("error", (err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+      child.on("exit", (code) => {
+        clearTimeout(timer);
+        if (this.serving === child) this.serving = undefined;
+        if (code === 0) resolve({ done: true });
+        else reject(new Error(out.trim().split("\n").at(-1) || `tailscale serve exited with ${code}`));
+      });
+    });
+  }
+
   async logout(): Promise<void> {
     await this.cli(["logout"]);
   }
@@ -175,6 +218,8 @@ export class TailscaleDaemon {
   async stop(): Promise<void> {
     this.login?.kill();
     this.login = undefined;
+    this.serving?.kill();
+    this.serving = undefined;
     const d = this.daemon;
     this.daemon = undefined;
     if (d && d.exitCode === null) {

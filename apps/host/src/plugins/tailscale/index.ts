@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { Type } from "typebox";
 import type { AgentDef } from "../../agents.js";
 import { defineTool, untrustedBlock } from "../../tools/types.js";
+import { pairingInstructions } from "../../pairing.js";
 import { truncate } from "../../util.js";
 import type { PluginDef, PluginStatus } from "../types.js";
 import { TailscaleApi, type ApiDevice } from "./api.js";
@@ -27,6 +28,7 @@ interface TsConfig {
   ssh_user: string;
   ssh_key: string;
   bin_dir: string;
+  serve: boolean;
 }
 
 interface Machine {
@@ -95,6 +97,13 @@ export const tailscalePlugin: PluginDef = {
     },
     { key: "auth_key", label: "Auth key", type: "secret", placeholder: "tskey-auth-…", pattern: "tskey-auth-[A-Za-z0-9]+-[A-Za-z0-9]+", help: "Optional. Without one, Vireo shows a sign-in link. Create one under Settings → Keys in the Tailscale admin console." },
     { key: "hostname", label: "Machine name", type: "text", default: "vireo" },
+    {
+      key: "serve",
+      label: "Reach this host over the tailnet",
+      type: "boolean",
+      default: false,
+      help: "Serves Vireo at https://<machine name>.<tailnet>.ts.net, for your devices on the tailnet only. Then pair the app with that address; no domain or open port needed.",
+    },
     { key: "control_url", label: "Control server", type: "text", placeholder: "https://controlplane.tailscale.com", help: "Only for Headscale or another self-hosted control server." },
     { key: "api_key", label: "API access token", type: "secret", placeholder: "tskey-api-…", pattern: "tskey-api-[A-Za-z0-9]+-[A-Za-z0-9]+", help: "Optional. Lets Vireo authorise, remove and tag machines. Create one under Settings → Keys." },
     { key: "tailnet", label: "Tailnet", type: "text", default: "-", help: "“-” means the token's default tailnet." },
@@ -122,6 +131,64 @@ export const tailscalePlugin: PluginDef = {
         startError = err.message;
       });
       await starting;
+    };
+
+    // Serving this host on the tailnet: wait for the node to be signed in,
+    // then `tailscale serve` the API. The log carries each link the owner
+    // needs (sign in, allow HTTPS, pair), so a fresh VPS needs no UI at all.
+    let served: { url?: string; enableUrl?: string; error?: string; ownsPublicUrl?: boolean } = {};
+    let syncing = false;
+    let announced = "";
+    let watch: NodeJS.Timeout | undefined;
+    const announce = (key: string, line: string) => {
+      if (announced.includes(key)) return;
+      announced += `\n${key}`;
+      console.log(line);
+    };
+    async function syncServe(): Promise<void> {
+      if (!cfg().serve || syncing || served.url) return;
+      syncing = true;
+      try {
+        const st = await daemon.status().catch(() => undefined);
+        if (!st) return;
+        if (st.BackendState !== "Running") {
+          if (st.AuthURL) announce(st.AuthURL, `  [tailscale] Sign in to put this host on your tailnet: ${st.AuthURL}`);
+          return;
+        }
+        const name = st.Self?.DNSName?.replace(/\.$/, "");
+        if (!name || daemon.serveWaiting) return;
+        const url = `https://${name}`;
+        const r = await daemon.serve(`http://127.0.0.1:${ctx.app.config.port}`);
+        if ("enableUrl" in r) {
+          served = { enableUrl: r.enableUrl };
+          announce(r.enableUrl, `  [tailscale] Allow HTTPS on your tailnet so this host can be reached at ${url}: ${r.enableUrl}`);
+          return;
+        }
+        const config = ctx.app.config;
+        served = { url, ownsPublicUrl: !config.publicUrl || config.publicUrl === url };
+        if (served.ownsPublicUrl) config.publicUrl = url;
+        const lines = [`  [tailscale] This host is on your tailnet at ${url}`];
+        if (ctx.app.auth.sessions().length === 0) lines.push(...pairingInstructions(config, ctx.app.pairing.create().code));
+        announce(url, lines.join("\n"));
+      } catch (err) {
+        served = { error: (err as Error).message };
+      } finally {
+        syncing = false;
+      }
+    }
+    const startServing = () => {
+      clearInterval(watch);
+      served = {};
+      if (!cfg().serve) return;
+      void syncServe();
+      watch = setInterval(() => void syncServe(), 3000);
+      watch.unref();
+    };
+    const stopServing = () => {
+      clearInterval(watch);
+      watch = undefined;
+      if (served.ownsPublicUrl && ctx.app.config.publicUrl === served.url) ctx.app.config.publicUrl = undefined;
+      served = {};
     };
 
     const api = () => {
@@ -365,9 +432,14 @@ export const tailscalePlugin: PluginDef = {
       routing:
         "- tailnet: the owner's own machines and servers on their Tailscale network: which are online, pinging, calling a service on one, running a command on a server over SSH, authorising, removing or tagging devices, routes and key expiry.",
 
-      start: startNode,
+      async start() {
+        await startNode();
+        if (cfg().serve && startError) console.warn(`  [tailscale] ${startError}`);
+        startServing();
+      },
 
       async stop() {
+        stopServing();
         await daemon.stop();
       },
 
@@ -393,10 +465,18 @@ export const tailscalePlugin: PluginDef = {
         if (st.BackendState === "NeedsMachineAuth") return { state: "login", message: "An admin needs to approve this machine in the Tailscale admin console.", details };
         if (st.BackendState !== "Running") return { state: "starting", message: `Tailscale is ${st.BackendState}.`, details };
         const peers = Object.values(st.Peer ?? {});
+        if (c.serve) {
+          await syncServe();
+          details.push({
+            label: "This host on the tailnet",
+            value: served.url ?? (served.enableUrl ? "waiting for HTTPS to be allowed on the tailnet" : served.error ? `not served: ${served.error}` : "starting…"),
+          });
+        }
         return {
           state: "ready",
           message: `Connected to ${st.CurrentTailnet?.Name ?? "the tailnet"} as ${st.Self ? shortName(st.Self.DNSName) : "?"} (${st.Self?.TailscaleIPs?.[0] ?? "?"}).`,
           details: [...details, { label: "Machines", value: `${peers.filter((p) => p.Online).length} online of ${peers.length}` }],
+          link: served.enableUrl && !served.url ? { label: "Allow HTTPS on the tailnet", href: served.enableUrl } : undefined,
         };
       },
 
@@ -409,8 +489,10 @@ export const tailscalePlugin: PluginDef = {
 
       async runAction(id) {
         if (id === "reconnect") {
+          stopServing();
           await daemon.stop();
           await startNode();
+          startServing();
           return { message: startError || "Reconnected." };
         }
         if (id === "logout") {

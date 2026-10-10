@@ -1,3 +1,4 @@
+import { writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { resolve } from "node:path";
@@ -54,6 +55,24 @@ describe("plugins", () => {
     expect(view.status!.message).toContain("vireo");
     await app.plugins.uninstall("tailscale");
     expect(app.tools.has("tailnet_machines")).toBe(false);
+  });
+
+  it("serves the host on the tailnet once HTTPS is allowed, and pairs at that address", async () => {
+    const gate = `${tempDir()}/allowed`;
+    process.env.FAKE_TS_SERVE_GATE = gate;
+    try {
+      const app = open();
+      await app.plugins.install("tailscale", { mode: "system", bin_dir: FAKE_TS, serve: true });
+      const status = async () => (await app.plugins.list({ origin: "http://localhost" })).find((p) => p.id === "tailscale")!.status!;
+      await expect.poll(async () => (await status()).link?.href).toBe("https://login.tailscale.com/f/serve?node=n0");
+      writeFileSync(gate, "");
+      await expect.poll(async () => (await status()).details?.find((d) => d.label === "This host on the tailnet")?.value, { timeout: 10_000 }).toBe("https://vireo.tail-test.ts.net");
+      expect(app.config.publicUrl).toBe("https://vireo.tail-test.ts.net");
+      await app.plugins.configure("tailscale", { serve: false });
+      expect(app.config.publicUrl).toBeUndefined();
+    } finally {
+      delete process.env.FAKE_TS_SERVE_GATE;
+    }
   });
 
   it("stores secret settings encrypted and never returns them", async () => {

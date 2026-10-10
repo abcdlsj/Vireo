@@ -38,6 +38,8 @@ export interface Config {
   hostName?: string;
   /** Where the Vireo app is served (e.g. on Vercel), so pairing links open it directly. */
   appUrl?: string;
+  /** Add the Tailscale plugin on first start and serve this host on the tailnet. */
+  tailscale: boolean;
 }
 
 function bool(v: string | undefined, fallback: boolean): boolean {
@@ -64,6 +66,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     browserHeadless: bool(env.VIREO_BROWSER_HEADLESS, true),
     testMode: bool(env.VIREO_TEST_MODE, false),
     hostName: env.VIREO_NAME?.trim() || undefined,
+    tailscale: bool(env.VIREO_TAILSCALE, false),
     appUrl: env.VIREO_APP_URL?.replace(/\/$/, "") || undefined,
   };
 }
