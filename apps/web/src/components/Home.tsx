@@ -3,10 +3,10 @@ import { api, ApiError, onEvent, type Me, type Thread } from "../api";
 import { CardSlot } from "../cards/CardSlot";
 import { BoardContext, type Board } from "../cards/Frame";
 import { Peek } from "../cards/Peek";
-import type { Card } from "../cards/types";
+import type { Card } from "@vireo/protocol";
 import { ArrowUpIcon, CheckIcon, ChevronRight, ListIcon, SearchIcon } from "../icons";
 import { clearShared, sharedText } from "../route";
-import { HostSwitcher } from "./Hosts";
+import { NodeSwitcher } from "./Nodes";
 
 const NUMBERS = ["No", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine"];
 
@@ -15,7 +15,7 @@ const NUMBERS = ["No", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "E
  * watched, each matter as one card. Asking starts a new matter; its card
  * appears here while Vireo works on it.
  */
-export function Home({ me, onSignedOut, onSearch }: { me: Me | null; onSignedOut: () => void; onSearch: () => void }) {
+export function Home({ me, onSearch }: { me: Me | null; onSearch: () => void }) {
   const [cards, setCards] = useState<Card[] | null>(null);
   const [note, setNote] = useState("");
   // The matter open in the peek sheet, by thread: its card can change id as it moves on.
@@ -26,9 +26,9 @@ export function Home({ me, onSignedOut, onSearch }: { me: Me | null; onSignedOut
     try {
       setCards((await api.get<{ cards: Card[] }>("/api/cards")).cards);
     } catch (err) {
-      if (err instanceof ApiError && err.status === 401) onSignedOut();
+      if (!(err instanceof ApiError)) throw err;
     }
-  }, [onSignedOut]);
+  }, []);
 
   useEffect(() => {
     void load();
@@ -71,7 +71,7 @@ export function Home({ me, onSignedOut, onSearch }: { me: Me | null; onSignedOut
             <a href="#" aria-label="Vireo home" className="home-logo">
               <img src="/icon.svg" alt="" width={26} height={26} />
             </a>
-            <HostSwitcher />
+            <NodeSwitcher />
             <span className="grow" />
             <button className="home-icon" onClick={onSearch} aria-label="Search">
               <SearchIcon />

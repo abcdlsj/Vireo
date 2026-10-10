@@ -1,6 +1,5 @@
-import { expect, test, type APIRequestContext } from "@playwright/test";
-import { OWNER_PASSWORD } from "./global-setup";
-import { finalReply, sendMessage, settle, startThread, threadDetail } from "./helpers";
+import type { APIRequestContext } from "@playwright/test";
+import { expect, finalReply, sendMessage, settle, signIn, startThread, test, threadDetail } from "./helpers";
 
 interface Ev {
   id: string;
@@ -98,9 +97,7 @@ test.describe("Milestone 3 — Calendar and email", () => {
     // The phone signs in separately and confirms from there.
     const phone = await browser.newContext({ baseURL, storageState: { cookies: [], origins: [] }, viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
     const p = await phone.newPage();
-    await p.goto("/");
-    await p.locator("input[type=password]").fill(OWNER_PASSWORD);
-    await p.getByRole("button", { name: "Sign in" }).click();
+    await signIn(p);
     // The invite waits on the home board, drawn as a calendar page; confirming it there sends it.
     const proposal = p.getByTestId("board").locator('[data-kind="proposal"]').filter({ hasText: "carol@example.com" });
     await expect(proposal).toBeVisible();

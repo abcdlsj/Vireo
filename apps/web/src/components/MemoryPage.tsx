@@ -1,16 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, onEvent, type Fact, type Procedure } from "../api";
+import { api, onEvent, type Episode, type Fact, type Procedure } from "../api";
 import { dateTime, shortTime } from "../format";
 import { ArrowUpRightIcon, ChevronLeft } from "../icons";
 import { Markdown } from "../markdown";
-
-interface Episode {
-  id: string;
-  threadId: string | null;
-  source: string;
-  content: string;
-  occurredAt: number;
-}
 
 /** What Vireo remembers — searchable, correctable and deletable by the owner (M6). */
 export function MemoryPage() {

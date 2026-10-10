@@ -1,34 +1,8 @@
 import { useEffect, useRef, useState, type ClipboardEvent, type CompositionEvent, type DragEvent, type KeyboardEvent, type MouseEvent, type PointerEvent } from "react";
-import { api, fileUrl, type ThreadDetail } from "../api";
-import { authedUrl } from "../hosts";
+import { api, fileUrl, type LlmCallRecord, type ThreadAudit, type ThreadDetail, type ThreadUsage, type ModelUsage, type ToolCallRecord } from "../api";
+import { authedUrl } from "../nodes";
 import { bytes, compact, dateTime, duration, purposeLabel, shortTime, stepOutcome, stepSubject, tokens, toolLabel, usd } from "../format";
 import { AttachIcon, CalendarIcon, CloseIcon, FullscreenIcon, GlobeIcon, MailIcon, NarrowIcon, WidenIcon } from "../icons";
-
-interface ToolCallRow {
-  id: number;
-  tool: string;
-  agent: string | null;
-  args: string;
-  result: string | null;
-  status: string;
-  started_at: number;
-  duration_ms: number | null;
-}
-
-interface LlmRow {
-  id: number;
-  purpose: string;
-  agent: string | null;
-  provider: string;
-  model: string;
-  input_tokens: number;
-  output_tokens: number;
-  cached_tokens: number;
-  cost: number | null;
-  duration_ms: number | null;
-  error: string | null;
-  created_at: number;
-}
 
 const WIDE_KEY = "vireo.panel.wide";
 
@@ -43,15 +17,15 @@ export function SidePanel({ detail, running, browsing, onClose }: { detail: Thre
     setWideState(on);
     localStorage.setItem(WIDE_KEY, on ? "1" : "0");
   };
-  const [audit, setAudit] = useState<{ toolCalls: ToolCallRow[]; llmCalls: LlmRow[] } | null>(null);
+  const [audit, setAudit] = useState<ThreadAudit | null>(null);
   const tid = detail.thread.id;
 
   useEffect(() => {
-    if (tab === "activity") void api.get<{ toolCalls: ToolCallRow[]; llmCalls: LlmRow[] }>(`/api/threads/${tid}/audit`).then(setAudit);
+    if (tab === "activity") void api.get<ThreadAudit>(`/api/threads/${tid}/audit`).then(setAudit);
   }, [tab, tid, detail]);
 
   const totalCost = audit?.llmCalls.reduce((n, c) => n + (c.cost ?? 0), 0) ?? 0;
-  const totalTokens = audit?.llmCalls.reduce((n, c) => n + c.input_tokens + c.output_tokens, 0) ?? 0;
+  const totalTokens = audit?.llmCalls.reduce((n, c) => n + c.inputTokens + c.outputTokens, 0) ?? 0;
 
   return (
     <aside className={`side-panel ${wide ? "wide" : ""}`} data-testid="side-panel">
@@ -153,7 +127,7 @@ export function SidePanel({ detail, running, browsing, onClose }: { detail: Thre
                 {[...audit.toolCalls].reverse().map((c) =>
                   c.tool.startsWith("transfer_to_") ? (
                     <div key={c.id} className="audit-handoff">
-                      {c.tool.slice(12)} agent took over · {shortTime(c.started_at)}
+                      {c.tool.slice(12)} agent took over · {shortTime(c.startedAt)}
                     </div>
                   ) : (
                     <ActionRow key={c.id} c={c} />
@@ -182,12 +156,12 @@ export function SidePanel({ detail, running, browsing, onClose }: { detail: Thre
                     <ol className="llm-calls">
                       {g.calls.map((c) => (
                         <li key={c.id}>
-                          <span>{shortTime(c.created_at)}</span>
+                          <span>{shortTime(c.createdAt)}</span>
                           <span>
-                            {compact(c.input_tokens)} → {compact(c.output_tokens)}
-                            {c.cached_tokens ? ` · ${compact(c.cached_tokens)} cached` : ""}
+                            {compact(c.inputTokens)} → {compact(c.outputTokens)}
+                            {c.cachedTokens ? ` · ${compact(c.cachedTokens)} cached` : ""}
                           </span>
-                          <span>{duration(c.duration_ms)}</span>
+                          <span>{duration(c.durationMs)}</span>
                           {c.error ? <span className="err">{c.error}</span> : null}
                         </li>
                       ))}
@@ -204,7 +178,7 @@ export function SidePanel({ detail, running, browsing, onClose }: { detail: Thre
 }
 
 /** One action in the activity list: what it did and on what, with the full call one click away. */
-function ActionRow({ c }: { c: ToolCallRow }) {
+function ActionRow({ c }: { c: ToolCallRecord }) {
   const subject = stepSubject(c.args);
   const outcome = stepOutcome(c.result).replace(/^URL:\s*/, "");
   // The outcome often repeats the subject (a page's URL); show it only when it adds something.
@@ -221,11 +195,11 @@ function ActionRow({ c }: { c: ToolCallRow }) {
           {subject ? <span className="audit-subject">{subject}</span> : null}
           {extra ? <span className="audit-outcome">{extra}</span> : null}
         </span>
-        <span className="audit-time">{c.status === "ok" ? duration(c.duration_ms) : c.status.replace(/_/g, " ")}</span>
+        <span className="audit-time">{c.status === "ok" ? duration(c.durationMs) : c.status.replace(/_/g, " ")}</span>
       </summary>
       <div className="audit-detail">
         <span className="audit-meta">
-          {c.agent} · {shortTime(c.started_at)}
+          {c.agent} · {shortTime(c.startedAt)}
         </span>
         <pre>{c.args}</pre>
         {c.result ? <pre>{c.result}</pre> : null}
@@ -235,15 +209,15 @@ function ActionRow({ c }: { c: ToolCallRow }) {
 }
 
 /** Model calls folded by what made them and on which model, newest group first. */
-function groupCalls(calls: LlmRow[]) {
-  const groups = new Map<string, { key: string; label: string; model: string; calls: LlmRow[]; input: number; output: number; cost: number | null; errors: number }>();
+function groupCalls(calls: LlmCallRecord[]) {
+  const groups = new Map<string, { key: string; label: string; model: string | null; calls: LlmCallRecord[]; input: number; output: number; cost: number | null; errors: number }>();
   for (const c of [...calls].reverse()) {
     const label = purposeLabel(c.purpose, c.agent);
     const key = `${label}|${c.model}`;
     const g = groups.get(key) ?? { key, label, model: c.model, calls: [], input: 0, output: 0, cost: null, errors: 0 };
     g.calls.push(c);
-    g.input += c.input_tokens;
-    g.output += c.output_tokens;
+    g.input += c.inputTokens;
+    g.output += c.outputTokens;
     if (c.cost !== null) g.cost = (g.cost ?? 0) + c.cost;
     if (c.error) g.errors++;
     groups.set(key, g);
@@ -251,28 +225,11 @@ function groupCalls(calls: LlmRow[]) {
   return [...groups.values()];
 }
 
-interface ModelUsage {
-  model: string;
-  calls: number;
-  /** Prompt tokens, cached ones included. */
-  input: number;
-  cached: number;
-  cacheWrite: number;
-  output: number;
-  cost: number | null;
-}
-
-interface Usage {
-  scope: "thread" | "all";
-  models: ModelUsage[];
-  context: { model: string; used: number; limit: number | null } | null;
-}
-
 /** Context window fill for this thread, then tokens and cost per model; the overview totals every thread. */
 function UsageView({ threadId, detail }: { threadId: string; detail: ThreadDetail }) {
-  const [usage, setUsage] = useState<Usage | null>(null);
+  const [usage, setUsage] = useState<ThreadUsage | null>(null);
   useEffect(() => {
-    void api.get<Usage>(`/api/threads/${threadId}/usage`).then(setUsage);
+    void api.get<ThreadUsage>(`/api/threads/${threadId}/usage`).then(setUsage);
   }, [threadId, detail]);
   if (!usage) return <div className="panel-body muted">Loading…</div>;
 

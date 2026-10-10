@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./helpers";
 import { readFileSync } from "node:fs";
 import { finalReply, FIXTURES, sendMessage, settle, startThread, threadDetail } from "./helpers";
 
@@ -91,8 +91,8 @@ test.describe("Milestone 4 — Proactive and hands-on", () => {
   test("[C8] reminders fire in their thread and notify the owner", async ({ page, request }) => {
     const id = await startThread(page, "Remind me to call mom in 5 minutes");
     expect(await finalReply(page, request)).toContain("remind you");
-    const reminders = (await (await request.get("/api/reminders")).json()).reminders as { thread_id: string }[];
-    expect(reminders.some((r) => r.thread_id === id)).toBeTruthy();
+    const reminders = (await (await request.get("/api/reminders")).json()).reminders as { threadId: string }[];
+    expect(reminders.some((r) => r.threadId === id)).toBeTruthy();
     expect((await (await request.post("/api/test/reminders")).json()).fired).toBeGreaterThanOrEqual(1);
     await expect(page.getByTestId("notice-reminder")).toContainText("call mom");
     const notes = (await (await request.get("/api/test/notifications")).json()).notifications;

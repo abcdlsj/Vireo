@@ -1,6 +1,6 @@
 import { Avatar, Frame } from "../Frame";
 import { defineCard } from "../registry";
-import { field } from "../types";
+import { field } from "../util";
 import { isHttp } from "../util";
 
 /** The outcome of a batch: a few numbers, then the items that matter. */

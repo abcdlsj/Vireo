@@ -5,7 +5,7 @@ import { ToolIcon } from "../../icons";
 import { go } from "../../route";
 import { Frame } from "../Frame";
 import { defineCard } from "../registry";
-import type { Card } from "../types";
+import type { Card } from "@vireo/protocol";
 import { EmailBody } from "./email";
 import { EventBody } from "./event";
 

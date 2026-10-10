@@ -1,211 +1,30 @@
-/** Typed client for Vireo's HTTP API, talking to the current host. */
+/** Typed client for the current node's HTTP API. */
 
-import type { Card } from "./cards/types";
-import { authedUrl, currentHost, hostUrl } from "./hosts";
+import type { FileInfo, NodeEvent } from "@vireo/protocol";
+import { ApiError } from "./cloud";
+import { authedUrl, currentNode, nodeAccess } from "./nodes";
 
-export interface Thread {
-  id: string;
-  title: string;
-  state: "active" | "done";
-  group: "overview" | "needs_you" | "in_progress" | "done";
-  statusLine: string;
-  agent: string;
-  temporary: boolean;
-  pinned: boolean;
-  running: boolean;
-  needsYou: boolean;
-  pendingActions: number;
-  summary: string | null;
-  origin: Record<string, unknown> | null;
-  createdAt: number;
-  updatedAt: number;
-  doneAt: number | null;
-}
+export type * from "@vireo/protocol";
+export { ApiError };
 
-export type Message =
-  | { id: number; role: "user"; text: string; images: string[]; fromVireo: boolean; createdAt: number }
-  | {
-      id: number;
-      role: "assistant";
-      agent: string | null;
-      text: string;
-      thinking?: string;
-      toolCalls: { id: string; name: string; args: Record<string, unknown> }[];
-      createdAt: number;
-    }
-  | { id: number; role: "tool"; toolCallId: string; toolName: string; isError: boolean; text: string; awaitingConfirmation?: string; createdAt: number }
-  | { id: number; role: "notice"; kind: string; text: string; data: Record<string, unknown> | null; createdAt: number };
-
-export interface Action {
-  id: string;
-  threadId: string;
-  tool: string;
-  args: Record<string, unknown>;
-  summary: string;
-  status: "pending" | "executing" | "done" | "failed" | "cancelled";
-  result: string | null;
-  /** Raw output (shown like a terminal) and a plain note, when the tool gave them. */
-  display?: { output?: string; note?: string } | null;
-  createdAt: number;
-  resolvedAt: number | null;
-}
-
-export interface Related {
-  id: number;
-  kind: string;
-  title: string;
-  url: string | null;
-  ref: string | null;
-  data: Record<string, unknown> | null;
-  createdAt: number;
-}
-
-export interface FileInfo {
-  id: string;
-  threadId: string | null;
-  name: string;
-  mime: string;
-  size: number;
-  origin: "upload" | "produced";
-  createdAt: number;
-}
-
-export interface Procedure {
-  id: string;
-  name: string;
-  description: string;
-  steps: string;
-  status: "proposed" | "approved" | "rejected";
-  source_thread_id: string | null;
-  created_at: number;
-  updated_at: number;
-}
-
-export interface ThreadDetail {
-  thread: Thread;
-  messages: Message[];
-  actions: Action[];
-  related: Related[];
-  files: FileInfo[];
-  procedures: Procedure[];
-  cards: Card[];
-}
-
-export interface Fact {
-  id: string;
-  entityId: string;
-  entityName: string;
-  key: string;
-  statement: string;
-  kind: string;
-  validFrom: number;
-  validUntil: number | null;
-  invalidatedAt: number | null;
-  supersededBy: string | null;
-  sourceThreadId: string | null;
-  sourceThreadTitle: string | null;
-  createdAt: number;
-  updatedAt: number;
-  current: boolean;
-}
-
-export interface ModelStatus {
-  ready: boolean;
-  fake: boolean;
-  baseUrl: string;
-  hasKey: boolean;
-  source: { baseUrl: "settings" | "env" | "default"; apiKey: "settings" | "env" | "none" };
-  api: "chat" | "responses";
-  main?: string;
-  fast?: string;
-  choice: { main?: string; fast?: string };
-  available: string[];
-  error?: string;
-}
-
-export interface OwnerSettings {
-  timezone: string;
-  nudgeTime: string;
-  workdayStart: string;
-  workdayEnd: string;
-  watchInbox: boolean;
-  inboxQuery: string;
-  watchCalendar: boolean;
-  proxyUrl: string;
-}
-
-export interface Me {
-  settings: OwnerSettings;
-  models: ModelStatus;
-  integrations: { calendar: string; mail: string | null; drive: boolean };
-  push: { publicKey: string; subscriptions: number };
-  /** Every community plugin and whether Vireo can use it now. */
-  capabilities: Capability[];
-  testMode: boolean;
-}
-
-export interface Capability {
-  id: string;
-  name: string;
-  description: string;
-  state: "ready" | "needs_setup" | "not_added";
-  message?: string;
-}
-
-export interface PluginField {
-  key: string;
-  label: string;
-  type: "text" | "secret" | "boolean" | "select";
-  options?: { value: string; label: string }[];
-  default?: string | boolean;
-  placeholder?: string;
-  help?: string;
-  multiline?: boolean;
-  /** Secret fields: a value is stored. */
-  set?: boolean;
-}
-
-export interface PluginView {
-  id: string;
-  name: string;
-  description: string;
-  author: string;
-  homepage?: string;
-  installed: boolean;
-  fields: PluginField[];
-  config: Record<string, unknown>;
-  status?: { state: string; message: string; details?: { label: string; value: string }[]; link?: { label: string; href: string } };
-  actions: { id: string; label: string; primary?: boolean }[];
-  /** Vireo can set this plugin up in its browser while the owner signs in. */
-  browserSetup: boolean;
-}
-
-export class ApiError extends Error {
-  constructor(
-    message: string,
-    readonly status: number,
-  ) {
-    super(message);
-  }
-}
-
-async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
-  const host = currentHost();
-  if (!host) throw new ApiError("No host yet. Add one first.", 0);
-  const headers: Record<string, string> = {};
+async function request<T>(method: string, path: string, body?: unknown, retried = false): Promise<T> {
+  const node = currentNode();
+  if (!node) throw new ApiError("No node yet. Link one first.", 0);
+  const access = await nodeAccess(retried);
+  const headers: Record<string, string> = { authorization: `Bearer ${access.token}` };
   if (!(body instanceof FormData) && body !== undefined) headers["content-type"] = "application/json";
-  if (host.token) headers.authorization = `Bearer ${host.token}`;
   let res: Response;
   try {
-    res = await fetch(hostUrl(path, host), {
+    res = await fetch(`${access.baseUrl}${path}`, {
       method,
-      credentials: host.url ? "omit" : "same-origin",
       headers,
       body: body instanceof FormData ? body : body === undefined ? undefined : JSON.stringify(body),
     });
   } catch {
-    throw new ApiError(`Can't reach ${host.name}.`, 0);
+    throw new ApiError(`Can't reach ${node.name}.`, 0);
   }
+  // A token can expire between fetching it and using it; get a new one once.
+  if (res.status === 401 && !retried) return request(method, path, body, true);
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new ApiError((data as { error?: string }).error ?? res.statusText, res.status);
   return data as T;
@@ -224,46 +43,82 @@ export const api = {
   },
 };
 
-export type BusEvent =
-  | { type: "thread.updated"; threadId: string }
-  | { type: "thread.deleted"; threadId: string }
-  | { type: "message.created"; threadId: string; messageId: number }
-  | { type: "message.delta"; threadId: string; streamId: string; delta: string; kind: "text" | "thinking" }
-  | { type: "message.stream_start"; threadId: string; streamId: string; agent: string }
-  | { type: "message.stream_end"; threadId: string; streamId: string }
-  | { type: "step"; threadId: string; step: { tool: string; label: string; status: string; toolCallId?: string } }
-  | { type: "action.updated"; threadId: string; actionId: string }
-  | { type: "card.updated"; threadId: string; cardId: string }
-  | { type: "memory.updated" }
-  | { type: "procedure.updated" }
-  | { type: "plugins.updated" };
+export type BusEvent = NodeEvent;
 
-type Listener = (e: BusEvent) => void;
+type Listener = (e: NodeEvent) => void;
 const listeners = new Set<Listener>();
-let source: EventSource | undefined;
+let stream: AbortController | undefined;
 
-/** One shared EventSource for live updates; reconnects automatically. */
+/**
+ * One shared stream of live updates from the node. Read with fetch rather
+ * than EventSource so every reconnect sends a fresh token in a header.
+ */
 export function onEvent(fn: Listener): () => void {
   listeners.add(fn);
-  if (!source) {
-    source = new EventSource(authedUrl("/api/events"));
-    source.addEventListener("message", (ev) => {
-      const e = JSON.parse((ev as MessageEvent).data) as BusEvent;
-      for (const l of listeners) l(e);
-    });
-    source.addEventListener("ready", () => {
-      for (const l of listeners) l({ type: "thread.updated", threadId: "*" });
-    });
+  if (!stream) {
+    stream = new AbortController();
+    void follow(stream.signal);
   }
   return () => {
     listeners.delete(fn);
   };
 }
 
-/** A file or image on the current host, loadable by the browser. */
+function emit(e: NodeEvent): void {
+  for (const l of listeners) l(e);
+}
+
+async function follow(signal: AbortSignal): Promise<void> {
+  let wait = 1000;
+  while (!signal.aborted) {
+    try {
+      const access = await nodeAccess();
+      const res = await fetch(`${access.baseUrl}/api/events`, { headers: { authorization: `Bearer ${access.token}`, accept: "text/event-stream" }, signal });
+      if (res.status === 401) await nodeAccess(true);
+      else if (res.ok && res.body) {
+        wait = 1000;
+        await readEvents(res.body, (event, data) => {
+          if (event === "ready") emit({ type: "thread.updated", threadId: "*" });
+          else if (event === "message") emit(JSON.parse(data) as NodeEvent);
+        });
+      }
+    } catch {
+      // Dropped or unreachable: try again below.
+    }
+    if (signal.aborted) return;
+    await new Promise((r) => setTimeout(r, wait));
+    wait = Math.min(wait * 2, 15_000);
+  }
+}
+
+/** Parses a server-sent event stream. */
+async function readEvents(body: ReadableStream<Uint8Array>, on: (event: string, data: string) => void): Promise<void> {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buf = "";
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) return;
+    buf += decoder.decode(value, { stream: true });
+    let end: number;
+    while ((end = buf.search(/\r?\n\r?\n/)) >= 0) {
+      const block = buf.slice(0, end);
+      buf = buf.slice(end).replace(/^\r?\n\r?\n/, "");
+      let event = "message";
+      const data: string[] = [];
+      for (const line of block.split(/\r?\n/)) {
+        if (line.startsWith("event:")) event = line.slice(6).trim();
+        else if (line.startsWith("data:")) data.push(line.slice(5).replace(/^ /, ""));
+      }
+      on(event, data.join("\n"));
+    }
+  }
+}
+
+/** A file or image on the current node, loadable by the browser. */
 export const fileUrl = (id: string) => authedUrl(`/api/files/${id}`);
 
 export function closeEvents(): void {
-  source?.close();
-  source = undefined;
+  stream?.abort();
+  stream = undefined;
 }

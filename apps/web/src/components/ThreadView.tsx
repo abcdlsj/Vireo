@@ -9,7 +9,7 @@ import { ProcedureCard } from "./ProcedureCard";
 import { SidePanel } from "./SidePanel";
 import { CardSlot } from "../cards/CardSlot";
 import { Status } from "../cards/Frame";
-import type { Card } from "../cards/types";
+import type { Card } from "@vireo/protocol";
 import { AlertIcon, ArrowUpRightIcon, BellIcon, CheckIcon, ChevronLeft, ChevronRight, ClockIcon, MemoryIcon, PanelIcon, StatusIcon } from "../icons";
 
 type Item =

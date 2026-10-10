@@ -159,7 +159,14 @@ export class Relay {
         if (!p) return;
         conn.pending.delete(id);
         this.send(conn.ws, { t: "cancel", id });
-        this.settle(p, new Error("Cancelled"));
+        // The app went away: end its response quietly, nobody reads an error.
+        clearTimeout(p.timer);
+        p.fail(new Error("Cancelled"));
+        try {
+          p.stream?.close();
+        } catch {
+          // stream already closed
+        }
       });
       this.send(conn.ws, frame);
     });

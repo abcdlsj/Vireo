@@ -17,7 +17,7 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
-  if (event.request.method !== "GET" || url.origin !== self.location.origin || url.pathname.startsWith("/api/")) return;
+  if (event.request.method !== "GET" || url.origin !== self.location.origin || /^\/(api|n|auth|\.well-known)\//.test(url.pathname)) return;
   // Network first so updates show immediately; fall back to the cached shell offline.
   event.respondWith(
     fetch(event.request)

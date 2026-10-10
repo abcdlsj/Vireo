@@ -1,7 +1,7 @@
 import { relTime } from "../../format";
 import { Frame, Sparkline } from "../Frame";
 import { defineCard } from "../registry";
-import { field } from "../types";
+import { field } from "../util";
 import { parseDate } from "../util";
 
 /** Something Vireo keeps checking: the value now, how it moved, or which stage it is at. */

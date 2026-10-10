@@ -1,8 +1,10 @@
+import type { NodeSummary, User } from "@vireo/protocol";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiError, closeEvents, onEvent, type Me, type Thread } from "./api";
-import { AddHostForm, HostSwitcher } from "./components/Hosts";
-import { Login } from "./components/Login";
-import { currentHost, hosts, switchHost } from "./hosts";
+import { cloud, SIGNED_OUT, signedIn } from "./cloud";
+import { NodeSwitcher } from "./components/Nodes";
+import { ApproveNode, NoNodes, SignIn, Unreachable } from "./components/SignIn";
+import { currentNode, loadNodes, nodeAccess } from "./nodes";
 import { Home } from "./components/Home";
 import { MemoryPage } from "./components/MemoryPage";
 import { NewThread } from "./components/NewThread";
@@ -14,75 +16,62 @@ import { QuickJump } from "./components/QuickJump";
 import { go, useRoute } from "./route";
 import { useGlide } from "./glide";
 
-type AuthState =
-  | { loading: true }
-  | { loading: false; unreachable: string }
-  | { loading: false; hasOwner: boolean; authenticated: boolean; setupNeedsCode: boolean };
+type State =
+  | { name: "loading" }
+  | { name: "signed-out" }
+  | { name: "no-nodes" }
+  | { name: "unreachable"; node: NodeSummary; message: string }
+  | { name: "ready"; node: NodeSummary };
 
-export function App() {
-  const [auth, setAuth] = useState<AuthState>({ loading: true });
-  const host = currentHost();
-  const refreshAuth = useCallback(async () => {
+/**
+ * Signed in to the cloud, then on to the current node: it must answer its
+ * health check and accept a token before the shell opens.
+ */
+export function App({ signInError }: { signInError?: string }) {
+  const route = useRoute();
+  const [state, setState] = useState<State>(() => (signedIn() ? { name: "loading" } : { name: "signed-out" }));
+  const [user, setUser] = useState<User | null>(null);
+
+  const connect = useCallback(async () => {
+    if (!signedIn()) return setState({ name: "signed-out" });
+    setState({ name: "loading" });
     try {
-      const s = await api.get<{ hasOwner: boolean; authenticated: boolean; setupNeedsCode: boolean }>("/api/auth/status");
-      setAuth({ loading: false, ...s });
+      const [me] = await Promise.all([cloud.me(), loadNodes()]);
+      setUser(me);
     } catch (err) {
-      setAuth({ loading: false, unreachable: err instanceof Error ? err.message : String(err) });
+      if (!signedIn()) return setState({ name: "signed-out" });
+      throw err;
+    }
+    const node = currentNode();
+    if (!node) return setState({ name: "no-nodes" });
+    try {
+      await nodeAccess(true);
+      await api.get("/api/me");
+      setState({ name: "ready", node });
+    } catch (err) {
+      setState({ name: "unreachable", node, message: err instanceof Error ? err.message : String(err) });
     }
   }, []);
-  useEffect(() => {
-    if (host) void refreshAuth();
-  }, [refreshAuth, host]);
 
-  if (!host) {
-    return (
-      <div className="login">
-        <div className="login-card">
-          <img src="/icon.svg" alt="" width={56} height={56} />
-          <h1>Add a host</h1>
-          <p className="muted">Vireo runs on a host: a VPS or a machine of yours. Pair this app with it using the code the host printed.</p>
-          <AddHostForm />
-        </div>
-      </div>
-    );
-  }
-  if (auth.loading) return <div className="splash">Vireo</div>;
-  if ("unreachable" in auth && auth.unreachable) {
-    return (
-      <div className="login">
-        <div className="login-card">
-          <img src="/icon.svg" alt="" width={56} height={56} />
-          <h1>{host.name} is unreachable</h1>
-          <p className="muted">{auth.unreachable} Check that it is running and that its address{host.url ? ` (${host.url})` : ""} is reachable from here.</p>
-          <div className="row-buttons center">
-            <button className="btn primary" onClick={() => void refreshAuth()}>
-              Try again
-            </button>
-            {hosts()
-              .filter((h) => h.id !== host.id)
-              .map((h) => (
-                <button key={h.id} className="btn" onClick={() => switchHost(h.id)}>
-                  Use {h.name}
-                </button>
-              ))}
-          </div>
-        </div>
-      </div>
-    );
-  }
-  if ("unreachable" in auth) return null;
-  if (!auth.authenticated) return <Login host={host} hasOwner={auth.hasOwner} needsCode={auth.setupNeedsCode} onDone={refreshAuth} />;
-  return (
-    <Shell
-      onSignedOut={() => {
-        closeEvents();
-        void refreshAuth();
-      }}
-    />
-  );
+  useEffect(() => {
+    void connect();
+    const out = () => {
+      closeEvents();
+      setState({ name: "signed-out" });
+    };
+    window.addEventListener(SIGNED_OUT, out);
+    return () => window.removeEventListener(SIGNED_OUT, out);
+  }, [connect]);
+
+  if (state.name === "signed-out") return <SignIn error={signInError} onDone={() => void connect()} />;
+  if (route.name === "link") return <ApproveNode code={route.code} />;
+  if (state.name === "loading") return <div className="splash">Vireo</div>;
+  if (state.name === "no-nodes") return <NoNodes />;
+  if (state.name === "unreachable") return <Unreachable node={state.node} message={state.message} onRetry={() => void connect()} />;
+  return <Shell user={user} />;
 }
 
-function Shell({ onSignedOut }: { onSignedOut: () => void }) {
+function Shell({ user }: { user: User | null }) {
   const route = useRoute();
   const [threads, setThreads] = useState<Thread[]>([]);
   const [me, setMe] = useState<Me | null>(null);
@@ -96,9 +85,9 @@ function Shell({ onSignedOut }: { onSignedOut: () => void }) {
       const r = await api.get<{ threads: Thread[] }>("/api/threads");
       setThreads(r.threads);
     } catch (err) {
-      if (err instanceof ApiError && err.status === 401) onSignedOut();
+      if (!(err instanceof ApiError)) throw err;
     }
-  }, [onSignedOut]);
+  }, []);
 
   const loadMe = useCallback(async () => {
     setMe(await api.get<Me>("/api/me"));
@@ -154,7 +143,7 @@ function Shell({ onSignedOut }: { onSignedOut: () => void }) {
             <a href="#" aria-label="Vireo home">
               <img src="/icon.svg" alt="" width={24} height={24} />
             </a>
-            <HostSwitcher />
+            <NodeSwitcher />
           </div>
           <button className="icon-btn" onClick={() => go("new")} aria-label="New thread" title="New thread" data-testid="new-thread">
             <PlusIcon />
@@ -187,7 +176,7 @@ function Shell({ onSignedOut }: { onSignedOut: () => void }) {
       </aside>
       <main className="main">
         {route.name === "home" ? (
-          <Home me={me} onSignedOut={onSignedOut} onSearch={() => setJump(true)} />
+          <Home me={me} onSearch={() => setJump(true)} />
         ) : route.name === "thread" ? (
           <ThreadView key={route.id} id={route.id} />
         ) : route.name === "new" ? (
@@ -195,9 +184,9 @@ function Shell({ onSignedOut }: { onSignedOut: () => void }) {
         ) : route.name === "memory" ? (
           <MemoryPage />
         ) : route.name === "settings" ? (
-          <SettingsPage section={route.section} me={me} reload={loadMe} onSignedOut={onSignedOut} />
+          <SettingsPage section={route.section} me={me} user={user} reload={loadMe} />
         ) : (
-          <Home me={me} onSignedOut={onSignedOut} onSearch={() => setJump(true)} />
+          <Home me={me} onSearch={() => setJump(true)} />
         )}
       </main>
       {jump ? <QuickJump threads={threads} onClose={() => setJump(false)} /> : null}

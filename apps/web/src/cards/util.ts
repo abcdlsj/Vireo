@@ -1,5 +1,7 @@
 /** Small helpers shared by card kinds. */
 
+import type { Card } from "@vireo/protocol";
+
 /** Parses a date the model wrote; undefined when it isn't one. */
 export function parseDate(s: unknown): Date | undefined {
   if (typeof s !== "string" && typeof s !== "number") return undefined;
@@ -44,4 +46,14 @@ export function until(d: Date): string {
   if (m < 60) return `in ${m} min`;
   if (m < 48 * 60) return `in ${Math.round(m / 60)} h`;
   return `in ${Math.round(m / 1440)} days`;
+}
+
+/** Reads a field of a card's data with a fallback, since the data comes from the model. */
+export function field<T>(card: Card, key: string, fallback: T): T {
+  const v = card.data[key];
+  if (v === undefined || v === null) return fallback;
+  if (Array.isArray(fallback) && !Array.isArray(v)) return fallback;
+  if (typeof fallback === "string" && typeof v !== "string") return String(v) as T;
+  if (typeof fallback === "number" && typeof v !== "number") return (Number(v) || fallback) as T;
+  return v as T;
 }

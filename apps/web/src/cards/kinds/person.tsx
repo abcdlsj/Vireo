@@ -1,6 +1,6 @@
 import { Avatar, Frame } from "../Frame";
 import { defineCard } from "../registry";
-import { field } from "../types";
+import { field } from "../util";
 
 /** Someone the owner deals with, and what Vireo remembers about them. */
 export default defineCard({

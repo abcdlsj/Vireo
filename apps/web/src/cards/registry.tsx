@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { api } from "../api";
-import type { Card, CardButton } from "./types";
+import type { Card, CardButton } from "@vireo/protocol";
 
 /**
  * Every card kind is one file in ./kinds that default-exports defineCard({...}).

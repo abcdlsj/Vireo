@@ -4,7 +4,7 @@ import { relTime } from "../format";
 import { ArrowUpRightIcon, CheckIcon } from "../icons";
 import { go } from "../route";
 import { pressButton } from "./registry";
-import type { Card, CardButton } from "./types";
+import type { Card, CardButton } from "@vireo/protocol";
 
 /**
  * What the board lets a card do beyond itself: open it in the peek sheet,

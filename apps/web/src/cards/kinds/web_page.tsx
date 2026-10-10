@@ -1,6 +1,6 @@
 import { Frame, hostOf } from "../Frame";
 import { defineCard } from "../registry";
-import { field } from "../types";
+import { field } from "../util";
 import { isHttp } from "../util";
 
 /** A page worth keeping: a small browser chrome with the address, and what matters on it. */

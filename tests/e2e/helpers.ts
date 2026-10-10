@@ -1,6 +1,32 @@
-import { expect, type APIRequestContext, type Page } from "@playwright/test";
+import { test as base, expect, type APIRequestContext, type Page } from "@playwright/test";
+import { readFileSync } from "node:fs";
+
+export { expect };
 
 export const FIXTURES = "http://localhost:8790";
+/** The test node, reached directly. The app goes through the cloud relay instead. */
+export const NODE = "http://127.0.0.1:8798";
+
+/** What global setup saved: the linked node and credentials for it. */
+export function linked(): { nodeId: string; token: string; session: string } {
+  return JSON.parse(readFileSync(".vireo-test/node.json", "utf8"));
+}
+
+/** Tests' `request` calls the node's API as its owner. */
+export const test = base.extend({
+  request: async ({ playwright }, use) => {
+    const ctx = await playwright.request.newContext({ baseURL: NODE, extraHTTPHeaders: { authorization: `Bearer ${linked().token}` } });
+    await use(ctx);
+    await ctx.dispose();
+  },
+});
+
+/** Signs a fresh browser in as the owner, the way a new device does. */
+export async function signIn(page: Page): Promise<void> {
+  await page.goto("/");
+  await page.getByTestId("dev-login").fill("owner");
+  await page.getByRole("button", { name: "Sign in" }).click();
+}
 
 /** Waits until every thread run and memory job has finished. */
 export async function settle(request: APIRequestContext): Promise<void> {

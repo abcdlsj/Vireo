@@ -3,8 +3,8 @@ import { CheckIcon } from "../../icons";
 import { Markdown } from "../../markdown";
 import { Frame, Sparkline, hostOf } from "../Frame";
 import { defineCard } from "../registry";
-import type { Card } from "../types";
-import { field } from "../types";
+import type { Card } from "@vireo/protocol";
+import { field } from "../util";
 import { isHttp } from "../util";
 
 /** Mirrors apps/host/src/cards/blocks.ts. Every field comes from the model, so each is read defensively. */

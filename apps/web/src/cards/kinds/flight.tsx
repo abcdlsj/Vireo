@@ -1,6 +1,6 @@
 import { Frame, Sparkline } from "../Frame";
 import { defineCard } from "../registry";
-import { field } from "../types";
+import { field } from "../util";
 import { dayLabel } from "../util";
 
 /** A boarding pass: the route large, a perforation, and a stub with the price or the seat. */

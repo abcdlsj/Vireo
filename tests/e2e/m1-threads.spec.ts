@@ -1,52 +1,60 @@
-import { expect, test } from "@playwright/test";
-import { OWNER_PASSWORD } from "./global-setup";
-import { finalReply, sendMessage, settle, startThread, threadDetail } from "./helpers";
+import { request as http } from "@playwright/test";
+import { expect, finalReply, linked, NODE, sendMessage, settle, signIn, startThread, test, threadDetail } from "./helpers";
 
 test.describe("Milestone 1 — Threads that think", () => {
-  test("[M1.1] the PWA is installable and the owner signs in on a new device", async ({ browser, request, baseURL }) => {
-    const manifest = await (await request.get("/manifest.webmanifest")).json();
+  test("[M1.1] the PWA is installable and the owner signs in on a new device", async ({ browser, baseURL }) => {
+    const app = await http.newContext({ baseURL });
+    const manifest = await (await app.get("/manifest.webmanifest")).json();
     expect(manifest.display).toBe("standalone");
     expect(manifest.icons.some((i: { sizes: string }) => i.sizes === "512x512")).toBeTruthy();
-    expect((await request.get("/icon-192.png")).headers()["content-type"]).toBe("image/png");
-    expect(await (await request.get("/sw.js")).text()).toContain('addEventListener("push"');
+    expect((await app.get("/icon-192.png")).headers()["content-type"]).toBe("image/png");
+    expect(await (await app.get("/sw.js")).text()).toContain('addEventListener("push"');
 
-    // A fresh device (iPhone-sized, no session) must sign in.
+    // A fresh device (iPhone-sized, no session) must sign in, then lands on its node.
     const phone = await browser.newContext({ baseURL, storageState: { cookies: [], origins: [] }, viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
     const page = await phone.newPage();
     await page.goto("/");
     await expect(page.locator('link[rel="manifest"]')).toHaveAttribute("href", "/manifest.webmanifest");
     await expect(page.locator('meta[name="apple-mobile-web-app-capable"]')).toHaveAttribute("content", "yes");
-    await expect(page.getByText("Sign in to This machine")).toBeVisible();
-    await page.locator("input[type=password]").fill("wrong-password");
-    await page.getByRole("button", { name: "Sign in" }).click();
-    await expect(page.getByText("Wrong password")).toBeVisible();
-    await page.locator("input[type=password]").fill(OWNER_PASSWORD);
-    await page.getByRole("button", { name: "Sign in" }).click();
+    await expect(page.getByRole("heading", { name: "Welcome to Vireo" })).toBeVisible();
+    await signIn(page);
     await expect(page.getByTestId("home")).toBeVisible();
+    await expect(page.getByTestId("node-switch").first()).toContainText("Test node");
     expect(await page.evaluate(async () => (await navigator.serviceWorker.getRegistration()) !== undefined || "serviceWorker" in navigator)).toBeTruthy();
     await phone.close();
 
-    // The API refuses requests without a session.
-    const anon = await (await import("@playwright/test")).request.newContext({ baseURL, storageState: { cookies: [], origins: [] } });
+    // Neither the node nor the relay answers without a token.
+    expect((await app.get(`/n/${linked().nodeId}/api/threads`)).status()).toBe(401);
+    const anon = await http.newContext({ baseURL: NODE });
     expect((await anon.get("/api/threads")).status()).toBe(401);
+    expect((await anon.get("/api/threads", { headers: { authorization: `Bearer ${linked().session}` } })).status()).toBe(401);
     await anon.dispose();
+    await app.dispose();
   });
 
   test("[M1.2] a new thread gets a name and a streamed answer", async ({ page, request }) => {
     const deltas: string[] = [];
     await page.exposeFunction("recordDelta", (d: string) => deltas.push(d));
     await page.addInitScript(() => {
-      const Orig = window.EventSource;
-      // Spy on the live event stream to observe incremental text deltas.
-      window.EventSource = class extends Orig {
-        constructor(url: string | URL, init?: EventSourceInit) {
-          super(url, init);
-          this.addEventListener("message", (e) => {
-            const data = JSON.parse((e as MessageEvent).data);
-            if (data.type === "message.delta") (window as unknown as { recordDelta: (d: string) => void }).recordDelta(data.delta);
-          });
-        }
-      } as typeof EventSource;
+      // Spy on the live event stream (read with fetch, through the relay) to see text arrive in pieces.
+      const orig = window.fetch;
+      window.fetch = async (...args: Parameters<typeof fetch>) => {
+        const res = await orig(...args);
+        const url = args[0] instanceof Request ? args[0].url : String(args[0]);
+        if (!url.endsWith("/api/events") || !res.body) return res;
+        const [mine, theirs] = res.body.tee();
+        void (async () => {
+          const reader = theirs.getReader();
+          const decoder = new TextDecoder();
+          for (;;) {
+            const { value, done } = await reader.read();
+            if (done) return;
+            const chunk = decoder.decode(value, { stream: true });
+            if (chunk.includes('"type":"message.delta"')) (window as unknown as { recordDelta: (d: string) => void }).recordDelta(chunk);
+          }
+        })();
+        return new Response(mine, { status: res.status, statusText: res.statusText, headers: res.headers });
+      };
     });
     const id = await startThread(page, "Explain how a vireo builds its nest");
     await expect(page.getByTestId("live")).toBeVisible();

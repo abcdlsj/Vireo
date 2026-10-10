@@ -6,10 +6,12 @@ export type Route =
   | { name: "threads" }
   | { name: "memory" }
   | { name: "settings"; section: string }
+  | { name: "link"; code: string }
   | { name: "home" };
 
 export function parseRoute(hash: string): Route {
   const h = hash.replace(/^#\/?/, "").split("?")[0] ?? "";
+  if (h.startsWith("link=")) return { name: "link", code: decodeURIComponent(h.slice(5)) };
   if (h.startsWith("thread/")) return { name: "thread", id: decodeURIComponent(h.slice(7)) };
   if (h === "new") return { name: "new" };
   if (h === "threads") return { name: "threads" };

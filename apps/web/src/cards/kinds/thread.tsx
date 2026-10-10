@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
-import { authedUrl } from "../../hosts";
+import { authedUrl } from "../../nodes";
 import { Markdown } from "../../markdown";
 import { Frame } from "../Frame";
 import { defineCard } from "../registry";
-import { field } from "../types";
+import { field } from "../util";
 
 /**
  * A matter that hasn't shown a card yet: its latest answer. While the agent

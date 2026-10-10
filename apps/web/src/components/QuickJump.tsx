@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, type Thread } from "../api";
-import type { Card } from "../cards/types";
+import type { Card } from "@vireo/protocol";
 import { relTime } from "../format";
 import { ArrowUpIcon, HomeIcon, MemoryIcon, SettingsIcon } from "../icons";
 import { go } from "../route";

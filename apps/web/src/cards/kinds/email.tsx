@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { relTime } from "../../format";
 import { Avatar, Frame } from "../Frame";
 import { defineCard } from "../registry";
-import { field } from "../types";
+import { field } from "../util";
 import { parseDate } from "../util";
 
 /** A letter on the left, Vireo's reply on the right. Proposals to send an email reuse it. */

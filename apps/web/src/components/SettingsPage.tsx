@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useGlide } from "../glide";
 import { ChevronLeft } from "../icons";
-import { currentHost } from "../hosts";
-import { HostsSettings } from "./Hosts";
+import type { Credential, UsageByPurpose, User } from "@vireo/protocol";
+import { AccountSettings, NodesSettings } from "./Nodes";
 import { PluginsCard } from "./PluginsCard";
 import { api, type Me, type ModelStatus, type OwnerSettings } from "../api";
 import { setThemeChoice, themeChoice, type ThemeChoice } from "../theme";
@@ -11,11 +11,11 @@ const SECTIONS = [
   { id: "general", label: "General" },
   { id: "model", label: "Model" },
   { id: "plugins", label: "Plugins" },
-  { id: "hosts", label: "Hosts" },
+  { id: "nodes", label: "Nodes" },
   { id: "notifications", label: "Notifications" },
   { id: "sign-ins", label: "Website sign-ins" },
   { id: "usage", label: "Usage" },
-  { id: "device", label: "This device" },
+  { id: "account", label: "Account" },
 ];
 
 /** The section list; the selected section's highlight slides between entries. */
@@ -34,7 +34,7 @@ function SettingsNav({ cur, modelMissing }: { cur: string; modelMissing: boolean
   );
 }
 
-export function SettingsPage({ section, me, reload, onSignedOut }: { section: string; me: Me | null; reload: () => Promise<void>; onSignedOut: () => void }) {
+export function SettingsPage({ section, me, user, reload }: { section: string; me: Me | null; user: User | null; reload: () => Promise<void> }) {
   if (!me) return <div className="page" />;
   // A section can name one item in it, e.g. plugins/google.
   const [base, item] = section.split("/");
@@ -64,8 +64,8 @@ export function SettingsPage({ section, me, reload, onSignedOut }: { section: st
             <Models reload={reload} />
           ) : cur.id === "plugins" ? (
             <PluginsCard reload={reload} focus={item} />
-          ) : cur.id === "hosts" ? (
-            <HostsSettings />
+          ) : cur.id === "nodes" ? (
+            <NodesSettings />
           ) : cur.id === "notifications" ? (
             <>
               <Notifications me={me} reload={reload} />
@@ -76,7 +76,7 @@ export function SettingsPage({ section, me, reload, onSignedOut }: { section: st
           ) : cur.id === "usage" ? (
             <Usage />
           ) : (
-            <Device onSignedOut={onSignedOut} />
+            <AccountSettings user={user} />
           )}
         </div>
       </div>
@@ -93,40 +93,6 @@ function Install() {
         button in Chrome's address bar. Notifications on iPhone work once Vireo is installed to the home screen and served over HTTPS.
       </p>
     </section>
-  );
-}
-
-function Device({ onSignedOut }: { onSignedOut: () => void }) {
-  const [sessions, setSessions] = useState<{ label: string; createdAt: number; lastSeenAt: number }[]>([]);
-  useEffect(() => {
-    void api.get<{ sessions: typeof sessions }>("/api/sessions").then((r) => setSessions(r.sessions));
-  }, []);
-  return (
-    <>
-      <section className="card">
-        <h3>Signed-in devices</h3>
-        <p className="muted small">Every device and app signed in to {currentHost()?.name ?? "this host"}, most recent first.</p>
-        <ul className="rows">
-          {sessions.map((s, i) => (
-            <li key={i} className="row">
-              <div className="row-main">
-                <span className="row-title">{s.label}</span>
-                <span className="muted small">
-                  Signed in {new Date(s.createdAt).toLocaleDateString()} · last seen {new Date(s.lastSeenAt).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}
-                </span>
-              </div>
-            </li>
-          ))}
-        </ul>
-      </section>
-      <section className="card">
-        <h3>Sign out</h3>
-        <p className="muted small">Signs this device out of {currentHost()?.name ?? "this host"}. Other devices stay signed in.</p>
-        <button className="btn" onClick={() => void api.post("/api/auth/logout").then(onSignedOut)}>
-          Sign out of this device
-        </button>
-      </section>
-    </>
   );
 }
 
@@ -375,11 +341,11 @@ function Appearance() {
 }
 
 function SignIns() {
-  const [list, setList] = useState<{ id: string; domain: string; username: string }[]>([]);
+  const [list, setList] = useState<Credential[]>([]);
   const [domain, setDomain] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const load = () => api.get<{ credentials: { id: string; domain: string; username: string }[] }>("/api/credentials").then((r) => setList(r.credentials));
+  const load = () => api.get<{ credentials: Credential[] }>("/api/credentials").then((r) => setList(r.credentials));
   useEffect(() => {
     void load();
   }, []);
@@ -420,7 +386,7 @@ function SignIns() {
 }
 
 function Usage() {
-  const [u, setU] = useState<{ byPurpose: { purpose: string; provider: string; model: string; calls: number; input: number; output: number; cost: number; avg_ms: number }[] } | null>(null);
+  const [u, setU] = useState<{ byPurpose: UsageByPurpose[] } | null>(null);
   useEffect(() => {
     void api.get<typeof u>("/api/usage").then(setU);
   }, []);

@@ -1,5 +1,5 @@
 import { resolve } from "node:path";
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./helpers";
 import { finalReply, startThread } from "./helpers";
 
 const FAKE_TS = resolve("tests/fixtures/fake-tailscale");

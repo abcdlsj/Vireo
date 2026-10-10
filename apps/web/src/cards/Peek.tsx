@@ -4,7 +4,7 @@ import { relTime } from "../format";
 import { ArrowUpIcon, ArrowUpRightIcon, CheckIcon, CloseIcon } from "../icons";
 import { Markdown } from "../markdown";
 import { cardView } from "./registry";
-import type { Card } from "./types";
+import type { Card } from "@vireo/protocol";
 
 /**
  * A card opened from the board: the card in full, what Vireo last said about

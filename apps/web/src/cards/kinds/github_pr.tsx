@@ -1,6 +1,6 @@
 import { Frame } from "../Frame";
 import { defineCard } from "../registry";
-import { field } from "../types";
+import { field } from "../util";
 import { isHttp } from "../util";
 
 const STATE_LABEL: Record<string, string> = { open: "Open", draft: "Draft", merged: "Merged", closed: "Closed" };

@@ -2,7 +2,7 @@ import { fileUrl } from "../../api";
 import { Markdown } from "../../markdown";
 import { Frame } from "../Frame";
 import { defineCard } from "../registry";
-import { field } from "../types";
+import { field } from "../util";
 
 /** Something written to keep: a page of paper with the text fading out. */
 export default defineCard({

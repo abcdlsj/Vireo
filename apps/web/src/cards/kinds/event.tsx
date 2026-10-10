@@ -1,8 +1,8 @@
 import type { ReactNode } from "react";
 import { Avatar, Frame } from "../Frame";
 import { defineCard } from "../registry";
-import type { Card } from "../types";
-import { field } from "../types";
+import type { Card } from "@vireo/protocol";
+import { field } from "../util";
 import { clock, monthShort, parseDate, span, weekday } from "../util";
 
 /** A tear-off calendar page beside the time, people and place. Proposals for invites reuse it. */

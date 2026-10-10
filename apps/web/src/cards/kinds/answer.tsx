@@ -1,7 +1,7 @@
 import { Markdown } from "../../markdown";
 import { Frame, hostOf } from "../Frame";
 import { defineCard } from "../registry";
-import { field } from "../types";
+import { field } from "../util";
 import { isHttp } from "../util";
 
 /** An answer has no box: the conclusion set large, the sources under it. */

@@ -1,7 +1,7 @@
 {
   "name": "@vireo/web",
   "version": "0.1.0",
-  "description": "The Vireo app: a static React PWA that talks to one or more Vireo hosts.",
+  "description": "The Vireo app: a static React PWA. Signs in with the Vireo cloud and talks to the owner's nodes.",
   "private": true,
   "type": "module",
   "license": "MIT",
@@ -9,8 +9,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
-    "serve": "node serve.mjs"
+    "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {
     "@fontsource-variable/inter": "^5.3.0",

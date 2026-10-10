@@ -1,7 +1,7 @@
 import { fileUrl } from "../../api";
 import { Frame } from "../Frame";
 import { defineCard } from "../registry";
-import { field } from "../types";
+import { field } from "../util";
 
 /** A file with a folded corner and the facts read out of it. */
 export default defineCard({

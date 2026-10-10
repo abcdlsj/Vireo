@@ -2102,14 +2102,14 @@ button.link.danger {
   min-width: 140px;
 }
 
-.rename-host {
+.rename-node {
   display: flex;
   gap: 6px;
   align-items: center;
   flex-wrap: wrap;
 }
 
-.rename-host input {
+.rename-node input {
   flex: 1;
   min-width: 140px;
 }
@@ -2255,7 +2255,7 @@ table.usage th {
   word-break: break-all;
 }
 
-/* ---------- hosts ---------- */
+/* ---------- nodes ---------- */
 .brand {
   gap: 4px;
   padding: 0;
@@ -2272,12 +2272,12 @@ table.usage th {
   border-radius: var(--radius-sm);
 }
 
-.host-switch {
+.node-switch {
   position: relative;
   min-width: 0;
 }
 
-.host-switch-btn {
+.node-switch-btn {
   display: flex;
   align-items: center;
   gap: 5px;
@@ -2293,15 +2293,15 @@ table.usage th {
   cursor: pointer;
 }
 
-.host-switch-btn:hover {
+.node-switch-btn:hover {
   background: var(--hover);
 }
 
-.host-switch-btn .icon {
+.node-switch-btn .icon {
   color: var(--muted);
 }
 
-.host-name {
+.node-name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2358,12 +2358,12 @@ table.usage th {
   gap: 6px;
 }
 
-.host-menu .add-host {
+.node-menu .link-form {
   padding: 4px 6px 6px;
   margin: 0;
 }
 
-.login-host .host-switch-btn {
+.login-node .node-switch-btn {
   font-weight: 500;
   font-size: 14px;
   color: var(--text-2);
@@ -2432,7 +2432,7 @@ ul.rows {
   font-weight: 500;
 }
 
-.pair-code {
+.link-code {
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -2442,7 +2442,7 @@ ul.rows {
   background: var(--block);
 }
 
-.pair-code .code {
+.link-code .code {
   font: 600 22px/1.3 var(--mono);
   letter-spacing: 0.08em;
 }
@@ -2592,4 +2592,31 @@ ul.rows {
   select {
     font-size: 16px;
   }
+}
+
+.dot.online {
+  background: var(--accent);
+}
+
+.dot.offline {
+  background: var(--line-strong);
+}
+
+pre.command {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  background: var(--block);
+  font: 500 14px/1.4 var(--mono);
+  user-select: all;
+}
+
+p.account {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+p.account img {
+  border-radius: 50%;
 }

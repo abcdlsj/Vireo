@@ -5,7 +5,7 @@ import "@fontsource-variable/inter/wght.css";
 import "./styles.css";
 import "./cards/cards.css";
 import "./shell.css";
-import { initHosts } from "./hosts";
+import { takeSignIn } from "./cloud";
 import { initTheme } from "./theme";
 
 initTheme();
@@ -20,10 +20,10 @@ if ("serviceWorker" in navigator && location.protocol !== "file:") {
   });
 }
 
-await initHosts();
+const signInError = await takeSignIn();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <App />
+    <App signInError={signInError} />
   </StrictMode>,
 );
