@@ -56,9 +56,14 @@ export function createHttp(cloud: Cloud): Hono<Env> {
     }
     await next();
     if (ok) {
-      c.res.headers.set("access-control-allow-origin", origin!);
-      c.res.headers.set("access-control-expose-headers", "content-disposition");
-      c.res.headers.append("vary", "origin");
+      // A relayed node response comes from fetch and has immutable headers, so
+      // copy them before adding the CORS headers.
+      const res = c.res;
+      const headers = new Headers(res.headers);
+      headers.set("access-control-allow-origin", origin!);
+      headers.set("access-control-expose-headers", "content-disposition");
+      headers.append("vary", "origin");
+      c.res = new Response(res.body, { status: res.status, statusText: res.statusText, headers });
     }
   });
 
