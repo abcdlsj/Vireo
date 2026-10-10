@@ -97,6 +97,7 @@ describe("capabilities", () => {
     const t = app.threads.create({ title: "Check my NAS" });
     const prompt = buildSystemPrompt(app, AGENTS.general!, app.threads.get(t.id)!, "", AGENTS);
     expect(prompt).toContain("- tailscale: Tailscale.");
+    expect(prompt).toMatch(/- tailscale: .*not added \(Vireo can set it up in its browser/);
     expect(prompt).toContain("added, needs setup: Add a Tavily API key");
     expect(prompt).toContain("call suggest_setup");
   });
@@ -107,6 +108,7 @@ describe("capabilities", () => {
     const thread = app.threads.get(t.id)!;
     const out = await app.tools.get("suggest_setup")!.run({ plugin: "tailscale" }, { app, thread, agent: "general" });
     expect(out.text).toContain("[Tailscale](#settings/plugins/tailscale)");
+    expect(out.text).toContain("hand off to browser, which calls plugin_setup");
     await expect(app.tools.get("suggest_setup")!.run({ plugin: "nope" }, { app, thread, agent: "general" })).rejects.toThrow("Unknown plugin");
 
     await app.plugins.install("tailscale", { mode: "system", bin_dir: FAKE_TS });

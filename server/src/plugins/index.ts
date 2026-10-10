@@ -38,6 +38,8 @@ export interface PluginView {
   config: Record<string, unknown>;
   status?: PluginStatus;
   actions: { id: string; label: string; primary?: boolean }[];
+  /** Vireo can set this plugin up in its browser while the owner signs in. */
+  browserSetup: boolean;
 }
 
 /** What the assistant knows about one catalog plugin: whether it can use it now. */
@@ -48,6 +50,8 @@ export interface Capability {
   state: "ready" | "needs_setup" | "not_added";
   /** What is left to do, for a plugin that is added but not ready. */
   message?: string;
+  /** Vireo can set this plugin up in its browser while the owner signs in. */
+  browserSetup: boolean;
 }
 
 /** A thread that asked for something a plugin would make possible, waiting for it to be ready. */
@@ -234,6 +238,7 @@ export class Plugins {
       config: Object.fromEntries(Object.entries(config).filter(([k]) => def.fields.find((f) => f.key === k)?.type !== "secret")),
       status,
       actions: installed ? (runtime.actions?.() ?? []) : [],
+      browserSetup: Boolean(def.browserSetup?.length),
     };
   }
 
@@ -285,13 +290,62 @@ export class Plugins {
   capabilities(): Capability[] {
     if (now() - this.checkedAt > STATUS_TTL) void this.refreshStatuses();
     return CATALOG.map((def) => {
-      const base = { id: def.id, name: def.name, description: def.description };
+      const base = { id: def.id, name: def.name, description: def.description, browserSetup: Boolean(def.browserSetup?.length) };
       if (!this.installed(def.id)) return { ...base, state: "not_added" as const };
       const st = this.statuses.get(def.id);
       // Not checked yet: an added plugin is assumed to work until its status says otherwise.
       if (!st || st.state === "ready") return { ...base, state: "ready" as const };
       return { ...base, state: "needs_setup" as const, message: st.message };
     });
+  }
+
+  /** The plugin's definition, for setup steps and fields. */
+  definition(id: string): PluginDef {
+    return this.def(id);
+  }
+
+  /** A fresh status of one plugin; undefined when it is not added. */
+  async statusOf(id: string): Promise<PluginStatus | undefined> {
+    const r = this.runtime(id);
+    if (!r) return undefined;
+    let st: PluginStatus;
+    try {
+      st = await r.status();
+    } catch (err) {
+      st = { state: "error", message: errorMessage(err) };
+    }
+    this.noteStatus(id, st);
+    return st;
+  }
+
+  /**
+   * Stores one value the agent found on a page (a key it just created),
+   * adding the plugin if needed. The value is checked against the field's
+   * pattern and never returned.
+   */
+  async saveValue(id: string, key: string, value: string): Promise<void> {
+    const def = this.def(id);
+    const field = def.fields.find((f) => f.key === key);
+    if (!field || field.type === "boolean" || field.type === "select") throw new Error(`${def.name} has no text or secret setting "${key}".`);
+    const clean = value.trim();
+    if (!clean) throw new Error("The value is empty.");
+    if (field.pattern && !new RegExp(`^(?:${field.pattern})$`).test(clean)) throw new Error(`That does not look like a ${field.label}.`);
+    if (this.installed(id)) await this.configure(id, { [key]: clean });
+    else await this.install(id, { [key]: clean });
+  }
+
+  /** Secret fields that declare what their values look like, to hide them on pages and find them there. */
+  secretPatterns(): { plugin: string; key: string; label: string; re: RegExp }[] {
+    return CATALOG.flatMap((d) =>
+      d.fields.filter((f) => f.type === "secret" && f.pattern).map((f) => ({ plugin: d.id, key: f.key, label: `${d.name} ${f.label}`, re: new RegExp(f.pattern!, "g") })),
+    );
+  }
+
+  /** Replaces keys that plugins recognise with a placeholder, so page text shown to the model never carries them. */
+  redact(text: string): string {
+    let out = text;
+    for (const p of this.secretPatterns()) out = out.replace(p.re, `[hidden ${p.label}; save it with plugin_save_from_page plugin=${p.plugin} field=${p.key}]`);
+    return out;
   }
 
   /** Remembers that a thread waits on a plugin, to pick the matter up again once it is ready. */

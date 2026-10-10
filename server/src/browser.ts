@@ -62,7 +62,7 @@ export class BrowserService {
   /** Latest frame per thread, kept after the tab closes so the owner can still see where the browser ended up. */
   private frames = new Map<string, Buffer>();
   /** Threads whose browser the owner has taken over; the agent's browser tools wait until it is handed back. */
-  private control = new Map<string, { released: Promise<void>; release: () => void; queue: Promise<void> }>();
+  private control = new Map<string, { released: Promise<void>; release: () => void; queue: Promise<void>; request?: string }>();
 
   constructor(private readonly app: App) {}
 
@@ -239,7 +239,8 @@ export class BrowserService {
     const t = this.tabs(threadId);
     const page = await this.page(threadId);
     await page.waitForLoadState("domcontentloaded").catch(() => undefined);
-    let tree = await (page as AiSnapshotPage)._snapshotForAI({ timeout: 10000 });
+    // Keys a plugin recognises (one the agent just created, say) never reach the model.
+    let tree = this.app.plugins.redact(await (page as AiSnapshotPage)._snapshotForAI({ timeout: 10000 }));
     if (tree.length > TREE_LIMIT) tree = `${tree.slice(0, TREE_LIMIT)}\n- … (truncated; scroll or use browser_read for the rest)`;
     const tabs = await Promise.all(
       t.pages.map(async (p, index) => ({ index, title: await p.title().catch(() => ""), url: p.url(), current: p === page })),
@@ -251,7 +252,32 @@ export class BrowserService {
   async read(threadId: string): Promise<{ url: string; title: string; text: string }> {
     const page = await this.page(threadId);
     const text = await page.evaluate(() => (document.body?.innerText ?? "").replace(/\n{3,}/g, "\n\n"));
-    return { url: page.url(), title: await page.title().catch(() => ""), text: text.slice(0, 20000) };
+    return { url: page.url(), title: await page.title().catch(() => ""), text: this.app.plugins.redact(text).slice(0, 20000) };
+  }
+
+  /**
+   * Text of an element (an input's value, or what it shows), or of the whole
+   * page with the values of its fields, for plugin_save_from_page. Only
+   * server code reads it; it is never returned to the model.
+   */
+  async rawText(threadId: string, ref?: string): Promise<string> {
+    if (ref) {
+      const { loc } = await this.element(threadId, ref);
+      return loc.evaluate((el) => {
+        const v = (el as HTMLInputElement).value;
+        const fields = [...el.querySelectorAll("input, textarea")].map((f) => (f as HTMLInputElement).value);
+        return [typeof v === "string" ? v : "", (el as HTMLElement).innerText ?? el.textContent ?? "", ...fields].join("\n");
+      });
+    }
+    const page = await this.page(threadId);
+    const frames = await Promise.all(
+      page.frames().map((f) =>
+        f
+          .evaluate(() => [document.body?.innerText ?? "", ...[...document.querySelectorAll("input, textarea")].map((el) => (el as HTMLInputElement).value)].join("\n"))
+          .catch(() => ""),
+      ),
+    );
+    return frames.join("\n");
   }
 
   private async element(threadId: string, ref: string): Promise<{ page: Page; loc: Locator }> {
@@ -447,14 +473,48 @@ export class BrowserService {
   }
 
   /** The owner takes the thread's browser; returns false when there is no open tab to take. */
-  takeOver(threadId: string): boolean {
+  takeOver(threadId: string, request?: string): boolean {
     if (!this.hasPage(threadId)) return false;
     if (!this.control.has(threadId)) {
       let release = () => {};
       const released = new Promise<void>((r) => (release = r));
-      this.control.set(threadId, { released, release, queue: Promise.resolve() });
+      this.control.set(threadId, { released, release, queue: Promise.resolve(), request });
     }
     return true;
+  }
+
+  /** What the agent asked the owner to do in the browser, while it waits for them. */
+  request(threadId: string): string | undefined {
+    return this.control.get(threadId)?.request;
+  }
+
+  /**
+   * The agent hands the browser to the owner for something only they should
+   * do (signing in, a captcha, a passkey) and waits until it is handed back.
+   * Returns false when the owner did not hand it back in time.
+   */
+  async askOwner(threadId: string, request: string, timeoutMs: number, signal?: AbortSignal): Promise<boolean> {
+    if (!this.takeOver(threadId, request)) throw new Error("Open the page with browser_open first, then ask the owner.");
+    const c = this.control.get(threadId)!;
+    let timer: NodeJS.Timeout | undefined;
+    const timedOut = new Promise<boolean>((r) => (timer = setTimeout(() => r(true), timeoutMs)));
+    try {
+      const late = await Promise.race([
+        c.released.then(() => false),
+        timedOut,
+        new Promise<boolean>((_, reject) => {
+          if (signal?.aborted) reject(new Error("Stopped"));
+          signal?.addEventListener("abort", () => reject(new Error("Stopped")), { once: true });
+        }),
+      ]);
+      if (late) this.handBack(threadId);
+      return !late;
+    } catch (err) {
+      this.handBack(threadId);
+      throw err;
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   handBack(threadId: string): void {

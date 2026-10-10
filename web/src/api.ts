@@ -174,6 +174,8 @@ export interface PluginView {
   config: Record<string, unknown>;
   status?: { state: string; message: string; details?: { label: string; value: string }[]; link?: { label: string; href: string } };
   actions: { id: string; label: string; primary?: boolean }[];
+  /** Vireo can set this plugin up in its browser while the owner signs in. */
+  browserSetup: boolean;
 }
 
 export class ApiError extends Error {

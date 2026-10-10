@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { App } from "../../server/src/app.js";
 import { formatSnapshot } from "../../server/src/browser.js";
 import { normaliseProxy } from "../../server/src/net.js";
+import { resolve } from "node:path";
 import { testApp } from "./helpers.js";
 
 const PAGES: Record<string, string> = {
@@ -15,6 +16,10 @@ const PAGES: Record<string, string> = {
     <form action="/search" role="search"><input name="q" aria-label="Search"></form>
     <form action="/book" method="post"><label for="n">Name</label><input id="n" name="n"><button>Book table</button></form>`,
   "/second": `<h1>Second page</h1>`,
+  "/keys": `<h1>Access token created</h1>
+    <p>Copy it now; it is shown only once.</p>
+    <input aria-label="Token" readonly value="tskey-api-kQx7Ab3CNTRL-Zp9sWm2Lr8VbT4yHc6NdJf">
+    <button>Done</button>`,
 };
 
 let server: Server;
@@ -116,6 +121,62 @@ describe("browser", () => {
     stop.abort();
     await expect(wait).rejects.toThrow(/Stopped/);
     app.browser.handBack(t.id);
+  });
+});
+
+describe("browser-assisted setup", () => {
+  const KEY = "tskey-api-kQx7Ab3CNTRL-Zp9sWm2Lr8VbT4yHc6NdJf";
+
+  it("hands the browser to the owner with a request and resumes when it comes back", async () => {
+    const t = app.threads.create({});
+    await expect(app.browser.askOwner(t.id, "Sign in", 1000)).rejects.toThrow(/browser_open/);
+    await app.browser.open(t.id, `${base}/second`);
+    const asked = app.browser.askOwner(t.id, "Sign in to Tailscale", 60_000);
+    expect(app.browser.isControlled(t.id)).toBe(true);
+    expect(app.browser.request(t.id)).toBe("Sign in to Tailscale");
+    app.browser.handBack(t.id);
+    expect(await asked).toBe(true);
+
+    // Not handed back in time: the agent gets the browser again.
+    expect(await app.browser.askOwner(t.id, "Sign in", 50)).toBe(false);
+    expect(app.browser.isControlled(t.id)).toBe(false);
+  });
+
+  it("hides a key it recognises from the model and saves it straight into the plugin", async () => {
+    await app.plugins.install("tailscale", { mode: "system", bin_dir: resolve("tests/fixtures/fake-tailscale") });
+    try {
+      const t = app.threads.create({});
+      const snap = await app.browser.open(t.id, `${base}/keys`);
+      expect(snap.tree).not.toContain(KEY);
+      expect(snap.tree).toContain("[hidden Tailscale API access token");
+      expect((await app.browser.read(t.id)).text).not.toContain(KEY);
+
+      const thread = app.threads.get(t.id)!;
+      const out = await app.tools.get("plugin_save_from_page")!.run({ plugin: "tailscale", field: "api_key" }, { app, thread, agent: "browser" });
+      expect(out.text).toContain("Saved the API access token to Tailscale");
+      expect(out.text).not.toContain(KEY);
+      expect(app.plugins.config("tailscale").api_key).toBe(KEY);
+      // A field the key does not fit is refused.
+      await expect(app.plugins.saveValue("tailscale", "auth_key", KEY)).rejects.toThrow(/does not look like/);
+    } finally {
+      await app.plugins.uninstall("tailscale");
+    }
+  });
+
+  it("gives the steps, the sign-in state and which settings are filled", async () => {
+    await app.plugins.install("tailscale", { mode: "system", bin_dir: resolve("tests/fixtures/fake-tailscale") });
+    try {
+      const thread = app.threads.get(app.threads.create({}).id)!;
+      const out = await app.tools.get("plugin_setup")!.run({ plugin: "tailscale" }, { app, thread, agent: "browser" });
+      expect(out.text).toContain("Tailscale: ready");
+      expect(out.text).toContain("- api_key (API access token): not set");
+      expect(out.text).toContain("Generate access token");
+      expect(out.text).toContain("plugin_save_from_page");
+      const google = await app.tools.get("plugin_setup")!.run({ plugin: "google" }, { app, thread, agent: "browser" });
+      expect(google.text).toContain("#settings/plugins/google");
+    } finally {
+      await app.plugins.uninstall("tailscale");
+    }
   });
 });
 

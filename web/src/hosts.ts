@@ -18,9 +18,22 @@ export interface Host {
 
 const LIST = "vireo.hosts";
 const CURRENT = "vireo.host";
+/** The owner's own name for this machine; unset shows "This machine". */
+const LOCAL_NAME = "vireo.host.local.name";
 export const LOCAL_ID = "local";
+export const LOCAL_DEFAULT_NAME = "This machine";
+/** Fired on window when a host is renamed, so every place showing its name updates. */
+export const HOSTS_CHANGED = "vireo:hosts-changed";
 
-const LOCAL: Host = { id: LOCAL_ID, name: "This machine", url: "" };
+function local(): Host {
+  let name = "";
+  try {
+    name = localStorage.getItem(LOCAL_NAME)?.trim() ?? "";
+  } catch {
+    // Storage blocked: keep the default name.
+  }
+  return { id: LOCAL_ID, name: name || LOCAL_DEFAULT_NAME, url: "" };
+}
 
 function stored(): Host[] {
   try {
@@ -46,7 +59,7 @@ export async function initHosts(): Promise<void> {
 }
 
 export function hosts(): Host[] {
-  return [...(hasLocal ? [LOCAL] : []), ...stored()];
+  return [...(hasLocal ? [local()] : []), ...stored()];
 }
 
 export function currentHost(): Host | undefined {
@@ -77,8 +90,16 @@ export function switchHost(id: string): void {
   location.reload();
 }
 
+/** Renames a host on this device; an empty name puts this machine back to "This machine". */
 export function renameHost(id: string, name: string): void {
-  save(stored().map((h) => (h.id === id ? { ...h, name: name.trim() || h.name } : h)));
+  if (id === LOCAL_ID) {
+    const clean = name.trim().slice(0, 60);
+    if (!clean || clean === LOCAL_DEFAULT_NAME) localStorage.removeItem(LOCAL_NAME);
+    else localStorage.setItem(LOCAL_NAME, clean);
+  } else {
+    save(stored().map((h) => (h.id === id ? { ...h, name: name.trim() || h.name } : h)));
+  }
+  window.dispatchEvent(new Event(HOSTS_CHANGED));
 }
 
 export function removeHost(id: string): void {

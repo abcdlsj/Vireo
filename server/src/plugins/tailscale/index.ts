@@ -93,14 +93,20 @@ export const tailscalePlugin: PluginDef = {
         { value: "system", label: "Use Tailscale already running on this machine" },
       ],
     },
-    { key: "auth_key", label: "Auth key", type: "secret", placeholder: "tskey-auth-…", help: "Optional. Without one, Vireo shows a sign-in link. Create one under Settings → Keys in the Tailscale admin console." },
+    { key: "auth_key", label: "Auth key", type: "secret", placeholder: "tskey-auth-…", pattern: "tskey-auth-[A-Za-z0-9]+-[A-Za-z0-9]+", help: "Optional. Without one, Vireo shows a sign-in link. Create one under Settings → Keys in the Tailscale admin console." },
     { key: "hostname", label: "Machine name", type: "text", default: "vireo" },
     { key: "control_url", label: "Control server", type: "text", placeholder: "https://controlplane.tailscale.com", help: "Only for Headscale or another self-hosted control server." },
-    { key: "api_key", label: "API access token", type: "secret", placeholder: "tskey-api-…", help: "Optional. Lets Vireo authorise, remove and tag machines. Create one under Settings → Keys." },
+    { key: "api_key", label: "API access token", type: "secret", placeholder: "tskey-api-…", pattern: "tskey-api-[A-Za-z0-9]+-[A-Za-z0-9]+", help: "Optional. Lets Vireo authorise, remove and tag machines. Create one under Settings → Keys." },
     { key: "tailnet", label: "Tailnet", type: "text", default: "-", help: "“-” means the token's default tailnet." },
     { key: "ssh_user", label: "SSH user", type: "text", default: "root" },
     { key: "ssh_key", label: "SSH private key", type: "secret", multiline: true, help: "Optional. Not needed for machines with Tailscale SSH enabled." },
     { key: "bin_dir", label: "Tailscale binaries directory", type: "text", placeholder: "/usr/local/bin", help: "Where tailscale and tailscaled are; empty uses PATH." },
+  ],
+  browserSetup: [
+    "Join the tailnet. If the status above has a sign-in link, browser_open it and call browser_ask_owner so the owner signs in and presses Connect. Then call plugin_setup again: the state should be ready. With no link and state login, the node is still starting: browser_wait a few seconds and check again.",
+    "If no sign-in link ever appears (the node cannot reach the login server, or the owner prefers a key), open https://login.tailscale.com/admin/settings/keys instead, ask the owner to sign in there if a sign-in page shows, click “Generate auth key…”, keep the defaults (one use is enough), press Generate, and save it with plugin_save_from_page field auth_key.",
+    "Device management (authorise, remove, tag machines) needs an API access token. Ask the owner whether they want it unless they already said so. If yes: open https://login.tailscale.com/admin/settings/keys (sign-in via browser_ask_owner if needed), click “Generate access token…”, describe it as “Vireo”, keep the default expiry, press Generate, then call plugin_save_from_page with field api_key while the token is on screen, and close the dialog with Done.",
+    "Finish with plugin_setup to confirm, and tell the owner what is set up; mention when the access token expires if you created one (90 days by default).",
   ],
   create(ctx) {
     const cfg = () => ctx.config<TsConfig>();

@@ -373,6 +373,8 @@ function UsageView({ threadId, detail }: { threadId: string; detail: ThreadDetai
 interface Control {
   page: boolean;
   controlled: boolean;
+  /** What Vireo asked the owner to do, when it handed the browser over itself. */
+  request?: string;
 }
 
 const KEY_NAMES: Record<string, string> = { " ": "Space" };
@@ -412,6 +414,23 @@ function BrowserView({ threadId, running }: { threadId: string; running: boolean
   useEffect(() => {
     void api.get<Control>(`/api/threads/${threadId}/browser/control`).then(setControl).catch(() => undefined);
   }, [threadId, running, state]);
+  // While Vireo works it may hand the browser over (to sign in); notice that and open it full size.
+  useEffect(() => {
+    if (!running || control.controlled) return;
+    const t = window.setInterval(() => {
+      void api
+        .get<Control>(`/api/threads/${threadId}/browser/control`)
+        .then((c) => {
+          setControl(c);
+          if (c.controlled && c.request) {
+            setFull(true);
+            window.setTimeout(() => stage.current?.focus(), 0);
+          }
+        })
+        .catch(() => undefined);
+    }, 1500);
+    return () => window.clearInterval(t);
+  }, [threadId, running, control.controlled]);
 
   const next = () => {
     window.clearTimeout(timer.current);
@@ -569,7 +588,13 @@ function BrowserView({ threadId, running }: { threadId: string; running: boolean
           }}
           {...input}
         />
-        {control.controlled ? <p className="muted fine">Vireo waits while you use the browser. Hand it back when you're done.</p> : null}
+        {control.controlled && control.request ? (
+          <p className="browser-request" data-testid="browser-request">
+            <b>Vireo asks:</b> {control.request.replace(/[.。!！]+$/, "")}. Hand the browser back when you're done.
+          </p>
+        ) : control.controlled ? (
+          <p className="muted fine">Vireo waits while you use the browser. Hand it back when you're done.</p>
+        ) : null}
       </div>
     </div>
   );

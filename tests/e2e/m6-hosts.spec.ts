@@ -32,6 +32,22 @@ test.describe("Milestone 6 — Hosts", () => {
     await expect(page.getByTestId("host-switch")).toContainText("This machine");
   });
 
+  test("[M6.3] this machine can be renamed, and back", async ({ page }) => {
+    await page.goto("/#settings/hosts");
+    const row = page.getByTestId("host-row").filter({ hasText: "This machine" });
+    await row.getByTestId("rename-host").click();
+    await page.getByTestId("host-name-input").fill("Studio Mac");
+    await page.getByTestId("host-name-input").press("Enter");
+    await expect(page.getByTestId("host-row").first()).toContainText("Studio Mac");
+    await expect(page.getByTestId("host-switch")).toContainText("Studio Mac");
+
+    // Clearing the name puts the default back.
+    await page.getByTestId("host-row").first().getByTestId("rename-host").click();
+    await page.getByTestId("host-name-input").fill("");
+    await page.getByTestId("host-name-input").press("Enter");
+    await expect(page.getByTestId("host-switch")).toContainText("This machine");
+  });
+
   test("[M6.2] the host serves no UI of its own", async ({ request }) => {
     const res = await request.get(`${HOST}/`);
     expect(await res.text()).toContain("is a Vireo host");

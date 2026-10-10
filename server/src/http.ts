@@ -370,7 +370,7 @@ export function createHttp(app: App): Hono<Env> {
 
   api.get("/api/threads/:id/browser/control", (c) => {
     const id = c.req.param("id");
-    return c.json({ page: app.browser.hasPage(id), controlled: app.browser.isControlled(id) });
+    return c.json({ page: app.browser.hasPage(id), controlled: app.browser.isControlled(id), request: app.browser.request(id) });
   });
 
   api.post("/api/threads/:id/browser/control", async (c) => {

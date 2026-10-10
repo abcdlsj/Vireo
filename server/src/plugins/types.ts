@@ -23,6 +23,12 @@ export interface ConfigField {
   help?: string;
   /** Multi-line input (keys, certificates). */
   multiline?: boolean;
+  /**
+   * Regular expression a valid value matches (e.g. "tskey-api-[A-Za-z0-9]+-[A-Za-z0-9]+").
+   * For secrets it also hides the value on pages the agent reads, and lets
+   * plugin_save_from_page find it there.
+   */
+  pattern?: string;
 }
 
 export interface PluginStatus {
@@ -99,5 +105,11 @@ export interface PluginDef {
   author: string;
   homepage?: string;
   fields: ConfigField[];
+  /**
+   * Steps for setting the plugin up in Vireo's browser: the agent opens the
+   * pages, the owner signs in by hand, and the agent creates keys and saves
+   * them with plugin_save_from_page, so secrets never pass through the chat.
+   */
+  browserSetup?: string[];
   create(ctx: PluginContext): PluginRuntime;
 }

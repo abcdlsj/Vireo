@@ -1280,6 +1280,14 @@ button.link.danger {
   font-size: 12px;
 }
 
+.browser-stage .browser-request {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: var(--radius);
+  background: var(--accent-soft, var(--block));
+  font-size: 13px;
+}
+
 /* ---------- action & procedure cards (callout blocks) ---------- */
 .action-card,
 .procedure-card {
@@ -2073,6 +2081,18 @@ button.link.danger {
   min-width: 140px;
 }
 
+.rename-host {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.rename-host input {
+  flex: 1;
+  min-width: 140px;
+}
+
 .row-buttons {
   display: flex;
   gap: 8px;
@@ -2144,6 +2164,7 @@ table.usage th {
 .plugin-row p {
   margin: 2px 0 0;
 }
+
 
 .plugin-catalog {
   margin: 10px 0;

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, onEvent, type PluginField, type PluginView } from "../api";
+import { api, onEvent, type PluginField, type PluginView, type Thread } from "../api";
+import { go } from "../route";
 
 /**
  * Settings → Plugins: installed plugins with their settings, plus the
@@ -54,6 +55,11 @@ export function PluginsCard({ reload, focus }: { reload: () => Promise<void>; fo
               <div>
                 <b>{p.name}</b> <span className="muted small">by {p.author}</span>
                 <p className="muted small">{p.description}</p>
+                {p.browserSetup ? (
+                  <p className="muted small">
+                    Or let Vireo set it up: it opens the sign-in page in its browser, you sign in, it creates the keys. <SetUpWithVireo plugin={p} run={run} />
+                  </p>
+                ) : null}
               </div>
               <button className="btn small primary" data-testid={`add-plugin-${p.id}`} onClick={() => void run(() => api.post(`/api/plugins/${p.id}`, {}))}>
                 Add
@@ -67,6 +73,29 @@ export function PluginsCard({ reload, focus }: { reload: () => Promise<void>; fo
         <Plugin key={p.id} plugin={p} run={run} focused={p.id === focus} />
       ))}
     </section>
+  );
+}
+
+/**
+ * Starts a thread where Vireo sets the plugin up in its own browser: it opens
+ * the pages, the owner signs in there, and Vireo saves the keys it creates.
+ */
+async function setUpWithVireo(p: PluginView): Promise<void> {
+  const { thread } = await api.post<{ thread: Thread }>("/api/threads", { text: `Set up the ${p.name} plugin for me in your browser. I'll sign in when you need me to.` });
+  go(`#thread/${thread.id}`);
+}
+
+function SetUpWithVireo({ plugin, run, primary }: { plugin: PluginView; run: (fn: () => Promise<unknown>) => Promise<void>; primary?: boolean }) {
+  if (!plugin.browserSetup) return null;
+  return (
+    <button
+      className={`btn small${primary ? " primary" : " ghost"}`}
+      title="Vireo opens the sign-in page in its browser; you sign in, it creates the keys and saves them here"
+      onClick={() => void run(() => setUpWithVireo(plugin))}
+      data-testid={`setup-with-vireo-${plugin.id}`}
+    >
+      Set up with Vireo
+    </button>
   );
 }
 
@@ -106,6 +135,7 @@ function Plugin({ plugin: p, run, focused }: { plugin: PluginView; run: (fn: () 
         </dl>
       ) : null}
       <div className="row-buttons">
+        {st && st.state !== "ready" ? <SetUpWithVireo plugin={p} run={run} primary={!st.link} /> : null}
         {p.actions.map((a) => (
           <button
             key={a.id}

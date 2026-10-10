@@ -1,11 +1,17 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
-import { currentHost, hosts, LOCAL_ID, pairHost, removeHost, renameHost, switchHost, type Host } from "../hosts";
+import { currentHost, hosts, HOSTS_CHANGED, LOCAL_DEFAULT_NAME, LOCAL_ID, pairHost, removeHost, renameHost, switchHost, type Host } from "../hosts";
 import { ChevronDown, PlusIcon } from "../icons";
 
 /** Sidebar control showing the current host; switches between paired hosts. */
 export function HostSwitcher() {
   const [open, setOpen] = useState(false);
+  const [, bump] = useState(0);
+  useEffect(() => {
+    const on = () => bump((n) => n + 1);
+    window.addEventListener(HOSTS_CHANGED, on);
+    return () => window.removeEventListener(HOSTS_CHANGED, on);
+  }, []);
   const [adding, setAdding] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const cur = currentHost();
@@ -114,6 +120,7 @@ export function AddHostForm({ onCancel, host }: { onCancel?: () => void; host?: 
 export function HostsSettings() {
   const [, bump] = useState(0);
   const [adding, setAdding] = useState(false);
+  const [renaming, setRenaming] = useState<string | null>(null);
   const [code, setCode] = useState<{ code: string; expiresAt: number; urls: string[]; name: string } | null>(null);
   const cur = currentHost();
   return (
@@ -126,9 +133,19 @@ export function HostsSettings() {
           {hosts().map((h) => (
             <li key={h.id} className="row" data-testid="host-row">
               <div className="row-main">
-                <span className="row-title">
-                  {h.name} {h.id === cur?.id ? <span className="tag">current</span> : null}
-                </span>
+                {renaming === h.id ? (
+                  <RenameHost
+                    host={h}
+                    onDone={() => {
+                      setRenaming(null);
+                      bump((n) => n + 1);
+                    }}
+                  />
+                ) : (
+                  <span className="row-title">
+                    {h.name} {h.id === cur?.id ? <span className="tag">current</span> : null}
+                  </span>
+                )}
                 <span className="muted small">{h.url || "Proxied by this app (same machine)"}</span>
               </div>
               <div className="row-buttons">
@@ -137,32 +154,23 @@ export function HostsSettings() {
                     Switch
                   </button>
                 ) : null}
+                {renaming !== h.id ? (
+                  <button className="btn small ghost" onClick={() => setRenaming(h.id)} data-testid="rename-host">
+                    Rename
+                  </button>
+                ) : null}
                 {h.id !== LOCAL_ID ? (
-                  <>
-                    <button
-                      className="btn small ghost"
-                      onClick={() => {
-                        const name = prompt("Name for this host", h.name);
-                        if (name) {
-                          renameHost(h.id, name);
-                          bump((n) => n + 1);
-                        }
-                      }}
-                    >
-                      Rename
-                    </button>
-                    <button
-                      className="btn small ghost"
-                      onClick={() => {
-                        if (!confirm(`Remove ${h.name}? This device signs out of it; the host and its data stay.`)) return;
-                        removeHost(h.id);
-                        if (h.id === cur?.id) switchHost(LOCAL_ID);
-                        else bump((n) => n + 1);
-                      }}
-                    >
-                      Remove
-                    </button>
-                  </>
+                  <button
+                    className="btn small ghost"
+                    onClick={() => {
+                      if (!confirm(`Remove ${h.name}? This device signs out of it; the host and its data stay.`)) return;
+                      removeHost(h.id);
+                      if (h.id === cur?.id) switchHost(LOCAL_ID);
+                      else bump((n) => n + 1);
+                    }}
+                  >
+                    Remove
+                  </button>
                 ) : null}
               </div>
             </li>
@@ -186,5 +194,35 @@ export function HostsSettings() {
         </button>
       </section>
     </>
+  );
+}
+
+/** Inline rename; names live on this device, like the list of hosts itself. */
+function RenameHost({ host, onDone }: { host: Host; onDone: () => void }) {
+  const [name, setName] = useState(host.name);
+  return (
+    <form
+      className="rename-host"
+      onSubmit={(e) => {
+        e.preventDefault();
+        renameHost(host.id, name);
+        onDone();
+      }}
+    >
+      <input
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        onKeyDown={(e) => e.key === "Escape" && onDone()}
+        placeholder={host.id === LOCAL_ID ? LOCAL_DEFAULT_NAME : "Host name"}
+        maxLength={60}
+        aria-label="Host name"
+        autoFocus
+        data-testid="host-name-input"
+      />
+      <button className="btn small primary">Save</button>
+      <button type="button" className="btn small ghost" onClick={onDone}>
+        Cancel
+      </button>
+    </form>
   );
 }

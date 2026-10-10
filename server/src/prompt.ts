@@ -99,7 +99,7 @@ function capabilityLines(caps: ReturnType<App["plugins"]["capabilities"]>): stri
   out.push("Capabilities that are not ready (plugin id: what it adds — state):");
   for (const c of missing) {
     const state = c.state === "not_added" ? "not added" : `added, needs setup: ${truncateLine(c.message ?? "", 160)}`;
-    out.push(`- ${c.id}: ${c.name}. ${c.description} — ${state}`);
+    out.push(`- ${c.id}: ${c.name}. ${c.description} — ${state}${c.browserSetup ? " (Vireo can set it up in its browser while the owner signs in)" : ""}`);
   }
   out.push(
     "When the owner asks for something only one of these makes possible, do not improvise a workaround or refuse vaguely: call suggest_setup with its id and reply with what it returns. Do what you can without it first only when that still answers the request.",

@@ -181,6 +181,71 @@ const tools = [
     },
   }),
   defineTool({
+    name: "browser_ask_owner",
+    label: "Hand the browser to you",
+    description: [
+      "Hand this thread's browser to the owner for something only they should do: signing in (password, SSO, two-factor, passkey), a captcha, or a choice that is theirs to make.",
+      "Open the page first. The owner sees it in Vireo, does the step by hand and hands the browser back; this call waits until then (up to 20 minutes) and returns the page as it is now.",
+      "Never ask the owner for their password or codes in chat instead.",
+    ].join(" "),
+    parameters: Type.Object({
+      request: Type.String({ description: "What the owner should do, short and in their language, e.g. 'Sign in to Tailscale and press Connect'" }),
+    }),
+    untrusted: true,
+    async run(args, ctx) {
+      const request = args.request.trim().slice(0, 120);
+      ctx.app.threads.setStatus(ctx.thread.id, `Waiting for you in the browser: ${request}`);
+      void ctx.app.push.notify({ title: "Vireo needs you in the browser", body: request, url: `/#thread/${ctx.thread.id}`, tag: `browser-${ctx.thread.id}` });
+      const done = await ctx.app.browser.askOwner(ctx.thread.id, request, 20 * 60_000, ctx.signal);
+      const snap = await ctx.app.browser.snapshot(ctx.thread.id);
+      const out = snapshotOutput(ctx, snap);
+      return {
+        ...out,
+        text: done
+          ? `The owner handed the browser back. Check the page below to see whether "${request}" is done.\n\n${out.text}`
+          : `The owner did not hand the browser back within 20 minutes, so you have it again. Say in the thread what is still needed and stop; do not retry.\n\n${out.text}`,
+      };
+    },
+  }),
+  defineTool({
+    name: "plugin_save_from_page",
+    label: "Save a key into a plugin",
+    description: [
+      "Save a key or token that is on the current page (one you just created in a service's console) into a plugin's settings.",
+      "Keys a plugin recognises are hidden from you on pages; this reads the real value from the page itself, checks it, stores it encrypted and restarts the plugin. You never see it and must never repeat it.",
+      "Pass ref to read one element (the field or box showing the key); without ref the whole page is searched for the field's format.",
+    ].join(" "),
+    parameters: Type.Object({
+      plugin: Type.String({ description: "Plugin id, e.g. 'tailscale'" }),
+      field: Type.String({ description: "Setting key from plugin_setup, e.g. 'api_key'" }),
+      ref: Type.Optional(Ref),
+    }),
+    async run(args, ctx) {
+      await ctx.app.browser.waitForOwner(ctx.thread.id, ctx.signal);
+      const def = ctx.app.plugins.definition(args.plugin);
+      const field = def.fields.find((f) => f.key === args.field);
+      if (!field) throw new Error(`${def.name} has no setting "${args.field}". Settings: ${def.fields.map((f) => f.key).join(", ")}.`);
+      const raw = await ctx.app.browser.rawText(ctx.thread.id, args.ref);
+      let value: string | undefined;
+      if (field.pattern) {
+        const found = [...new Set(raw.match(new RegExp(field.pattern, "g")) ?? [])];
+        if (found.length > 1) throw new Error(`The page shows ${found.length} different values that look like a ${field.label}; pass the ref of the one you created.`);
+        value = found[0];
+      } else if (args.ref) {
+        value = raw.split("\n").map((l) => l.trim()).find(Boolean);
+      } else {
+        throw new Error(`Pass the ref of the element that shows the ${field.label}.`);
+      }
+      if (!value) throw new Error(`No ${field.label} found ${args.ref ? "in that element" : "on the page"}. Make sure it is shown (some consoles show a key only once, right after it is created).`);
+      await ctx.app.plugins.saveValue(def.id, field.key, value);
+      const st = await ctx.app.plugins.statusOf(def.id);
+      return {
+        text: `Saved the ${field.label} to ${def.name}${field.type === "secret" ? " (encrypted; it stays hidden)" : ""}. ${def.name} is now ${st?.state ?? "added"}${st?.message ? `: ${st.message}` : "."}`,
+        details: { plugin: def.id, field: field.key, state: st?.state },
+      };
+    },
+  }),
+  defineTool({
     name: "list_credentials",
     label: "List sign-ins",
     description: "List sites with stored sign-in credentials (domains and usernames only; passwords are never shown).",
