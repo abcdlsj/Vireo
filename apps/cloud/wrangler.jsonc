@@ -16,13 +16,13 @@
   "routes": [{ "pattern": "cloud.askvireo.com", "custom_domain": true }],
   "vars": {
     "VIREO_CLOUD_URL": "https://cloud.askvireo.com",
-    "VIREO_WEB_URL": "https://askvireo.com",
+    "VIREO_WEB_URL": "https://www.askvireo.com",
     // More app origins allowed to call the cloud, comma-separated (e.g. Vercel previews).
     "VIREO_WEB_ORIGINS": "",
     // The GitHub OAuth app's client ID; its secret is set with `wrangler secret put GITHUB_CLIENT_SECRET`.
-    "GITHUB_CLIENT_ID": ""
+    "GITHUB_CLIENT_ID": "Iv23li7ykv7YDXhH9ZaV"
   },
-  "d1_databases": [{ "binding": "DB", "database_name": "vireo-cloud", "database_id": "REPLACE_WITH_DATABASE_ID" }],
+  "d1_databases": [{ "binding": "DB", "database_name": "vireo-cloud", "database_id": "e98015fe-be8f-447d-b66b-0aa3267d5594" }],
   "durable_objects": { "bindings": [{ "name": "RELAY", "class_name": "NodeRelay" }] },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["NodeRelay"] }],
   "observability": { "enabled": true },
