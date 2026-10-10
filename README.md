@@ -21,7 +21,7 @@ Open http://localhost:8780, choose a password, and start a thread.
 
 A host is a headless Vireo with its own threads, memory, plugins and model settings. Run one wherever the agent should live, and pair the app with it:
 
-1. On the VPS or machine: `cd deploy/vps && docker compose up -d` (host behind Caddy with HTTPS, see [deploy/README.md](deploy/README.md)), or `npm install && npm run build:host && OPENAI_API_KEY=sk-... npm run host`.
+1. On the VPS or machine: `cd deploy/vps && docker compose up -d` (just the host on :8787; Caddy, the UI and LiteLLM are opt-in, see [deploy/README.md](deploy/README.md)), or `npm install && npm run build:host && OPENAI_API_KEY=sk-... npm run host`.
 2. The host prints a pairing code and a link, for example `http://203.0.113.5:8787#pair=K7QM2XPA`.
 3. In the app, open the host name at the top of the sidebar → **Add host**, and paste the link (or the address plus the code).
 
@@ -124,7 +124,7 @@ Preferences such as time zone, working hours and which proactive checks run are 
 apps/host          @vireo/host: Hono HTTP + SSE, runner, agents, memory, scheduler, tools, pairing
 apps/host/src/plugins  Community plugins (Google, Tailscale, ...): tools, agents, settings
 apps/web           @vireo/web: the React PWA, a static build; serve.mjs serves it when self-hosted
-deploy/vps         Compose for a host on a VPS (Caddy HTTPS, optional UI and LiteLLM)
+deploy/vps         Compose for a host on a VPS (optional Caddy, UI and LiteLLM)
 Dockerfile         Two targets: host (default) and web
 tests/unit         Vitest: memory, time, vault, context, confirmations
 tests/e2e          Playwright: one test per PRD acceptance criterion

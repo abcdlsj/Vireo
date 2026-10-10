@@ -11,9 +11,11 @@
 #
 #   DEPLOY_HOST        ssh host (default tenc_sh)
 #   DEPLOY_DIR         directory on the server, relative to home (default vireo)
-#   VIREO_DOMAIN       serve the host over HTTPS at this domain (Caddy). Without
-#                      it, the UI runs on the server too, at VIREO_APP_PORT.
-#   VIREO_APP_URL      where the UI is served when it is not on the server (Vercel...)
+#   What runs is picked from these (Caddy and the server's UI are opt-in):
+#   VIREO_DOMAIN       put the host behind Caddy with HTTPS at this domain
+#   VIREO_APP_URL      the UI is served elsewhere (Vercel...): run the host alone,
+#                      published on :8787
+#   neither            the host plus the UI on the server, at VIREO_APP_PORT
 #   VIREO_APP_BIND     address the server's UI listens on (default 0.0.0.0)
 #   VIREO_APP_PORT     port the server's UI listens on (default 8780)
 #   VIREO_PUBLIC_URL   address the host is reached at (default derived from the above)
@@ -25,14 +27,17 @@ VIREO_DOMAIN="${VIREO_DOMAIN:-}"
 VIREO_APP_URL="${VIREO_APP_URL:-}"
 VIREO_APP_BIND="${VIREO_APP_BIND:-0.0.0.0}"
 VIREO_APP_PORT="${VIREO_APP_PORT:-8780}"
+SERVER_IP="$(ssh -G "$DEPLOY_HOST" | awk '/^hostname /{print $2}')"
+HEALTH_URL="http://127.0.0.1:8787/api/health"
 if [[ -n "$VIREO_DOMAIN" ]]; then
-  PROFILES=https
+  PROFILES=https VIREO_BIND=127.0.0.1
   VIREO_PUBLIC_URL="${VIREO_PUBLIC_URL:-https://$VIREO_DOMAIN}"
-  HEALTH_URL="http://127.0.0.1:8787/api/health"
+elif [[ -n "$VIREO_APP_URL" ]]; then
+  PROFILES= VIREO_BIND=0.0.0.0
+  VIREO_PUBLIC_URL="${VIREO_PUBLIC_URL:-http://$SERVER_IP:8787}"
 else
-  PROFILES=app
-  VIREO_PUBLIC_URL="${VIREO_PUBLIC_URL:-http://$(ssh -G "$DEPLOY_HOST" | awk '/^hostname /{print $2}'):$VIREO_APP_PORT}"
-  HEALTH_URL="http://127.0.0.1:$VIREO_APP_PORT/api/health"
+  PROFILES=app VIREO_BIND=127.0.0.1
+  VIREO_PUBLIC_URL="${VIREO_PUBLIC_URL:-http://$SERVER_IP:$VIREO_APP_PORT}"
 fi
 
 cd "$(dirname "$0")/.."
@@ -71,6 +76,7 @@ cp deploy/vps/compose.sync.yaml "$STAGE/compose.override.yaml"
 cat >"$STAGE/.env" <<EOF
 COMPOSE_PROJECT_NAME=vireo
 COMPOSE_PROFILES=$PROFILES
+VIREO_BIND=$VIREO_BIND
 VIREO_DOMAIN=$VIREO_DOMAIN
 VIREO_PUBLIC_URL=$VIREO_PUBLIC_URL
 VIREO_APP_URL=$VIREO_APP_URL

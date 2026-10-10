@@ -11,21 +11,27 @@ The app talks to hosts straight from the browser with a token it gets by pairing
 
 ## 1. The host on a VPS
 
-On the server (Docker with Compose), with a domain whose DNS points at it:
+On the server (Docker with Compose):
 
 ```bash
 git clone https://github.com/abcdlsj/vireo && cd vireo/deploy/vps
-cp .env.example .env              # VIREO_DOMAIN, and VIREO_APP_URL once the app is up
+cp .env.example .env              # optional: VIREO_APP_URL, profiles, domain
 cp host.env.example host.env      # model endpoint and key (or set them later in Settings)
-docker compose up -d              # host + Caddy (automatic HTTPS)
+docker compose up -d              # just the host, on :8787
 docker compose logs host          # the pairing code, and a one-click link if VIREO_APP_URL is set
 ```
+
+By default only the host runs, published on port 8787. Everything else is an opt-in profile in `COMPOSE_PROFILES`:
+
+- `https`: Caddy with automatic HTTPS for `VIREO_DOMAIN` (DNS pointing at the server). Set `VIREO_BIND=127.0.0.1` so only Caddy reaches the host.
+- `app`: the UI on the server too, on `VIREO_APP_PORT` (8780), proxying `/api` to the host.
+- `litellm`: a LiteLLM proxy for providers without an OpenAI-compatible API; point `VIREO_LLM_BASE_URL` at `http://litellm:4000/v1` in `host.env`. It reads `deploy/litellm.config.yaml`.
+
+An app served over HTTPS (Vercel, Cloudflare) can only reach an HTTPS host. Without the `https` profile, put the host behind your own proxy or `tailscale serve --bg 8787`, and set `VIREO_PUBLIC_URL` to that address.
 
 Update with `git pull && docker compose pull && docker compose up -d`. Everything the host keeps is in `deploy/vps/data`; back that up.
 
 - The image is `ghcr.io/abcdlsj/vireo-host`, published by `.github/workflows/images.yml` on every push to `main` (amd64 and arm64). If the package is private, `docker login ghcr.io` on the server first, or set `VIREO_IMAGE` to your own.
-- **LiteLLM** for providers without an OpenAI-compatible API: add `litellm` to `COMPOSE_PROFILES` and point `VIREO_LLM_BASE_URL` at `http://litellm:4000/v1` in `host.env`. It reads `deploy/litellm.config.yaml`.
-- **No domain?** Set `COMPOSE_PROFILES=app` to serve the UI from the server too (on `VIREO_APP_PORT`, proxying `/api` to the host), or put the host on HTTPS with `tailscale serve --bg 8787` and `VIREO_BIND=0.0.0.0`.
 - A new pairing code: `docker compose exec host npm run pair`.
 
 ### Without a registry: `scripts/deploy.sh`
@@ -33,8 +39,11 @@ Update with `git pull && docker compose pull && docker compose up -d`. Everythin
 From your own checkout, `scripts/deploy.sh` builds the host locally, syncs it over SSH and restarts it with the same compose file. The server builds nothing; `compose.sync.yaml` runs the synced build on the Playwright image.
 
 ```bash
-DEPLOY_HOST=my-vps VIREO_DOMAIN=vireo.example.com VIREO_APP_URL=https://vireo.vercel.app scripts/deploy.sh
-DEPLOY_HOST=my-vps scripts/deploy.sh    # no domain: the UI runs on the server too, at http://<ip>:8780
+DEPLOY_HOST=my-vps scripts/deploy.sh    # host plus the UI on the server, at http://<ip>:8780 (as before)
+DEPLOY_HOST=my-vps VIREO_APP_URL=https://vireo.vercel.app VIREO_PUBLIC_URL=https://vps.example.com scripts/deploy.sh
+                                        # host only; the UI is elsewhere
+DEPLOY_HOST=my-vps VIREO_DOMAIN=vireo.example.com scripts/deploy.sh
+                                        # host behind Caddy (opt-in)
 ```
 
 `data/` and `host.env` on the server are never touched.

@@ -1,19 +1,21 @@
 # Vireo host on a VPS. The UI is normally served elsewhere (Vercel,
 # Cloudflare) and pairs with this host; see deploy/README.md.
 #
-#   cp .env.example .env            # VIREO_DOMAIN and which profiles to run
+#   cp .env.example .env            # optional: profiles, domain, port
 #   cp host.env.example host.env    # model endpoint and keys (or set them in Settings)
 #   docker compose up -d
 #   docker compose logs host        # pairing code
 #
-#   host     the headless host (agent + API), always on
-#   caddy    profile "https": TLS for VIREO_DOMAIN, proxying to the host
-#   app      profile "app": the UI on this server too, on VIREO_APP_PORT,
+#   host     the headless host (agent + API) on VIREO_PORT (8787); the only
+#            service that runs by default
+#   caddy    optional, profile "https": TLS for VIREO_DOMAIN, proxying to the host
+#   app      optional, profile "app": the UI on this server too, on VIREO_APP_PORT,
 #            proxying /api to the host (for setups without a domain)
-#   litellm  profile "litellm": for providers without an OpenAI-compatible API
+#   litellm  optional, profile "litellm": for providers without an OpenAI-compatible API
 #
 # Profiles come from COMPOSE_PROFILES in .env. An app served over HTTPS can
-# only use HTTPS hosts; without a domain, `tailscale serve --bg 8787` is one way.
+# only use HTTPS hosts: use the https profile, your own proxy, or
+# `tailscale serve --bg 8787`.
 services:
   host:
     image: ${VIREO_IMAGE:-ghcr.io/abcdlsj/vireo-host:latest}
@@ -21,7 +23,7 @@ services:
     restart: unless-stopped
     shm_size: 1gb
     ports:
-      - "${VIREO_BIND:-127.0.0.1}:${VIREO_PORT:-8787}:8787"
+      - "${VIREO_BIND:-0.0.0.0}:${VIREO_PORT:-8787}:8787"
     volumes:
       # Everything Vireo keeps: database, files, browser profile, keys.
       - ./data:/data
