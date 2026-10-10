@@ -17,7 +17,12 @@
   --c-soft: #f6f6f2;
   --c-chip: #e6e7e0;
   --c-accent: #2f6446;
+  --c-accent-hover: #285a3d;
+  --c-on-accent: #ffffff;
   --c-accent-soft: #dfe8de;
+  /* The selected row in a list: paper with a hairline, not a raised card. */
+  --c-selected: #ffffff;
+  --c-selected-ring: 0 0 0 1px rgba(30, 30, 20, 0.07);
   --c-needs: #d9730d;
   --c-needs-ink: #9a4f0c;
   --c-warm: #fbf3e4;
@@ -28,8 +33,9 @@
   --c-live: #8fd1a6;
   --c-plus: #2f7d4a;
   --c-minus: #b2423a;
-  --c-shadow: 0 0 0 1px rgba(30, 30, 20, 0.04), 0 1px 2px rgba(30, 30, 20, 0.04), 0 12px 32px -8px rgba(30, 30, 20, 0.12);
-  --c-shadow-hover: 0 0 0 1px rgba(30, 30, 20, 0.06), 0 2px 4px rgba(30, 30, 20, 0.05), 0 18px 40px -10px rgba(30, 30, 20, 0.18);
+  /* Surfaces sit on the page with a hairline and a short, soft shadow; only pop-ups float. */
+  --c-shadow: 0 0 0 1px rgba(30, 30, 20, 0.055), 0 1px 2px rgba(30, 30, 20, 0.04), 0 6px 18px -8px rgba(30, 30, 20, 0.1);
+  --c-shadow-hover: 0 0 0 1px rgba(30, 30, 20, 0.08), 0 2px 4px rgba(30, 30, 20, 0.05), 0 14px 32px -12px rgba(30, 30, 20, 0.18);
   --c-radius: 22px;
   --c-height: 300px;
 }
@@ -46,7 +52,11 @@
   --c-soft: #282824;
   --c-chip: #2c2c27;
   --c-accent: #7cc296;
+  --c-accent-hover: #8fcfa6;
+  --c-on-accent: #0f1a13;
   --c-accent-soft: #24352a;
+  --c-selected: rgba(255, 255, 255, 0.07);
+  --c-selected-ring: none;
   --c-needs: #e8954a;
   --c-needs-ink: #f0b37a;
   --c-warm: #2c241a;
@@ -141,10 +151,10 @@
 
 .home-greet h1 {
   margin: 0;
-  font-size: 30px;
-  line-height: 36px;
-  font-weight: 600;
-  letter-spacing: -0.025em;
+  font-size: 32px;
+  line-height: 38px;
+  font-weight: 650;
+  letter-spacing: -0.018em;
   text-wrap: balance;
 }
 
@@ -185,16 +195,30 @@
   border-radius: 20px;
   border: none;
   background: var(--c-accent);
-  color: #fff;
+  color: var(--c-on-accent);
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   align-self: flex-end;
+  transition:
+    background 0.18s ease,
+    color 0.18s ease,
+    transform 0.18s var(--spring, ease);
 }
 
+.ask button:not(:disabled):hover {
+  background: var(--c-accent-hover);
+}
+
+.ask button:not(:disabled):active {
+  transform: scale(0.94);
+}
+
+/* Empty: a quiet grey disc, so it never reads as a washed-out green. */
 .ask button:disabled {
-  opacity: 0.4;
+  background: var(--c-chip);
+  color: var(--c-ink-3);
   cursor: default;
 }
 
@@ -811,15 +835,16 @@
 }
 
 .cbtn.primary {
-  background: var(--c-ink);
-  border-color: var(--c-ink);
-  color: var(--c-paper);
+  background: var(--c-accent);
+  border-color: var(--c-accent);
+  color: var(--c-on-accent);
   font-weight: 600;
   padding: 0 20px;
 }
 
 .cbtn.primary:hover {
-  opacity: 0.9;
+  background: var(--c-accent-hover);
+  border-color: var(--c-accent-hover);
 }
 
 .cbtn.ghost {

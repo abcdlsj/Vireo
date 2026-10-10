@@ -1,6 +1,8 @@
 /*
  * The thread, memory and settings pages in the same language as the home
- * board: the warm canvas, white surfaces with soft shadows, round controls.
+ * board: the warm canvas, white surfaces with a hairline and a short shadow,
+ * round controls. Selected rows are tinted rather than raised, and the one
+ * primary action on screen is always the sage accent.
  * Loaded after styles.css and only restyles; layout stays where it is.
  */
 .shell {
@@ -45,12 +47,26 @@
 }
 
 .shell .thread-row:hover {
-  background: rgba(30, 30, 20, 0.05);
+  background: var(--c-hover);
 }
 
 .shell .thread-row.active {
-  background: var(--c-paper);
-  box-shadow: var(--c-shadow);
+  background: var(--c-selected);
+  box-shadow: var(--c-selected-ring);
+}
+
+/* Times stay out of the way until you point at a row. */
+.shell .thread-row .time {
+  color: var(--c-ink-3);
+  opacity: 0.7;
+  font-variant-numeric: tabular-nums;
+  transition: opacity 0.15s ease;
+}
+
+@media (hover: hover) {
+  .shell .thread-row:not(:hover):not(.active) .time {
+    opacity: 0;
+  }
 }
 
 .shell .thread-row.active .title {
@@ -89,9 +105,9 @@
 }
 
 .shell .nav-item.active {
-  background: var(--c-paper);
+  background: var(--c-selected);
+  box-shadow: var(--c-selected-ring);
   color: var(--c-ink);
-  box-shadow: var(--c-shadow);
 }
 
 /* ---------- middle: the conversation ---------- */
@@ -115,8 +131,8 @@
 
 .shell .head-actions .btn.ghost:hover,
 .shell .head-actions .btn.ghost.on {
-  background: var(--c-paper);
-  box-shadow: var(--c-shadow);
+  background: var(--c-hover);
+  color: var(--c-ink);
 }
 
 .shell .page-head {
@@ -127,10 +143,11 @@
 .shell .page-head h1,
 .shell .page-title,
 .shell .title-input {
-  font-size: 28px;
-  line-height: 34px;
-  font-weight: 600;
-  letter-spacing: -0.02em;
+  font-size: 30px;
+  line-height: 36px;
+  font-weight: 650;
+  letter-spacing: -0.018em;
+  text-wrap: balance;
 }
 
 .shell .props {
@@ -144,11 +161,11 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  min-height: 30px;
-  padding: 0 12px;
-  border-radius: 15px;
-  background: var(--c-paper);
-  box-shadow: var(--c-shadow);
+  min-height: 28px;
+  padding: 0 11px;
+  border-radius: 14px;
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--c-line);
   font-size: 13px;
 }
 
@@ -161,9 +178,20 @@
 }
 
 .shell .props dd .tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   background: transparent;
   padding: 0;
   font-weight: 600;
+}
+
+.shell .props dd .tag::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
 }
 
 .shell .props dd .tag.orange {
@@ -176,11 +204,10 @@
 }
 
 .shell .msg.user .bubble {
-  background: var(--c-paper);
+  background: var(--c-accent-soft);
   color: var(--c-ink);
   padding: 9px 16px;
   border-radius: 20px 20px 6px 20px;
-  box-shadow: var(--c-shadow);
 }
 
 .shell .msg.vireo-task {
@@ -204,13 +231,19 @@
 
 .shell .action-card.pending {
   box-shadow:
-    inset 3px 0 0 var(--c-needs),
+    0 0 0 1px color-mix(in srgb, var(--c-needs) 45%, transparent),
+    0 0 0 4px color-mix(in srgb, var(--c-needs) 10%, transparent),
     var(--c-shadow);
+}
+
+.shell .action-card.pending .action-kind {
+  color: var(--c-needs-ink);
+  font-weight: 600;
 }
 
 .shell .action-card.failed {
   box-shadow:
-    inset 3px 0 0 var(--c-minus),
+    0 0 0 1px color-mix(in srgb, var(--c-minus) 45%, transparent),
     var(--c-shadow);
 }
 
@@ -220,11 +253,16 @@
   padding: 7px 16px;
 }
 
-.shell .action-card .btn.primary,
-.shell .procedure-card .btn.primary {
-  background: var(--c-ink);
-  border-color: var(--c-ink);
-  color: var(--c-paper);
+.shell .btn.primary {
+  background: var(--c-accent);
+  border-color: var(--c-accent);
+  color: var(--c-on-accent);
+  box-shadow: none;
+}
+
+.shell .btn.primary:hover {
+  background: var(--c-accent-hover);
+  border-color: var(--c-accent-hover);
 }
 
 .shell .composer {
@@ -250,11 +288,30 @@
   height: 36px;
   border-radius: 18px;
   background: var(--c-accent);
-  color: #fff;
+  color: var(--c-on-accent);
+  transition:
+    background 0.18s ease,
+    color 0.18s ease,
+    transform 0.18s var(--spring);
+}
+
+.shell .composer .send:not(:disabled):hover {
+  background: var(--c-accent-hover);
+}
+
+.shell .composer .send:not(:disabled):active {
+  transform: scale(0.94);
 }
 
 .shell .composer .send:disabled {
-  opacity: 0.4;
+  background: var(--c-chip);
+  color: var(--c-ink-3);
+  opacity: 1;
+}
+
+.shell .composer .send.stop {
+  background: var(--c-ink);
+  color: var(--c-paper);
 }
 
 /* ---------- right: details, a card of its own ---------- */
@@ -296,7 +353,9 @@
   background: var(--c-paper);
   color: var(--c-ink);
   font-weight: 600;
-  box-shadow: 0 1px 2px rgba(30, 30, 20, 0.08);
+  box-shadow:
+    0 0 0 1px var(--c-hairline),
+    0 1px 2px rgba(30, 30, 20, 0.06);
 }
 
 .shell .panel-tabs .close {
@@ -428,14 +487,45 @@
 }
 
 .shell .settings-nav-item:hover {
-  background: rgba(30, 30, 20, 0.05);
+  background: var(--c-hover);
 }
 
 .shell .settings-nav-item.active {
-  background: var(--c-paper);
+  background: var(--c-selected);
+  box-shadow: var(--c-selected-ring);
   color: var(--c-ink);
   font-weight: 600;
-  box-shadow: var(--c-shadow);
+}
+
+/* Fields in settings: one height, one radius, the accent ring on focus. */
+.shell .settings :is(input:not([type="checkbox"]):not([type="radio"]), select) {
+  min-height: 38px;
+  border-radius: 10px;
+  border-color: var(--c-line);
+  background: var(--c-paper);
+  color: var(--c-ink);
+}
+
+.shell .settings textarea {
+  border-radius: 10px;
+  border-color: var(--c-line);
+  background: var(--c-paper);
+}
+
+.shell .settings :is(input, select, textarea):focus {
+  border-color: var(--c-accent);
+  box-shadow: 0 0 0 3px var(--c-accent-soft);
+}
+
+.shell .settings label {
+  color: var(--c-ink-2);
+}
+
+.shell .settings .btn {
+  border-radius: 18px;
+  padding: 7px 16px;
+  border-color: var(--c-line);
+  box-shadow: none;
 }
 
 @media (max-width: 760px) {
@@ -462,7 +552,7 @@
 }
 
 .shell .steps-toggle:hover {
-  background: rgba(30, 30, 20, 0.05);
+  background: var(--c-hover);
   color: var(--c-ink-2);
 }
 
@@ -700,14 +790,14 @@
 }
 
 .shell .sidebar-nav .nav-item:hover {
-  background: rgba(30, 30, 20, 0.05);
+  background: var(--c-hover);
   color: var(--c-ink);
 }
 
 .shell .sidebar-nav .nav-item.active {
-  background: var(--c-paper);
+  background: var(--c-selected);
+  box-shadow: var(--c-selected-ring);
   color: var(--c-ink);
-  box-shadow: var(--c-shadow);
 }
 
 .sidebar-nav .nav-item span:not(.nav-count) {
@@ -738,10 +828,6 @@
   line-height: 18px;
   text-align: center;
   font-variant-numeric: tabular-nums;
-}
-
-:root[data-theme="dark"] .shell .sidebar-nav .nav-item:hover {
-  background: rgba(255, 255, 255, 0.05);
 }
 
 @media (max-width: 760px) {
@@ -938,8 +1024,8 @@
 }
 
 .glide-active {
-  background: var(--c-paper);
-  box-shadow: var(--c-shadow);
+  background: var(--c-selected);
+  box-shadow: var(--c-selected-ring);
 }
 
 .qj-box .glide-active {
@@ -1008,6 +1094,12 @@
   .shell :focus-within {
     scrollbar-color: var(--c-scroll) transparent;
   }
+}
+
+/* One focus ring for anything reached by keyboard. */
+.shell :is(button, a, [tabindex]):focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--c-accent) 60%, transparent);
+  outline-offset: 2px;
 }
 
 @media (prefers-reduced-motion: reduce) {
