@@ -8,7 +8,7 @@ import { spawn } from "node:child_process";
 const node = [process.execPath, "--env-file-if-exists=.env", "--disable-warning=ExperimentalWarning"];
 const cloudUrl = process.env.VIREO_CLOUD_URL ?? "http://localhost:8700";
 const children = [
-  spawn(node[0], [...node.slice(1), "apps/cloud/dist/index.js"], { stdio: "inherit", env: { VIREO_WEB_DIR: "apps/web/dist", ...process.env } }),
+  spawn(node[0], [...node.slice(1), "apps/cloud/dist/node/index.js"], { stdio: "inherit", env: { VIREO_WEB_DIR: "apps/web/dist", ...process.env } }),
   spawn(node[0], [...node.slice(1), "apps/node/dist/index.js"], { stdio: "inherit", env: { ...process.env, VIREO_CLOUD_URL: cloudUrl } }),
 ];
 let exiting = false;

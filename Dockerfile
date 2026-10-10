@@ -8,7 +8,7 @@
 
 # Build stages run on the builder's platform: their output is plain JS (the
 # production dependencies have no native modules), so it suits every target.
-FROM --platform=$BUILDPLATFORM node:22-alpine AS base
+FROM --platform=$BUILDPLATFORM node:22-bookworm-slim AS base
 WORKDIR /app
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 COPY package.json package-lock.json ./
@@ -41,7 +41,7 @@ VOLUME ["/data"]
 EXPOSE 8700
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
   CMD node -e "fetch('http://127.0.0.1:'+(process.env.VIREO_CLOUD_PORT||8700)+'/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
-CMD ["node", "--disable-warning=ExperimentalWarning", "dist/index.js"]
+CMD ["node", "--disable-warning=ExperimentalWarning", "dist/node/index.js"]
 
 # ---- node ----
 FROM base AS node-build

@@ -11,3 +11,4 @@ acceptance-report.md
 .wrangler/
 .vercel/
 .env*.local
+.dev.vars

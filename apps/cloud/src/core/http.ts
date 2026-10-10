@@ -1,22 +1,7 @@
-import { serveStatic } from "@hono/node-server/serve-static";
 import type { CloudInfo, LinkStartRequest, User } from "@vireo/protocol";
 import { Hono, type Context } from "hono";
-import { existsSync } from "node:fs";
-import { join, relative } from "node:path";
-import type { Accounts } from "./accounts.js";
-import type { CloudConfig } from "./config.js";
-import type { SigningKey } from "./keys.js";
-import type { Nodes } from "./nodes.js";
-import type { Relay } from "./relay.js";
+import type { Cloud } from "./cloud.js";
 import { errorMessage } from "./util.js";
-
-export interface Cloud {
-  config: CloudConfig;
-  accounts: Accounts;
-  nodes: Nodes;
-  relay: Relay;
-  key: SigningKey;
-}
 
 type Env = { Variables: { user: User } };
 
@@ -41,8 +26,9 @@ function limiter(max: number, windowMs: number) {
   };
 }
 
+/** The cloud's HTTP API; the same on every runtime. */
 export function createHttp(cloud: Cloud): Hono<Env> {
-  const { config, accounts, nodes, relay, key } = cloud;
+  const { config, accounts, nodes, hub, key } = cloud;
   const app = new Hono<Env>();
   const origins = new Set([new URL(config.webUrl).origin, new URL(config.publicUrl).origin, ...config.extraOrigins.map((o) => new URL(o).origin)]);
   const allowed = (origin: string | undefined) => Boolean(origin && origins.has(origin));
@@ -92,21 +78,21 @@ export function createHttp(cloud: Cloud): Hono<Env> {
     }
   };
 
-  app.get("/auth/github", (c) => {
+  app.get("/auth/github", async (c) => {
     if (!config.github) return c.text("GitHub sign-in is not configured on this Vireo cloud (GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET).", 404);
     const back = returnTo(c);
     if (!back) return c.text("Unknown app address.", 400);
-    return c.redirect(accounts.githubAuthorizeUrl(accounts.begin(back)));
+    return c.redirect(accounts.githubAuthorizeUrl(await accounts.begin(back)));
   });
 
   app.get("/auth/github/callback", async (c) => {
-    const back = accounts.takeState(c.req.query("state") ?? "");
+    const back = await accounts.takeState(c.req.query("state") ?? "");
     if (!back) return c.text("This sign-in link has expired. Start again from the Vireo app.", 400);
     const code = c.req.query("code");
     if (!code) return c.redirect(`${back}/#sign-in-error=${encodeURIComponent(c.req.query("error_description") ?? "GitHub sign-in was cancelled")}`);
     try {
       const user = await accounts.githubUser(code);
-      return c.redirect(`${back}/#signed-in=${accounts.issueCode(user.id)}`);
+      return c.redirect(`${back}/#signed-in=${await accounts.issueCode(user.id)}`);
     } catch (err) {
       return c.redirect(`${back}/#sign-in-error=${encodeURIComponent(errorMessage(err))}`);
     }
@@ -114,7 +100,7 @@ export function createHttp(cloud: Cloud): Hono<Env> {
 
   app.post("/api/auth/exchange", async (c) => {
     const { code } = await c.req.json<{ code?: string }>();
-    const out = code ? accounts.redeem(code) : undefined;
+    const out = code ? await accounts.redeem(code) : undefined;
     return out ? c.json(out) : c.json({ error: "That sign-in has expired. Sign in again." }, 401);
   });
 
@@ -123,60 +109,60 @@ export function createHttp(cloud: Cloud): Hono<Env> {
       const { login } = await c.req.json<{ login?: string }>();
       const clean = (login ?? "").trim().toLowerCase().replace(/[^a-z0-9-]/g, "");
       if (!clean) return c.json({ error: "Enter a name" }, 400);
-      return c.json(accounts.redeem(accounts.issueCode(accounts.upsertDev(clean).id)));
+      return c.json(await accounts.redeem(await accounts.issueCode((await accounts.upsertDev(clean)).id)));
     });
   }
 
-  app.post("/api/auth/logout", (c) => {
+  app.post("/api/auth/logout", async (c) => {
     const t = bearer(c);
-    if (t) accounts.signOut(t);
+    if (t) await accounts.signOut(t);
     return c.json({ ok: true });
   });
 
   // ---- what a node calls before it belongs to anyone ----
   app.post("/api/link/start", async (c) => {
     if (!linkLimit(clientKey(c))) return c.json({ error: "Too many attempts. Try again in a minute." }, 429);
-    return c.json(nodes.startLink(await c.req.json<LinkStartRequest>()));
+    return c.json(await nodes.startLink(await c.req.json<LinkStartRequest>()));
   });
   app.post("/api/link/poll", async (c) => {
     const { deviceCode } = await c.req.json<{ deviceCode?: string }>();
-    return c.json(nodes.poll(deviceCode ?? ""));
+    return c.json(await nodes.poll(deviceCode ?? ""));
   });
 
   // ---- signed-in ----
   const signedIn = new Hono<Env>();
   signedIn.use("*", async (c, next) => {
-    const user = accounts.session(bearer(c));
+    const user = await accounts.session(bearer(c));
     if (!user) return c.json({ error: "Not signed in" }, 401);
     c.set("user", user);
     await next();
   });
   signedIn.get("/me", (c) => c.json({ user: c.get("user") }));
-  signedIn.get("/nodes", (c) => c.json({ nodes: nodes.forUser(c.get("user").id) }));
+  signedIn.get("/nodes", async (c) => c.json({ nodes: await nodes.forUser(c.get("user").id) }));
   signedIn.patch("/nodes/:id", async (c) => {
     const { name } = await c.req.json<{ name?: string }>();
-    if (!name?.trim() || !nodes.rename(c.get("user").id, c.req.param("id"), name)) return c.json({ error: "Not found" }, 404);
-    return c.json({ node: nodes.owned(c.get("user").id, c.req.param("id")) });
+    if (!name?.trim() || !(await nodes.rename(c.get("user").id, c.req.param("id"), name))) return c.json({ error: "Not found" }, 404);
+    return c.json({ node: await nodes.owned(c.get("user").id, c.req.param("id")) });
   });
-  signedIn.delete("/nodes/:id", (c) => {
-    if (!nodes.remove(c.get("user").id, c.req.param("id"))) return c.json({ error: "Not found" }, 404);
-    relay.drop(c.req.param("id"));
+  signedIn.delete("/nodes/:id", async (c) => {
+    if (!(await nodes.remove(c.get("user").id, c.req.param("id")))) return c.json({ error: "Not found" }, 404);
+    await hub.drop(c.req.param("id"));
     return c.json({ ok: true });
   });
-  signedIn.post("/nodes/:id/token", (c) => {
-    const access = nodes.access(c.get("user"), c.req.param("id"));
+  signedIn.post("/nodes/:id/token", async (c) => {
+    const access = await nodes.access(c.get("user"), c.req.param("id"));
     return access ? c.json(access) : c.json({ error: "Not found" }, 404);
   });
-  signedIn.get("/link/:code", (c) => {
-    const req = nodes.linkRequest(c.req.param("code"));
+  signedIn.get("/link/:code", async (c) => {
+    const req = await nodes.linkRequest(c.req.param("code"));
     return req ? c.json({ request: req }) : c.json({ error: "That code is wrong or has expired. Run `npx vireo-node` again for a new one." }, 404);
   });
   signedIn.post("/link/:code/approve", async (c) => {
     const { name } = await c.req.json<{ name?: string }>().catch(() => ({ name: undefined }));
-    const node = nodes.approve(c.get("user"), c.req.param("code"), name);
+    const node = await nodes.approve(c.get("user"), c.req.param("code"), name);
     return node ? c.json({ node }) : c.json({ error: "That code is wrong or has expired. Run `npx vireo-node` again for a new one." }, 404);
   });
-  signedIn.post("/link/:code/deny", (c) => c.json({ ok: nodes.deny(c.req.param("code")) }));
+  signedIn.post("/link/:code/deny", async (c) => c.json({ ok: await nodes.deny(c.req.param("code")) }));
   app.route("/api", signedIn);
 
   // ---- relay to nodes ----
@@ -184,23 +170,17 @@ export function createHttp(cloud: Cloud): Hono<Env> {
     const nodeId = c.req.param("nodeId");
     const url = new URL(c.req.url);
     const path = url.pathname.slice(`/n/${nodeId}`.length) + url.search;
-    const node = nodes.get(nodeId);
+    const node = await nodes.get(nodeId);
     if (!node) return c.json({ error: "No such node" }, 404);
     // OAuth callbacks and webhooks check their own state on the node.
     if (!path.startsWith("/public/")) {
       const token = bearer(c) ?? url.searchParams.get("access_token") ?? undefined;
-      const claims = token ? key.verify(token) : undefined;
+      const claims = token ? await key.verify(token) : undefined;
       if (!claims || claims.aud !== nodeId || claims.sub !== node.ownerId) return c.json({ error: "Not signed in" }, 401);
     }
     if (node.mode === "tailscale") return c.json({ error: "This node is reached over your tailnet, not through the cloud." }, 409);
-    return relay.forward(nodeId, c.req.raw, path);
+    return hub.forward(nodeId, c.req.raw, path);
   });
 
-  // ---- the app itself, when this cloud serves it ----
-  if (config.webDir && existsSync(config.webDir)) {
-    const root = relative(process.cwd(), config.webDir) || ".";
-    app.use("*", serveStatic({ root }));
-    app.get("*", serveStatic({ path: join(root, "index.html") }));
-  }
   return app;
 }

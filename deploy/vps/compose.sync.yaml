@@ -7,7 +7,7 @@ services:
     image: node:22-alpine
     pull_policy: missing
     working_dir: /app/apps/cloud
-    command: ["node", "--disable-warning=ExperimentalWarning", "dist/index.js"]
+    command: ["node", "--disable-warning=ExperimentalWarning", "dist/node/index.js"]
     volumes:
       - ./app:/app:ro
     environment:

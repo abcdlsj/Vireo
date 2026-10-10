@@ -7,7 +7,7 @@ DIR=${1:-/tmp/vireo-demo}
 PORT=${PORT:-8799}
 rm -rf "$DIR"
 VIREO_CLOUD_PORT="$PORT" VIREO_CLOUD_DATA_DIR="$DIR/cloud" VIREO_WEB_DIR=apps/web/dist VIREO_DEV_LOGIN=1 \
-  node --disable-warning=ExperimentalWarning apps/cloud/dist/index.js &
+  node --disable-warning=ExperimentalWarning apps/cloud/dist/node/index.js &
 trap 'kill $!' EXIT
 VIREO_DATA_DIR="$DIR/node" VIREO_CLOUD_URL="http://localhost:$PORT" VIREO_PORT=$((PORT + 1)) \
   VIREO_FAKE_MODEL=1 VIREO_FAKE_GOOGLE=1 VIREO_TEST_MODE=1 VIREO_SCHEDULER=off \

@@ -4,6 +4,9 @@ import { errorMessage } from "./util.js";
 
 const CHUNK = 64 * 1024;
 const MAX_BACKOFF = 30_000;
+/** How often the node checks the socket; the cloud answers without waking up. */
+const PING_EVERY = 30_000;
+const PING = JSON.stringify({ t: "ping" } satisfies NodeToCloud);
 
 /**
  * Keeps this node's socket to the cloud open. The cloud sends the app's
@@ -18,6 +21,10 @@ export class RelayClient {
   private backoff = 1000;
   private retry: NodeJS.Timeout | undefined;
   private readonly inflight = new Map<number, AbortController>();
+  /** Request bodies still arriving, by request. */
+  private readonly bodies = new Map<number, { frame: RelayRequest; parts: Buffer[] }>();
+  private heartbeat: NodeJS.Timeout | undefined;
+  private pongAt = 0;
   /** Set once the cloud accepted this node. */
   connected = false;
   lastError = "";
@@ -42,6 +49,7 @@ export class RelayClient {
   stop(): void {
     this.stopped = true;
     clearTimeout(this.retry);
+    clearInterval(this.heartbeat);
     this.ws?.close(1000, "Node stopping");
     for (const c of this.inflight.values()) c.abort();
     this.inflight.clear();
@@ -54,7 +62,7 @@ export class RelayClient {
 
   private connect(): void {
     const { identity } = this.opts;
-    const ws = new WebSocket(`${identity.cloudUrl.replace(/^http/, "ws")}/api/nodes/connect`);
+    const ws = new WebSocket(`${identity.cloudUrl.replace(/^http/, "ws")}/api/nodes/${identity.nodeId}/connect`);
     this.ws = ws;
     ws.onopen = () => {
       this.send({
@@ -77,15 +85,31 @@ export class RelayClient {
         this.connected = true;
         this.backoff = 1000;
         this.lastError = "";
-      } else if (frame.t === "ping") this.send({ t: "pong" });
-      else if (frame.t === "req") void this.serve(frame);
-      else if (frame.t === "cancel") this.inflight.get(frame.id)?.abort();
+        this.beat(ws);
+      } else if (frame.t === "pong") this.pongAt = Date.now();
+      else if (frame.t === "req") {
+        if (frame.hasBody) this.bodies.set(frame.id, { frame, parts: [] });
+        else void this.serve(frame);
+      } else if (frame.t === "body") {
+        const b = this.bodies.get(frame.id);
+        if (!b) return;
+        if (frame.data) b.parts.push(Buffer.from(frame.data, "base64url"));
+        if (frame.end) {
+          this.bodies.delete(frame.id);
+          void this.serve(b.frame, Buffer.concat(b.parts));
+        }
+      } else if (frame.t === "cancel") {
+        this.bodies.delete(frame.id);
+        this.inflight.get(frame.id)?.abort();
+      }
     };
     ws.onerror = () => {
       this.lastError = `Can't reach ${identity.cloudUrl}`;
     };
     ws.onclose = (ev) => {
       this.connected = false;
+      clearInterval(this.heartbeat);
+      this.bodies.clear();
       for (const c of this.inflight.values()) c.abort();
       this.inflight.clear();
       if (this.stopped) return;
@@ -100,18 +124,29 @@ export class RelayClient {
     };
   }
 
+  /** Pings the cloud; a socket that stops answering is replaced. */
+  private beat(ws: WebSocket): void {
+    clearInterval(this.heartbeat);
+    this.pongAt = Date.now();
+    this.heartbeat = setInterval(() => {
+      if (Date.now() - this.pongAt > PING_EVERY * 2.5) return ws.close(4008, "No answer from the cloud");
+      if (ws.readyState === WebSocket.OPEN) ws.send(PING);
+    }, PING_EVERY);
+    this.heartbeat.unref();
+  }
+
   private send(frame: NodeToCloud): void {
     if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify(frame));
   }
 
-  private async serve(frame: RelayRequest): Promise<void> {
+  private async serve(frame: RelayRequest, body?: Buffer): Promise<void> {
     const abort = new AbortController();
     this.inflight.set(frame.id, abort);
     try {
       const req = new Request(`http://node${frame.path}`, {
         method: frame.method,
         headers: { ...frame.headers, "x-vireo-relay": "1" },
-        body: frame.body ? Buffer.from(frame.body, "base64") : undefined,
+        body: body ? new Uint8Array(body) : undefined,
         signal: abort.signal,
       });
       const res = await this.opts.handle(req);

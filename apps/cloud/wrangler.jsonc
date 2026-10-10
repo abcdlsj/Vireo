@@ -1,0 +1,31 @@
+// The Vireo cloud on Cloudflare Workers. From apps/cloud:
+//
+//   npx wrangler login
+//   npx wrangler d1 create vireo-cloud          # paste its database_id below
+//   npx wrangler secret put GITHUB_CLIENT_SECRET
+//   npx wrangler deploy
+//
+// Tables are made on first use, and the key that signs node tokens is made
+// and kept in D1. Each node's relay socket lives in a NodeRelay Durable
+// Object, which hibernates while nothing is in flight.
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "vireo-cloud",
+  "main": "src/worker/index.ts",
+  "compatibility_date": "2026-09-01",
+  "routes": [{ "pattern": "cloud.askvireo.com", "custom_domain": true }],
+  "vars": {
+    "VIREO_CLOUD_URL": "https://cloud.askvireo.com",
+    "VIREO_WEB_URL": "https://askvireo.com",
+    // More app origins allowed to call the cloud, comma-separated (e.g. Vercel previews).
+    "VIREO_WEB_ORIGINS": "",
+    // The GitHub OAuth app's client ID; its secret is set with `wrangler secret put GITHUB_CLIENT_SECRET`.
+    "GITHUB_CLIENT_ID": ""
+  },
+  "d1_databases": [{ "binding": "DB", "database_name": "vireo-cloud", "database_id": "REPLACE_WITH_DATABASE_ID" }],
+  "durable_objects": { "bindings": [{ "name": "RELAY", "class_name": "NodeRelay" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["NodeRelay"] }],
+  "observability": { "enabled": true },
+  // `wrangler dev` on the cloud's usual port, clear of a node's 8787.
+  "dev": { "port": 8700 }
+}

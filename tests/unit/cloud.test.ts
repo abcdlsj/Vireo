@@ -1,8 +1,10 @@
 import type { LinkStart, NodeAccess, NodeSummary } from "@vireo/protocol";
+import { spawn } from "node:child_process";
 import { createServer } from "node:net";
+import { resolve } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { loadConfig as cloudConfig } from "../../apps/cloud/src/config.js";
-import { runCloud, type RunningCloud } from "../../apps/cloud/src/server.js";
+import { loadConfig as cloudConfig } from "../../apps/cloud/src/node/config.js";
+import { runCloud, type RunningCloud } from "../../apps/cloud/src/node/server.js";
 import { loadConfig as nodeConfig } from "../../apps/node/src/config.js";
 import { runNode, type RunningNode } from "../../apps/node/src/server.js";
 import { tempDir } from "./helpers.js";
@@ -26,8 +28,44 @@ async function until<T>(fn: () => Promise<T | undefined> | T | undefined, ms = 1
   }
 }
 
-describe("cloud, linking and the relay", () => {
-  let cloud: RunningCloud;
+interface StartedCloud {
+  base: string;
+  stop(): Promise<void>;
+}
+
+/** The cloud as a Node server, in this process. */
+async function nodeServer(): Promise<StartedCloud> {
+  const port = await freePort();
+  const base = `http://127.0.0.1:${port}`;
+  const cloud: RunningCloud = await runCloud(cloudConfig({ VIREO_CLOUD_PORT: String(port), VIREO_CLOUD_HOST: "127.0.0.1", VIREO_CLOUD_URL: base, VIREO_CLOUD_DATA_DIR: tempDir(), VIREO_DEV_LOGIN: "1" }));
+  return { base, stop: () => cloud.stop() };
+}
+
+/** The cloud as a Cloudflare Worker with D1 and Durable Objects, run locally by wrangler. */
+async function worker(): Promise<StartedCloud> {
+  const port = await freePort();
+  const base = `http://127.0.0.1:${port}`;
+  const vars = { VIREO_CLOUD_URL: base, VIREO_WEB_URL: base, VIREO_DEV_LOGIN: "1" };
+  const proc = spawn(
+    resolve("node_modules/.bin/wrangler"),
+    ["dev", "--ip", "127.0.0.1", "--port", String(port), "--persist-to", tempDir(), "--show-interactive-dev-session=false", ...Object.entries(vars).flatMap(([k, v]) => ["--var", `${k}:${v}`])],
+    // Its own process group, so stopping it stops workerd too.
+    { cwd: "apps/cloud", stdio: "ignore", detached: true, env: { ...process.env, WRANGLER_SEND_METRICS: "false" } },
+  );
+  await until(() => fetch(`${base}/api/health`).then((r) => r.ok, () => false), 60_000);
+  return {
+    base,
+    stop: async () => {
+      process.kill(-proc.pid!, "SIGTERM");
+    },
+  };
+}
+
+describe.each([
+  ["a Node server", nodeServer],
+  ["a Cloudflare Worker", worker],
+])("cloud on %s: linking and the relay", (_, launch) => {
+  let cloud: StartedCloud;
   let node: RunningNode;
   let base = "";
   const json = async <T>(path: string, init: RequestInit & { token?: string; body?: string } = {}): Promise<{ status: number; body: T }> => {
@@ -39,9 +77,8 @@ describe("cloud, linking and the relay", () => {
   let nodeId = "";
 
   beforeAll(async () => {
-    const port = await freePort();
-    base = `http://127.0.0.1:${port}`;
-    cloud = await runCloud(cloudConfig({ VIREO_CLOUD_PORT: String(port), VIREO_CLOUD_HOST: "127.0.0.1", VIREO_CLOUD_URL: base, VIREO_CLOUD_DATA_DIR: tempDir(), VIREO_DEV_LOGIN: "1" }));
+    cloud = await launch();
+    base = cloud.base;
     ana = await signIn("ana");
 
     process.env.VIREO_SCHEDULER = "off";
@@ -57,7 +94,7 @@ describe("cloud, linking and the relay", () => {
     const approved = await json<{ node: NodeSummary }>(`/api/link/${start.userCode.toLowerCase().replace("-", " ")}/approve`, { method: "POST", token: ana, body: JSON.stringify({ name: "Ana's laptop" }) });
     nodeId = approved.body.node.id;
     await until(async () => (await json<{ nodes: NodeSummary[] }>("/api/nodes", { token: ana })).body.nodes.find((n) => n.online));
-  }, 30_000);
+  }, 90_000);
 
   afterAll(async () => {
     await node?.stop();
