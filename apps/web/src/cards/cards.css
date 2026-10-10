@@ -485,12 +485,20 @@
     transform 0.18s ease;
 }
 
-.vcard:not(.expanded):hover {
-  box-shadow: var(--c-shadow-hover);
-  transform: translateY(-2px);
+/*
+ * Hover effects only where there is a real pointer. On a touch screen a tap
+ * applies :hover first, and iOS Safari takes a tap that changes what is shown
+ * for a hover rather than a click, so a card's buttons would not answer.
+ */
+@media (hover: hover) and (pointer: fine) {
+  .vcard:not(.expanded):hover {
+    box-shadow: var(--c-shadow-hover);
+    transform: translateY(-2px);
+  }
 }
 
-.vcard:not(.expanded):active {
+/* Pressing a button presses the button, not the card around it. */
+.vcard:not(.expanded):active:not(:has(.vcard-foot :active)) {
   transform: translateY(0) scale(0.995);
   transition-duration: 0.06s;
 }
@@ -558,16 +566,25 @@
     transform 0.14s ease;
 }
 
-.vcard:hover .vcard-actions,
-.vcard:focus-within .vcard-actions {
-  opacity: 1;
-  transform: translate(0, -50%);
-  pointer-events: auto;
+@media (hover: hover) and (pointer: fine) {
+  .vcard:hover .vcard-actions,
+  .vcard:focus-within .vcard-actions {
+    opacity: 1;
+    transform: translate(0, -50%);
+    pointer-events: auto;
+  }
+
+  .vcard:hover .vcard-corner:has(.vcard-actions) > .vcard-status,
+  .vcard:focus-within .vcard-corner:has(.vcard-actions) > .vcard-status {
+    opacity: 0;
+  }
 }
 
-.vcard:hover .vcard-corner:has(.vcard-actions) > .vcard-status,
-.vcard:focus-within .vcard-corner:has(.vcard-actions) > .vcard-status {
-  opacity: 0;
+/* Touch screens have nothing to reveal them with: the peek sheet carries Done and Open thread. */
+@media (hover: none), (pointer: coarse) {
+  .vcard-actions {
+    display: none;
+  }
 }
 
 .vcard-act {
@@ -952,6 +969,11 @@
   margin-top: auto;
   font-size: 12px;
   color: var(--c-ink-3);
+}
+
+/* What the board left out of a list, said right under it. */
+.g-rows + .c-more {
+  margin-top: -2px;
 }
 
 .clamp {

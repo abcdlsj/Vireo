@@ -44,6 +44,7 @@ export default defineCard({
   render: ({ card, expanded }) => {
     const subtitle = field(card, "subtitle", "");
     const blocks = field<Block[]>(card, "blocks", []).filter((b) => b && typeof b === "object");
+    const brief = !expanded && blocks.some((b) => b.type === "rows" || b.type === "facts");
     return (
       <Frame card={card} expanded={expanded} className="gcard">
         <div className="g-head">
@@ -51,22 +52,28 @@ export default defineCard({
           {subtitle ? <p className="c-sub">{subtitle}</p> : null}
         </div>
         {blocks.map((b, i) => (
-          <BlockView key={i} block={b} card={card} expanded={expanded} />
+          <BlockView key={i} block={b} card={card} expanded={expanded} brief={brief} />
         ))}
       </Frame>
     );
   },
 });
 
-function BlockView({ block, expanded }: { block: Block; card: Card; expanded: boolean }): ReactNode {
+/** On the board a card is a summary: a few rows, the rest one tap away in the peek. */
+const BOARD_ROWS = 3;
+const BOARD_FACTS = 3;
+const BOARD_LINKS = 2;
+
+function BlockView({ block, expanded, brief }: { block: Block; card: Card; expanded: boolean; brief: boolean }): ReactNode {
   switch (block.type) {
     case "facts":
-      return <Facts items={block.items ?? []} />;
+      return <Facts items={block.items ?? []} limit={expanded ? 4 : BOARD_FACTS} />;
     case "rows":
-      return <Rows items={block.items ?? []} />;
+      return <Rows items={block.items ?? []} expanded={expanded} />;
     case "text":
+      // Beside rows or facts the note is commentary: two lines on the board, all of it in the peek.
       return block.text ? (
-        <div className="g-text fade">
+        <div className={`g-text ${brief ? "clamp" : "fade"}`}>
           <Markdown text={block.text} />
         </div>
       ) : null;
@@ -75,14 +82,14 @@ function BlockView({ block, expanded }: { block: Block; card: Card; expanded: bo
     case "chart":
       return <Chart block={block} expanded={expanded} />;
     case "links":
-      return <Links items={block.items ?? []} />;
+      return <Links items={block.items ?? []} limit={expanded ? Infinity : BOARD_LINKS} />;
     default:
       return null;
   }
 }
 
-function Facts({ items }: { items: NonNullable<Extract<Block, { type: "facts" }>["items"]> }) {
-  const shown = items.filter((f) => f.value).slice(0, 4);
+function Facts({ items, limit }: { items: NonNullable<Extract<Block, { type: "facts" }>["items"]>; limit: number }) {
+  const shown = items.filter((f) => f.value).slice(0, limit);
   if (!shown.length) return null;
   return (
     <dl className="g-facts" style={{ ["--n" as string]: shown.length }}>
@@ -96,9 +103,38 @@ function Facts({ items }: { items: NonNullable<Extract<Block, { type: "facts" }>
   );
 }
 
-function Rows({ items }: { items: NonNullable<Extract<Block, { type: "rows" }>["items"]> }) {
-  const shown = items.filter((r) => r.title);
-  if (!shown.length) return null;
+type Row = NonNullable<Extract<Block, { type: "rows" }>["items"]>[number];
+
+/** The rows the board shows: the marked ones (best, picked, needing the owner) first, then the top of the list, in their own order. */
+function boardRows(rows: Row[]): Row[] {
+  // One more row takes the room of the "more" line, so show it instead.
+  if (rows.length <= BOARD_ROWS + 1) return rows;
+  const keep = new Set(rows.filter((r) => r.mark && r.mark !== "done").slice(0, BOARD_ROWS));
+  for (const r of rows) {
+    if (keep.size >= BOARD_ROWS) break;
+    keep.add(r);
+  }
+  return rows.filter((r) => keep.has(r));
+}
+
+function Rows({ items, expanded }: { items: Row[]; expanded: boolean }) {
+  const all = items.filter((r) => r.title);
+  if (!all.length) return null;
+  const shown = expanded ? all : boardRows(all);
+  const hidden = all.length - shown.length;
+  return (
+    <>
+      <RowList shown={shown} />
+      {hidden ? (
+        <p className="c-more" data-testid="card-more">
+          {hidden} more
+        </p>
+      ) : null}
+    </>
+  );
+}
+
+function RowList({ shown }: { shown: Row[] }) {
   const leads = shown.some((r) => r.lead);
   return (
     <ul className={`g-rows c-rows ${leads ? "with-lead" : ""}`}>
@@ -183,8 +219,8 @@ function Chart({ block, expanded }: { block: Extract<Block, { type: "chart" }>; 
   );
 }
 
-function Links({ items }: { items: NonNullable<Extract<Block, { type: "links" }>["items"]> }) {
-  const shown = items.filter((l) => isHttp(l.url));
+function Links({ items, limit }: { items: NonNullable<Extract<Block, { type: "links" }>["items"]>; limit: number }) {
+  const shown = items.filter((l) => isHttp(l.url)).slice(0, limit);
   if (!shown.length) return null;
   return (
     <ul className="g-links c-rows">
