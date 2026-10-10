@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { freeSlots, toZonedIso, zonedToUtc } from "../../apps/host/src/time.js";
+import { freeSlots, toZonedIso, zonedToUtc } from "../../apps/node/src/time.js";
 
 const TZ = "Asia/Shanghai";
 const at = (h: number, m = 0) => zonedToUtc(2026, 10, 12, h, m, TZ); // a Monday

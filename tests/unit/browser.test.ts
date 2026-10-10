@@ -1,9 +1,9 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import type { App } from "../../apps/host/src/app.js";
-import { formatSnapshot } from "../../apps/host/src/browser.js";
-import { normaliseProxy } from "../../apps/host/src/net.js";
+import type { App } from "../../apps/node/src/app.js";
+import { formatSnapshot } from "../../apps/node/src/browser.js";
+import { normaliseProxy } from "../../apps/node/src/net.js";
 import { resolve } from "node:path";
 import { testApp } from "./helpers.js";
 

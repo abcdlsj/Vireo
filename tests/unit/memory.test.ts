@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { Bus } from "../../apps/host/src/bus.js";
-import { MemoryStore, normaliseKey } from "../../apps/host/src/memory.js";
+import { Bus } from "../../apps/node/src/bus.js";
+import { MemoryStore, normaliseKey } from "../../apps/node/src/memory.js";
 import { tempDb } from "./helpers.js";
 
 describe("memory graph", () => {

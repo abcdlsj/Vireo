@@ -1,0 +1,102 @@
+import { mkdirSync } from "node:fs";
+import { join } from "node:path";
+import { Actions } from "./actions.js";
+import { Address } from "./address.js";
+import { RunAftercare } from "./aftercare.js";
+import { Audit } from "./audit.js";
+import { Cards } from "./cards/store.js";
+import { BrowserService } from "./browser.js";
+import { Bus } from "./bus.js";
+import type { Config } from "./config.js";
+import { Db } from "./db.js";
+import { Files } from "./files.js";
+import { Identity } from "./identity.js";
+import { Integrations } from "./integrations/index.js";
+import { ThreadLifecycle } from "./lifecycle.js";
+import { MemoryStore } from "./memory.js";
+import { MemoryWorker } from "./memory-worker.js";
+import { ModelService } from "./models.js";
+import { Plugins } from "./plugins/index.js";
+import { Pricing } from "./pricing.js";
+import { Procedures } from "./procedures.js";
+import { Push } from "./push.js";
+import { Reminders } from "./reminders.js";
+import { Runner } from "./runner.js";
+import { Scheduler } from "./scheduler.js";
+import { Settings } from "./settings.js";
+import { ThreadStore } from "./threads.js";
+import { ToolGate } from "./tool-gate.js";
+import { UsageLog } from "./usage.js";
+import { buildTools } from "./tools/index.js";
+import type { ToolDef } from "./tools/types.js";
+import { Vault } from "./vault.js";
+
+/** Every long-lived service, wired once at start-up. */
+export interface App {
+  config: Config;
+  db: Db;
+  bus: Bus;
+  address: Address;
+  /** Who this node is and whom it belongs to, once linked. */
+  identity: Identity;
+  settings: Settings;
+  threads: ThreadStore;
+  memory: MemoryStore;
+  procedures: Procedures;
+  reminders: Reminders;
+  memoryWorker: MemoryWorker;
+  models: ModelService;
+  pricing: Pricing;
+  usage: UsageLog;
+  integrations: Integrations;
+  vault: Vault;
+  push: Push;
+  files: Files;
+  browser: BrowserService;
+  audit: Audit;
+  gate: ToolGate;
+  actions: Actions;
+  cards: Cards;
+  runner: Runner;
+  lifecycle: ThreadLifecycle;
+  scheduler: Scheduler;
+  plugins: Plugins;
+  /** Built-in tools plus those of installed plugins; rebuilt when plugins change. */
+  tools: Map<string, ToolDef>;
+  buildTools(): Map<string, ToolDef>;
+}
+
+export function createApp(config: Config): App {
+  mkdirSync(join(config.dataDir, "files"), { recursive: true });
+  const db = Db.open(config.dataDir);
+  const identity = new Identity(config.dataDir);
+  const app = { config, db, bus: new Bus(), identity, address: new Address(config, identity) } as App;
+  app.settings = new Settings(db);
+  app.threads = new ThreadStore(db, app.bus);
+  app.memory = new MemoryStore(db, app.bus);
+  app.procedures = new Procedures(db, app.bus);
+  app.reminders = new Reminders(db, app.bus);
+  app.integrations = new Integrations(config, db, () => app.plugins.providers());
+  app.vault = new Vault(db, config.dataDir);
+  app.pricing = new Pricing(config);
+  app.usage = new UsageLog(db, app.pricing);
+  app.models = new ModelService(config, db, app.vault, app.usage);
+  app.push = new Push(db);
+  app.files = new Files(db, config.dataDir, app.bus);
+  app.browser = new BrowserService(app);
+  app.plugins = new Plugins(app);
+  app.vault.extraSecrets = () => app.plugins.secrets();
+  app.push.onNotify = (n) => app.plugins.notify(n);
+  app.buildTools = () => buildTools(app.plugins.tools());
+  app.tools = app.buildTools();
+  app.audit = new Audit(db, app.vault);
+  app.gate = new ToolGate(app);
+  app.actions = new Actions(app);
+  app.cards = new Cards(app);
+  app.memoryWorker = new MemoryWorker(app);
+  app.runner = new Runner(app);
+  app.lifecycle = new ThreadLifecycle(app);
+  new RunAftercare(app);
+  app.scheduler = new Scheduler(app);
+  return app;
+}

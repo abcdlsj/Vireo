@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { diffCard } from "../../apps/host/src/cards/diff.js";
+import { diffCard } from "../../apps/node/src/cards/diff.js";
 
 describe("card diff", () => {
   it("names a changed fact by the item it belongs to", () => {

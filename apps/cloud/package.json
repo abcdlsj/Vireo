@@ -1,0 +1,28 @@
+{
+  "name": "@vireo/cloud",
+  "version": "0.1.0",
+  "description": "Vireo cloud: GitHub sign-in, the nodes each account owns, access tokens, and the relay between the app and nodes.",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "node --disable-warning=ExperimentalWarning dist/index.js"
+  },
+  "dependencies": {
+    "@hono/node-server": "^2.1.4",
+    "hono": "^4.13.13",
+    "ws": "^8.18.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "@types/ws": "^8.18.1",
+    "@vireo/protocol": "*",
+    "typescript": "^7.0.2"
+  }
+}

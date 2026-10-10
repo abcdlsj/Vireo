@@ -1,0 +1,16 @@
+{
+  "name": "@vireo/protocol",
+  "version": "0.1.0",
+  "description": "Types shared by Vireo's cloud, nodes and app: the node API, live events, the cloud API and the relay.",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  }
+}

@@ -1,0 +1,41 @@
+{
+  "name": "vireo-node",
+  "version": "0.1.0",
+  "description": "Your own Vireo node: the agent, its threads and memory, on your machine. Sign in at the Vireo app and run `npx vireo-node`.",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "bin": {
+    "vireo-node": "dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "node --disable-warning=ExperimentalWarning dist/index.js",
+    "pair": "node --disable-warning=ExperimentalWarning dist/pair.js"
+  },
+  "dependencies": {
+    "@hono/node-server": "^2.1.4",
+    "@modelcontextprotocol/sdk": "1.32.1",
+    "@mozilla/readability": "^0.6.0",
+    "@openai/agents": "^0.19.0",
+    "hono": "^4.13.13",
+    "linkedom": "^0.18.13",
+    "openai": "^7.30.1",
+    "playwright": "1.56.1",
+    "typebox": "^1.1.24",
+    "web-push": "^3.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "@types/web-push": "^3.6.4",
+    "typescript": "^7.0.2",
+    "@vireo/protocol": "*"
+  }
+}

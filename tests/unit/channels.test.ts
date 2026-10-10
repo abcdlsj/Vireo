@@ -3,12 +3,12 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import type { App } from "../../apps/host/src/app.js";
-import { split } from "../../apps/host/src/plugins/chat.js";
-import { decryptFeishu } from "../../apps/host/src/plugins/feishu/index.js";
-import { parseServers, parseSecrets, toolName } from "../../apps/host/src/plugins/mcp/index.js";
-import { createHttp } from "../../apps/host/src/http.js";
-import { messageText, OVERVIEW_ID } from "../../apps/host/src/threads.js";
+import type { App } from "../../apps/node/src/app.js";
+import { split } from "../../apps/node/src/plugins/chat.js";
+import { decryptFeishu } from "../../apps/node/src/plugins/feishu/index.js";
+import { parseServers, parseSecrets, toolName } from "../../apps/node/src/plugins/mcp/index.js";
+import { createHttp } from "../../apps/node/src/http/index.js";
+import { messageText, OVERVIEW_ID } from "../../apps/node/src/threads.js";
 import { testApp } from "./helpers.js";
 
 let apps: App[] = [];
@@ -164,7 +164,7 @@ describe("feishu plugin", () => {
       return Buffer.concat([iv, c.update(JSON.stringify(obj)), c.final()]).toString("base64");
     };
     const post = (obj: object, token = "vtok") =>
-      http.request("/api/plugins/feishu/events", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ encrypt: encrypt({ ...obj, token, header: "header" in obj ? { ...(obj as { header: object }).header, token } : undefined }) }) });
+      http.request("/public/feishu/events", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ encrypt: encrypt({ ...obj, token, header: "header" in obj ? { ...(obj as { header: object }).header, token } : undefined }) }) });
 
     const challenge = await post({ type: "url_verification", challenge: "abc" });
     expect(await challenge.json()).toEqual({ challenge: "abc" });

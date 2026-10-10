@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { normaliseDomain, Vault } from "../../apps/host/src/vault.js";
+import { normaliseDomain, Vault } from "../../apps/node/src/vault.js";
 import { tempDb } from "./helpers.js";
 
 describe("credential vault", () => {
