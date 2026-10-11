@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { api, ApiError, onEvent, type Action, type Message, type ThreadDetail } from "../api";
+import { api, ApiError, onEvent, type Action, type FileInfo, type Message, type ThreadDetail } from "../api";
 import { dateTime, prettyDates, shortTime, stepOutcome, stepSubject, toolLabel } from "../format";
 import { Markdown } from "../markdown";
 import { go } from "../route";
 import { ActionCard } from "./ActionCard";
+import { Attachments, FileViewer } from "./Attachments";
 import { Composer } from "./Composer";
 import { ProcedureCard } from "./ProcedureCard";
 import { SHEET_QUERY, SidePanel } from "./SidePanel";
@@ -46,21 +47,36 @@ function buildItems(messages: Message[]): Item[] {
   return items;
 }
 
+type Placed = Item | { card: Card } | { files: FileInfo[] };
+
 /**
  * Puts each card in the conversation at the end of the turn that last
  * changed it, so the latest state of the matter stays next to the talk about
- * it instead of at the top of the page.
+ * it instead of at the top of the page. Files Vireo made in a turn go there
+ * too, under its reply.
  */
-function placeCards(items: Item[], cards: Card[]): (Item | { card: Card })[] {
-  const out: (Item | { card: Card })[] = [];
-  const pending = [...cards].sort((a, b) => a.updatedAt - b.updatedAt);
-  for (const it of items) {
-    if (it.kind === "user") {
-      while (pending.length && pending[0]!.updatedAt < it.m.createdAt) out.push({ card: pending.shift()! });
+function placeCards(items: Item[], cards: Card[], files: FileInfo[]): Placed[] {
+  const out: Placed[] = [];
+  const pending = [
+    ...cards.map((card) => ({ at: card.updatedAt, card })),
+    ...files.map((file) => ({ at: file.createdAt, file })),
+  ].sort((a, b) => a.at - b.at);
+  const flush = (before: number) => {
+    while (pending.length && pending[0]!.at < before) {
+      const next = pending.shift()!;
+      if ("card" in next) out.push({ card: next.card });
+      else {
+        const last = out.at(-1);
+        if (last && "files" in last) last.files.push(next.file);
+        else out.push({ files: [next.file] });
+      }
     }
+  };
+  for (const it of items) {
+    if (it.kind === "user") flush(it.m.createdAt);
     out.push(it);
   }
-  for (const card of pending) out.push({ card });
+  flush(Infinity);
   return out;
 }
 
@@ -119,6 +135,7 @@ export function ThreadView({ id }: { id: string }) {
   // The owner's own open/close for this thread; until they choose, the panel follows its content.
   const [panelChoice, setPanelChoice] = useState<boolean | null>(null);
   const [editingTitle, setEditingTitle] = useState(false);
+  const [viewing, setViewing] = useState<FileInfo | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
   const reloadTimer = useRef<number | undefined>(undefined);
@@ -193,6 +210,14 @@ export function ThreadView({ id }: { id: string }) {
   const trailing = lastItem?.kind === "steps" ? lastItem.steps : [];
   const shown = lastItem?.kind === "steps" ? items.slice(0, -1) : items;
   const actions = useMemo(() => new Map<string, Action>((detail?.actions ?? []).map((a) => [a.id, a])), [detail]);
+  const filesById = useMemo(() => new Map<string, FileInfo>((detail?.files ?? []).map((f) => [f.id, f])), [detail]);
+  // Files Vireo made for the owner, not screenshots taken along the way or files a card already shows.
+  const made = useMemo(() => {
+    if (!detail) return [];
+    const kinds = new Map(detail.related.filter((r) => r.ref).map((r) => [r.ref!, r.kind]));
+    const onCards = new Set(detail.cards.map((c) => String(c.data.file_id ?? "")));
+    return detail.files.filter((f) => f.origin === "produced" && kinds.get(f.id) === "file" && !onCards.has(f.id));
+  }, [detail]);
 
   useLayoutEffect(() => {
     const el = scroller.current;
@@ -310,8 +335,10 @@ export function ThreadView({ id }: { id: string }) {
               {items.length === 0 && !live ? (
                 <div className="empty">{isOverview ? "Ask anything." : "No messages yet."}</div>
               ) : null}
-              {placeCards(t.running || live ? shown : items, detail.cards ?? []).map((it) =>
-                "card" in it ? (
+              {placeCards(t.running || live ? shown : items, detail.cards ?? [], made).map((it) =>
+                "files" in it ? (
+                  <Attachments key={`files${it.files[0]!.id}`} files={it.files} onOpen={setViewing} produced />
+                ) : "card" in it ? (
                   <div key={`card${it.card.id}`} className="thread-cards" data-testid="thread-cards" data-card-id={it.card.id}>
                     <CardSlot card={it.card} expanded refresh={load} />
                   </div>
@@ -320,6 +347,8 @@ export function ThreadView({ id }: { id: string }) {
                     key={it.kind === "steps" ? it.key : `${it.kind}${it.m.id}`}
                     item={it}
                     actions={actions}
+                    files={filesById}
+                    onOpen={setViewing}
                     onChange={load}
                     // A run that ended in an error can be tried again, as long as nothing came after it.
                     retry={!t.running && !live && it === items[items.length - 1] ? () => void api.post(`/api/threads/${t.id}/retry`).then(load) : undefined}
@@ -342,8 +371,9 @@ export function ThreadView({ id }: { id: string }) {
             placeholder={t.state === "done" ? "Message to reopen this thread" : isOverview ? "Ask Vireo anything" : "Message Vireo"}
           />
         </div>
-        {panel ? <SidePanel detail={detail} running={t.running} browsing={browsing} onClose={() => setPanel(false)} /> : null}
+        {panel ? <SidePanel detail={detail} running={t.running} browsing={browsing} onClose={() => setPanel(false)} onOpenFile={setViewing} /> : null}
       </div>
+      {viewing ? <FileViewer file={viewing} onClose={() => setViewing(null)} /> : null}
     </div>
   );
 }
@@ -369,9 +399,26 @@ function StatusTag({ t }: { t: ThreadDetail["thread"] }) {
   return <span className="tag">In hand</span>;
 }
 
-function ItemView({ item, actions, onChange, retry }: { item: Item; actions: Map<string, Action>; onChange: () => void; retry?: () => void }) {
+function ItemView({
+  item,
+  actions,
+  files,
+  onOpen,
+  onChange,
+  retry,
+}: {
+  item: Item;
+  actions: Map<string, Action>;
+  files: Map<string, FileInfo>;
+  onOpen: (f: FileInfo) => void;
+  onChange: () => void;
+  retry?: () => void;
+}) {
   switch (item.kind) {
-    case "user":
+    case "user": {
+      const attached = (item.m.fileIds ?? []).map((id) => files.get(id)).filter((f): f is FileInfo => Boolean(f));
+      // Attached images are shown from their files; inline copies remain for messages from chat apps.
+      const inline = attached.some((f) => f.mime.startsWith("image/")) ? [] : item.m.images;
       return item.m.fromVireo ? (
         <div className="msg vireo-task" data-testid="vireo-task">
           <span className="label">Vireo picked this up</span>
@@ -379,12 +426,14 @@ function ItemView({ item, actions, onChange, retry }: { item: Item; actions: Map
         </div>
       ) : (
         <div className="msg user" data-testid="msg-user">
-          {item.m.images.map((src, i) => (
+          {inline.map((src, i) => (
             <img key={i} src={src} alt="" className="msg-image" />
           ))}
-          <div className="bubble">{item.m.text}</div>
+          <Attachments files={attached} onOpen={onOpen} />
+          {item.m.text ? <div className="bubble">{item.m.text}</div> : null}
         </div>
       );
+    }
     case "assistant":
       return (
         <div className="msg assistant" data-testid="msg-assistant">

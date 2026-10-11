@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowUpIcon, AttachIcon, StopIcon } from "../icons";
+import { PendingFile } from "./Attachments";
 
 export function Composer({
   onSend,
@@ -19,6 +20,7 @@ export function Composer({
   const [text, setText] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [busy, setBusy] = useState(false);
+  const [dragging, setDragging] = useState(false);
   const ref = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -43,17 +45,30 @@ export function Composer({
     }
   };
 
+  const add = (more: File[]) => more.length && setFiles((prev) => [...prev, ...more]);
+
   return (
-    <div className="composer">
+    // Files can also be dropped onto the composer or pasted into it.
+    <div
+      className={`composer ${dragging ? "dragging" : ""}`}
+      onDragOver={(e) => {
+        if (!e.dataTransfer.types.includes("Files")) return;
+        e.preventDefault();
+        setDragging(true);
+      }}
+      onDragLeave={(e) => !e.currentTarget.contains(e.relatedTarget as Node | null) && setDragging(false)}
+      onDrop={(e) => {
+        if (!e.dataTransfer.files.length) return;
+        e.preventDefault();
+        setDragging(false);
+        add(Array.from(e.dataTransfer.files));
+        ref.current?.focus();
+      }}
+    >
       {files.length ? (
-        <div className="chips">
+        <div className="composer-files" data-testid="composer-files">
           {files.map((f, i) => (
-            <span key={i} className="chip">
-              {f.name}
-              <button onClick={() => setFiles(files.filter((_, j) => j !== i))} aria-label="Remove">
-                ×
-              </button>
-            </span>
+            <PendingFile key={`${f.name}${i}`} file={f} onRemove={() => setFiles(files.filter((_, j) => j !== i))} />
           ))}
         </div>
       ) : null}
@@ -67,7 +82,7 @@ export function Composer({
           multiple
           hidden
           onChange={(e) => {
-            setFiles([...files, ...Array.from(e.target.files ?? [])]);
+            add(Array.from(e.target.files ?? []));
             e.target.value = "";
           }}
         />
@@ -80,6 +95,12 @@ export function Composer({
           disabled={disabled}
           data-testid="composer-input"
           onChange={(e) => setText(e.target.value)}
+          onPaste={(e) => {
+            const pasted = Array.from(e.clipboardData.files);
+            if (!pasted.length) return;
+            e.preventDefault();
+            add(pasted);
+          }}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing && window.matchMedia("(pointer: fine)").matches) {
               e.preventDefault();

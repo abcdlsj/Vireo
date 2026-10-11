@@ -34,6 +34,15 @@ export function browserRoutes(app: App): Hono {
     });
   });
 
+  // The text Vireo reads from a file, for previewing documents the browser can't show by itself.
+  r.get("/files/:id/text", async (c) => {
+    const id = c.req.param("id");
+    if (!app.files.get(id)) return c.json({ error: "Not found" }, 404);
+    const text = app.files.readable(id) ? await app.files.text(id, 200_000) : undefined;
+    if (text === undefined) return c.json({ error: "No text to show" }, 415);
+    return c.json({ text });
+  });
+
   r.get("/threads/:id/browser", async (c) => {
     const frame = await app.browser.frame(c.req.param("id"));
     if (!frame) return c.json({ error: "No browser activity" }, 404);

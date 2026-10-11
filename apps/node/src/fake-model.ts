@@ -296,6 +296,35 @@ function general(t: Turn): AssistantMessage {
     return reply(cjk ? "好的，记住了。" : "Got it — I'll remember that.");
   }
 
+  // An attached document: read it, then answer from it.
+  const attached = o.match(/\[Attached file: (.+?) \([^,]+, id (\S+)\) — read it with read_file\]/);
+  if (attached && t.tools.has("read_file")) {
+    const read = t.results.find((r) => r.name === "read_file");
+    if (!read) return call("read_file", { file_id: attached[2] });
+    const lines = read.text.split("\n").map((l) => l.trim()).filter((l) => l && !l.startsWith("--- Page") && !l.startsWith("<") && !l.startsWith("The content above"));
+    return reply(`I read ${attached[1]}. It starts with "${(lines[0] ?? "").slice(0, 80)}" and has ${lines.length} lines in all.`);
+  }
+
+  // "Write it up as a file": the answer comes back as an attachment.
+  if (t.tools.has("create_file") && /\b(as|into) an? (file|document|page)\b|write (it|this) up|做成(文档|文件)|写成文档/i.test(o)) {
+    const made = t.results.find((r) => r.name === "create_file");
+    if (made) return reply(cjk ? `写好了，附在这里：${String(made.args.name)}。` : `Done — it's attached as ${String(made.args.name)}.`);
+    const html = /\b(page|html)\b|网页/i.test(o);
+    const subject = o.replace(/\b(please|can you|write (it|this) up|(as|into) an? (file|document|page))\b/gi, "").replace(/[.?!。？！]+$/, "").trim() || "Notes";
+    return call(
+      "create_file",
+      html
+        ? {
+            name: "page.html",
+            content: `<!doctype html><html><head><meta charset="utf-8"><style>body{font:16px system-ui;margin:32px;color:#1f1f1a}h1{color:#2f6446}</style></head><body><h1>${subject}</h1><p>Made by Vireo.</p><button onclick="this.textContent='Clicked'">Try me</button></body></html>`,
+          }
+        : {
+            name: "notes.md",
+            content: `# ${subject}\n\n- First point\n- Second point\n\n| Item | Status |\n| --- | --- |\n| Draft | Done |\n| Review | Next |\n`,
+          },
+    );
+  }
+
   if (/^(thanks|thank you|谢谢)/i.test(o.trim())) return reply(cjk ? "不客气！" : "You're welcome!");
 
   if (cjk) return reply(`收到：「${o.slice(0, 60)}」。这是一个示例回复，由脚本模型生成，用于演示和测试。接入真实模型后，Vireo 会给出完整的答案。`);

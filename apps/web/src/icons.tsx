@@ -72,6 +72,12 @@ export const AttachIcon = () => (
   </Icon>
 );
 
+export const DownloadIcon = () => (
+  <Icon>
+    <path d="M8 2.8v7.6M4.6 7.2 8 10.6l3.4-3.4M3 13.2h10" />
+  </Icon>
+);
+
 export const ArrowUpIcon = () => (
   <Icon>
     <path d="M8 13V3.5M3.8 7.5 8 3.3l4.2 4.2" />

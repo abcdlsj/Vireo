@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ClipboardEvent, type CSSProperties, type RefObject, type CompositionEvent, type DragEvent, type KeyboardEvent, type MouseEvent, type PointerEvent } from "react";
-import { api, fileUrl, type LlmCallRecord, type ThreadAudit, type ThreadDetail, type ThreadUsage, type ModelUsage, type ToolCallRecord } from "../api";
+import { api, fileUrl, type FileInfo, type LlmCallRecord, type ThreadAudit, type ThreadDetail, type ThreadUsage, type ModelUsage, type ToolCallRecord } from "../api";
 import { authedUrl } from "../nodes";
 import { bytes, compact, dateTime, duration, purposeLabel, shortTime, stepOutcome, stepSubject, tokens, toolLabel, usd } from "../format";
 import { AttachIcon, CalendarIcon, CloseIcon, FullscreenIcon, GlobeIcon, MailIcon, NarrowIcon, WidenIcon } from "../icons";
@@ -77,7 +77,19 @@ function useSheetDrag(sheetEl: RefObject<HTMLElement | null>, full: boolean, set
 }
 
 /** Everything related to the thread: pages, emails, events, files, and the full audit trail (S6, N7). */
-export function SidePanel({ detail, running, browsing, onClose }: { detail: ThreadDetail; running: boolean; browsing: boolean; onClose: () => void }) {
+export function SidePanel({
+  detail,
+  running,
+  browsing,
+  onClose,
+  onOpenFile,
+}: {
+  detail: ThreadDetail;
+  running: boolean;
+  browsing: boolean;
+  onClose: () => void;
+  onOpenFile?: (f: FileInfo) => void;
+}) {
   const [tab, setTab] = useState<"related" | "browser" | "activity" | "usage">(browsing ? "browser" : "related");
   useEffect(() => {
     if (browsing) setTab("browser");
@@ -141,7 +153,18 @@ export function SidePanel({ detail, running, browsing, onClose }: { detail: Thre
               <section>
                 <h4>Files</h4>
                 {detail.files.map((f) => (
-                  <a key={f.id} className="related-item" href={fileUrl(f.id)} target="_blank" rel="noreferrer">
+                  <a
+                    key={f.id}
+                    className="related-item"
+                    href={fileUrl(f.id)}
+                    target="_blank"
+                    rel="noreferrer"
+                    onClick={(e) => {
+                      if (!onOpenFile) return;
+                      e.preventDefault();
+                      onOpenFile(f);
+                    }}
+                  >
                     {f.mime.startsWith("image/") ? (
                       <img src={fileUrl(f.id)} alt="" className="thumb" />
                     ) : (

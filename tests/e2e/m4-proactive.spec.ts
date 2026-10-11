@@ -130,5 +130,32 @@ test.describe("Milestone 4 — Proactive and hands-on", () => {
     await expect(page.getByTestId("side-panel")).toContainText("packing.txt");
     const file = await request.get(`/api/files/${detail.files[0].id}`);
     expect(await file.text()).toContain("passport");
+
+    // The upload sits on the owner's message as a file, and Vireo read it before answering.
+    const sent = page.getByTestId("msg-user").last();
+    await expect(sent.getByTestId("attachment")).toContainText("packing.txt");
+    await expect(sent).not.toContainText("Attached file");
+    await expect(page.getByTestId("msg-assistant").last()).toContainText('starts with "passport"');
+    await sent.getByTestId("attachment").click();
+    await expect(page.getByTestId("file-viewer")).toContainText("charger");
+    await page.getByTestId("viewer-close").click();
+    await expect(page.getByTestId("file-viewer")).toHaveCount(0);
+
+    // What Vireo writes up comes back under its reply and opens rendered.
+    await sendMessage(page, "Write it up as a document");
+    await finalReply(page, request);
+    const made = page.getByTestId("produced-files").last();
+    await expect(made).toContainText("notes.md");
+    await made.getByTestId("attachment").click();
+    await expect(page.getByTestId("file-viewer").locator("table")).toContainText("Review");
+    await page.getByTestId("viewer-close").click();
+
+    // A page runs live in a sandbox.
+    await sendMessage(page, "Write it up as a page");
+    await finalReply(page, request);
+    await page.getByTestId("produced-files").last().getByTestId("attachment").click();
+    const frame = page.frameLocator('[data-testid="viewer-page"]');
+    await frame.getByRole("button", { name: "Try me" }).click();
+    await expect(frame.getByRole("button", { name: "Clicked" })).toBeVisible();
   });
 });

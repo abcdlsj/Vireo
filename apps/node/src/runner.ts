@@ -59,7 +59,7 @@ export class Runner {
     if (!thread) throw new Error("Thread not found");
     const files = (opts.fileIds ?? []).map((id) => this.app.files.get(id)).filter((f) => f && f.threadId === threadId);
     const fileNote = files.length
-      ? `\n\n${files.map((f) => `[Attached file: ${f!.name} (${f!.mime}, id ${f!.id})${this.app.files.text(f!.id) !== undefined ? " — read it with read_file" : ""}]`).join("\n")}`
+      ? `\n\n${files.map((f) => `[Attached file: ${f!.name} (${f!.mime}, id ${f!.id})${this.app.files.readable(f!.id) ? " — read it with read_file" : ""}]`).join("\n")}`
       : "";
     const body = `${text}${fileNote}`;
     const content = opts.images?.length ? [{ type: "text" as const, text: body }, ...opts.images] : body;

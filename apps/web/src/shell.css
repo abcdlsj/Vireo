@@ -1165,3 +1165,358 @@
   font-weight: 700;
   letter-spacing: -0.005em;
 }
+
+/* ---------- attachments: files on messages, in the composer, and the viewer ---------- */
+.attachments {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.attachments.produced {
+  justify-content: flex-start;
+  margin: 2px 0 6px;
+}
+
+.attach {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 280px;
+  min-width: 0;
+  padding: 8px 14px 8px 8px;
+  border: none;
+  border-radius: 16px;
+  background: var(--c-paper);
+  box-shadow: var(--c-shadow);
+  color: var(--c-ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    box-shadow 0.18s ease,
+    transform 0.18s var(--spring);
+}
+
+button.attach:hover {
+  box-shadow: var(--c-shadow-hover);
+}
+
+button.attach:active {
+  transform: scale(0.98);
+}
+
+.attachments.produced .attach {
+  max-width: 340px;
+  padding: 10px 18px 10px 10px;
+}
+
+.attach-sheet {
+  width: 30px;
+  height: 36px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 5px;
+  box-sizing: border-box;
+  border-radius: 4px;
+  clip-path: polygon(0 0, 68% 0, 100% 24%, 100% 100%, 0 100%);
+  background: color-mix(in srgb, #3b6aa0 16%, var(--c-paper));
+  color: color-mix(in srgb, #28456c 80%, var(--c-ink));
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.attach-sheet.ext-pdf {
+  background: color-mix(in srgb, #d0503c 18%, var(--c-paper));
+  color: color-mix(in srgb, #9a2f22 80%, var(--c-ink));
+}
+
+.attach-sheet:is(.ext-md, .ext-markdown, .ext-docx, .ext-doc, .ext-txt) {
+  background: var(--c-accent-soft);
+  color: var(--c-accent);
+}
+
+.attach-sheet:is(.ext-csv, .ext-tsv, .ext-xlsx) {
+  background: color-mix(in srgb, #2f7d4a 18%, var(--c-paper));
+  color: color-mix(in srgb, #1f5a33 80%, var(--c-ink));
+}
+
+.attach-sheet:is(.ext-html, .ext-htm, .ext-svg) {
+  background: var(--c-warm);
+  color: var(--c-warm-ink);
+}
+
+.attach-thumb {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  border-radius: 8px;
+  object-fit: cover;
+}
+
+.attach-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.3;
+}
+
+.attach-name {
+  font-size: 13.5px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.attach-meta {
+  font-size: 12px;
+  color: var(--c-ink-3);
+  white-space: nowrap;
+}
+
+.attach-image {
+  padding: 0;
+  border: none;
+  background: none;
+  border-radius: 14px;
+  overflow: hidden;
+  cursor: zoom-in;
+  box-shadow: var(--c-shadow);
+}
+
+.attach-image img {
+  display: block;
+  max-width: 240px;
+  max-height: 240px;
+  object-fit: cover;
+}
+
+/* Waiting in the composer: a quieter tile with a remove button. */
+.composer-files {
+  max-width: 660px;
+  margin: 0 auto 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.attach.pending {
+  max-width: 240px;
+  padding-right: 6px;
+  cursor: default;
+}
+
+.attach-remove {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--c-ink-3);
+  cursor: pointer;
+}
+
+.attach-remove:hover {
+  background: var(--c-soft);
+  color: var(--c-ink);
+}
+
+.attach-remove .icon {
+  width: 13px;
+  height: 13px;
+}
+
+.composer.dragging .composer-box {
+  box-shadow:
+    0 0 0 2px var(--c-accent),
+    var(--c-shadow);
+}
+
+/* The viewer: a file opened over the conversation. */
+.viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: grid;
+  place-items: center;
+  padding: 32px 16px;
+  background: rgba(20, 20, 14, 0.32);
+  backdrop-filter: blur(3px);
+  animation: c-fade 0.18s ease both;
+}
+
+.viewer.closing {
+  animation: c-fade 0.16s ease reverse both;
+}
+
+.viewer-sheet {
+  width: min(880px, 100%);
+  height: min(900px, calc(100dvh - 64px));
+  display: flex;
+  flex-direction: column;
+  background: var(--c-main);
+  color: var(--c-ink);
+  border-radius: calc(var(--c-radius) + 6px);
+  box-shadow: 0 30px 80px -20px rgba(20, 20, 14, 0.45);
+  outline: none;
+  overflow: hidden;
+  animation: c-pop 0.22s cubic-bezier(0.2, 0.9, 0.3, 1.1) both;
+}
+
+.viewer-sheet:is(.kind-image, .kind-other) {
+  height: auto;
+  max-height: calc(100dvh - 64px);
+}
+
+.viewer.closing .viewer-sheet {
+  animation: c-pop 0.16s ease reverse both;
+}
+
+.viewer-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 12px 12px 18px;
+  border-bottom: 1px solid var(--c-hairline);
+}
+
+.viewer-title {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.3;
+}
+
+.viewer-name {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.viewer-meta {
+  font-size: 12px;
+  color: var(--c-ink-3);
+}
+
+.viewer-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.viewer-frame {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  border: none;
+  background: #fff;
+}
+
+.viewer-doc {
+  max-width: 720px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 28px 32px 40px;
+  box-sizing: border-box;
+  line-height: 1.65;
+}
+
+.viewer-text {
+  margin: 0;
+  padding: 20px 24px;
+  font: 13px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.viewer-image {
+  display: block;
+  max-width: 100%;
+  max-height: calc(100dvh - 150px);
+  margin: 0 auto;
+  object-fit: contain;
+}
+
+.viewer-note {
+  margin: 0;
+  padding: 40px 24px;
+  text-align: center;
+  color: var(--c-ink-3);
+}
+
+.viewer-table {
+  padding: 12px 16px 24px;
+}
+
+.viewer-table table {
+  border-collapse: collapse;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.viewer-table :is(th, td) {
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--c-line);
+  text-align: left;
+  vertical-align: top;
+  white-space: nowrap;
+}
+
+.viewer-table th {
+  position: sticky;
+  top: 0;
+  background: var(--c-main);
+  font-weight: 600;
+}
+
+@media (max-width: 760px) {
+  .viewer {
+    place-items: end stretch;
+    padding: 0;
+  }
+
+  .viewer-sheet {
+    width: 100%;
+    height: calc(100dvh - 32px);
+    padding-bottom: env(safe-area-inset-bottom);
+    border-radius: calc(var(--c-radius) + 6px) calc(var(--c-radius) + 6px) 0 0;
+    animation-name: c-sheet;
+  }
+
+  .viewer-head {
+    padding-left: 14px;
+  }
+
+  .viewer-head .peek-btn.download {
+    width: 32px;
+    padding: 0;
+    justify-content: center;
+    font-size: 0;
+  }
+
+  .viewer-head .peek-btn.download svg {
+    display: block;
+  }
+
+  .viewer-doc {
+    padding: 20px 18px 32px;
+  }
+
+  .attach,
+  .attachments.produced .attach {
+    max-width: 100%;
+  }
+}

@@ -23,7 +23,16 @@ export interface Thread {
 }
 
 export type Message =
-  | { id: number; role: "user"; text: string; images: string[]; fromVireo: boolean; createdAt: number }
+  | {
+      id: number;
+      role: "user";
+      text: string;
+      images: string[];
+      /** Ids of the files the owner attached to this message. */
+      fileIds: string[];
+      fromVireo: boolean;
+      createdAt: number;
+    }
   | {
       id: number;
       role: "assistant";

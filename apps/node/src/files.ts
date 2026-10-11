@@ -2,13 +2,12 @@ import { readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { extname, join } from "node:path";
 import type { Bus } from "./bus.js";
 import type { Db } from "./db.js";
+import { extractText, readable } from "./extract.js";
 import { newId, now } from "./util.js";
 import type { FileInfo } from "@vireo/protocol";
 
 export type { FileInfo };
 
-
-const TEXT_MIME = /^(text\/|application\/(json|xml|javascript|x-yaml|yaml|csv))/;
 
 /** Files owners attach to threads and files Vireo produces (C9). */
 export class Files {
@@ -63,12 +62,18 @@ export class Files {
     return { info, data: readFileSync(row.path) };
   }
 
-  /** Text content of a file, when it is text-like. */
-  text(id: string, max = 30000): string | undefined {
+  /** Whether the file has text Vireo can read: text, code, PDFs and Word documents. */
+  readable(id: string): boolean {
+    const info = this.get(id);
+    return Boolean(info && readable(info.mime, info.name));
+  }
+
+  /** Text content of a file, when it has any Vireo can read. */
+  async text(id: string, max = 30000): Promise<string | undefined> {
     const f = this.read(id);
     if (!f) return undefined;
-    if (!TEXT_MIME.test(f.info.mime) && !/\.(md|txt|csv|json|ya?ml|log|html?)$/i.test(f.info.name)) return undefined;
-    return f.data.toString("utf8").slice(0, max);
+    const text = await extractText(f.data, f.info.mime, f.info.name).catch(() => undefined);
+    return text === undefined ? undefined : text.slice(0, max);
   }
 
   forThread(threadId: string): FileInfo[] {
