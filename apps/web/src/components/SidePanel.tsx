@@ -621,7 +621,6 @@ export function BrowserView({ threadId, running, asking, overlay, onClose }: { t
         {...keys}
       >
         <div className="browser-head">
-          {live && state === "shown" ? <span className="live-dot" aria-hidden="true" /> : null}
           <span>{state === "none" ? "" : control.controlled ? "You're in control" : running ? "Live" : "Last seen"}</span>
           <span className="browser-actions">
             {canTakeOver || control.controlled ? (

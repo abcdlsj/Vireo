@@ -214,7 +214,8 @@ export function Status({ card, grouped }: { card: Card; grouped?: boolean }) {
   // Working shows once, as the eyes on the card's step line; on the board the heading says the rest, and the peek says when it moved.
   if (card.running || card.status === "working") return null;
   if (grouped) return null;
-  if (card.status === "needs_you") return <span className="vcard-status needs">Needs you</span>;
+  // Needs you is said by where the card sits (the board's heading, the peek's head, the thread's status), not on the card.
+  if (card.status === "needs_you") return null;
   if (card.status === "watching") return <span className="vcard-status watching">Watching</span>;
   if (card.status === "done") return <span className="vcard-status done">Done</span>;
   return <span className="vcard-status quiet">{relTime(card.updatedAt)}</span>;

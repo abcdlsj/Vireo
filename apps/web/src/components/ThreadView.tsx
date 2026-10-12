@@ -116,7 +116,7 @@ function CardDock({ cards, scroller }: { cards: Card[]; scroller: React.RefObjec
       {away.slice(0, 2).map((c) => (
         <button key={c.id} className={`card-dock-item ${c.status}`} onClick={() => go(c.id)}>
           <span className="card-dock-title">{c.title}</span>
-          <Status card={c} />
+          {c.status === "needs_you" ? <Eyes state="needs" /> : <Status card={c} />}
         </button>
       ))}
     </div>
@@ -412,7 +412,7 @@ export function ThreadView({ id }: { id: string }) {
               {t.running || live ? (
                 <div className="msg assistant live" data-testid="live">
                   {/* While working: one line saying what is happening now; when done it becomes the folded summary. */}
-                  <Steps steps={trailing} now={live?.text ? undefined : asking ? "Waiting for you" : nowLine(t.statusLine) || "Working"} waiting={Boolean(asking)} />
+                  <Steps steps={trailing} now={live?.text ? undefined : asking || t.pendingActions > 0 ? "Waiting for you" : nowLine(t.statusLine) || "Working"} waiting={Boolean(asking) || t.pendingActions > 0} />
                   {live?.text ? <Markdown text={live.text} /> : null}
                 </div>
               ) : null}

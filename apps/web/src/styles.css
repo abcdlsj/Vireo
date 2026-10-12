@@ -1278,19 +1278,7 @@ button.link.danger {
   color: var(--muted);
 }
 
-.browser-view .live-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--accent);
-  animation: live-pulse 1.4s ease-in-out infinite;
-}
 
-@keyframes live-pulse {
-  50% {
-    opacity: 0.35;
-  }
-}
 
 .browser-view img {
   width: 100%;

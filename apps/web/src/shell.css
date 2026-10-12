@@ -1525,8 +1525,9 @@ button.attach:active {
   }
 }
 
-/* At home the board beside the list already shows each matter being worked on; the list doesn't repeat it. */
-.shell.at-home .thread-row.running .eyes {
+/* At home the board beside the list already shows each matter being worked on and its step; the list doesn't repeat them. */
+.shell.at-home .thread-row.working .eyes,
+.shell.at-home .thread-row.working .row-sub {
   display: none;
 }
 
