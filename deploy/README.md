@@ -89,7 +89,7 @@ To publish `@abcdlsj/vireo-node` to npm, add an `NPM_TOKEN` repository secret an
 - `CLOUDFLARE_ACCOUNT_ID`: the Cloudflare account id.
 - `CLOUDFLARE_API_TOKEN`: an API token with **Workers Scripts: Edit**, **D1: Edit** and **Workers Routes: Edit** (the *Edit Cloudflare Workers* template covers them).
 
-With those set, a push to `main` replaces the manual `npx wrangler deploy` steps above; the cloud job checks `https://cloud.askvireo.com/api/health` after deploying. Deploys are serialized per ref, so a deploy is never interrupted halfway. The app is built with `VITE_VIREO_CLOUD=https://cloud.askvireo.com`, set in the workflow's `env`.
+With those set, a push to `main` replaces the manual `npx wrangler deploy` steps above; the cloud job checks `https://cloud.askvireo.com/api/health` after deploying. Deploys are serialized per ref, so a deploy is never interrupted halfway, and each one goes through `scripts/deploy-cf.sh`, which retries the transient failures Cloudflare's API returns (504s from the assets-upload, subdomain and custom-domain endpoints). The app is built with `VITE_VIREO_CLOUD=https://cloud.askvireo.com`, set in the workflow's `env`.
 
 ## Everything on one machine
 

@@ -3,7 +3,8 @@ name: Deploy
 # Deploys the three Cloudflare pieces on every push to main and every v* tag
 # (and on demand): the cloud (vireo-cloud), the app (app.askvireo.com) and the
 # website (askvireo.com). Only the pieces a change touches are deployed; a tag
-# or a manual run deploys all three.
+# or a manual run deploys all three. Each deploy retries Cloudflare's transient
+# API failures (scripts/deploy-cf.sh).
 #
 # Needs two repository secrets:
 #   CLOUDFLARE_API_TOKEN   API token with Workers Scripts: Edit, D1: Edit and
@@ -74,13 +75,11 @@ jobs:
       - run: npm ci
         env:
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
-      - uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          packageManager: npm
-          wranglerVersion: "4.149.0"
-          workingDirectory: apps/cloud
+      - name: Deploy to Cloudflare
+        run: scripts/deploy-cf.sh apps/cloud
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       - name: Wait for the cloud
         run: |
           for _ in $(seq 1 10); do
@@ -105,13 +104,11 @@ jobs:
         env:
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
       - run: npm run build -w @vireo/web
-      - uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          packageManager: npm
-          wranglerVersion: "4.149.0"
-          workingDirectory: apps/web
+      - name: Deploy to Cloudflare
+        run: scripts/deploy-cf.sh apps/web
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
   site:
     needs: changed
@@ -128,10 +125,8 @@ jobs:
         env:
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
       - run: npm run build -w @vireo/site
-      - uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          packageManager: npm
-          wranglerVersion: "4.149.0"
-          workingDirectory: apps/site
+      - name: Deploy to Cloudflare
+        run: scripts/deploy-cf.sh apps/site
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
