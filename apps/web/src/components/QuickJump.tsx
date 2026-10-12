@@ -55,7 +55,7 @@ export function QuickJump({ threads, onClose }: { threads: Thread[]; onClose: ()
     const q = query.trim();
     const cardOf = new Map<string, Card>();
     // A matter's own card names it best; derived cards (a confirmation, a reminder) don't name the matter.
-    for (const c of cards) if (!cardOf.has(c.threadId) && !["proposal", "reminder", "thread"].includes(c.kind)) cardOf.set(c.threadId, c);
+    for (const c of cards) if (!cardOf.has(c.threadId) && !["proposal", "reminder", "thread", "browser_request"].includes(c.kind)) cardOf.set(c.threadId, c);
     const rank = (t: Thread) => (t.needsYou ? 0 : t.running ? 1 : t.group === "in_progress" ? 2 : 3);
     const found = threads
       .filter((t) => {

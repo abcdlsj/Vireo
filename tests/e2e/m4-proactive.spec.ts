@@ -5,6 +5,10 @@ import { finalReply, FIXTURES, sendMessage, settle, startThread, threadDetail } 
 const SITE_PASSWORD = "s3cret-Pa55word!";
 
 test.describe("Milestone 4 — Proactive and hands-on", () => {
+  test.afterEach(async ({ request }) => {
+    for (const a of test.info().annotations) if (a.type === "thread") await request.post(`/api/threads/${a.description}/browser/control`, { data: { on: false } });
+  });
+
   test("[M4.2] a multi-step website task completes, pausing for confirmation before submitting", async ({ page, request }) => {
     await request.get(`${FIXTURES}/_reset`);
     await request.post("/api/credentials", { data: { domain: "localhost", username: "lisa", password: SITE_PASSWORD } });
@@ -44,6 +48,46 @@ test.describe("Milestone 4 — Proactive and hands-on", () => {
     expect((await (await request.get(`/api/threads/${id}/browser/control`)).json()).controlled).toBe(false);
     await page.getByTestId("browser-full").click();
     await expect(stage).not.toHaveClass(/full/);
+  });
+
+  test("[M4.2] when Vireo hands its browser over, the ask is in the conversation, on the board and in a notification", async ({ page, request }) => {
+    const controlled = async () => (await (await request.get(`/api/threads/${id}/browser/control`)).json()).controlled as boolean;
+    const r = await request.post("/api/threads", { data: { text: `Book a table for 2 people at ${FIXTURES}/login under the name Lisa, I'll sign in myself` } });
+    const id = (await r.json()).thread.id as string;
+    // Never leave the run waiting on the owner for later tests.
+    test.info().annotations.push({ type: "thread", description: id });
+    await expect.poll(controlled, { timeout: 30_000 }).toBe(true);
+    const notes = (await (await request.get("/api/test/notifications")).json()).notifications;
+    expect(notes[0]).toMatchObject({ title: expect.stringContaining("Your turn in the browser"), body: "Sign in to Bistro Vireo", url: `/#thread/${id}?browser` });
+
+    // The board puts it under "Needs you", and its button opens the browser in the thread.
+    await page.goto("/#");
+    const card = page.getByTestId("board-needs").locator('[data-kind="browser_request"]');
+    await expect(card).toContainText("Sign in to Bistro Vireo");
+    await expect(page.getByTestId("home-headline")).toContainText("need");
+    await card.getByTestId("browser-request-open").click();
+    const full = page.locator(".browser-stage.full");
+    await expect(full).toHaveClass(/controlled/);
+    await expect(full.getByTestId("browser-request")).toContainText("Sign in to Bistro Vireo");
+
+    // Closing the view or leaving the thread doesn't answer the ask: it waits in the conversation.
+    await full.getByTestId("browser-full").click();
+    await expect(full).toHaveCount(0);
+    const ask = page.getByTestId("browser-ask");
+    await expect(ask).toContainText("Sign in to Bistro Vireo");
+    await page.goto("/#");
+    await page.goto(`/#thread/${id}`);
+    expect(await controlled()).toBe(true);
+    // On a wide screen the browser opens by itself while Vireo waits on it.
+    await expect(full).toBeVisible();
+    await full.getByTestId("browser-full").click();
+
+    await ask.getByTestId("browser-request-done").click();
+    await expect(page.getByTestId("browser-ask-ended")).toContainText("You handed the browser back");
+    await settle(request);
+    expect(await controlled()).toBe(false);
+    const feed = (await (await request.get("/api/cards")).json()).cards as { kind: string }[];
+    expect(feed.some((c) => c.kind === "browser_request")).toBe(false);
   });
 
   test("[M4.3] credentials never appear in prompts or logs", async ({ request }) => {

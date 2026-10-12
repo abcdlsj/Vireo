@@ -62,7 +62,7 @@ export class BrowserService {
   /** Latest frame per thread, kept after the tab closes so the owner can still see where the browser ended up. */
   private frames = new Map<string, Buffer>();
   /** Threads whose browser the owner has taken over; the agent's browser tools wait until it is handed back. */
-  private control = new Map<string, { released: Promise<void>; release: () => void; queue: Promise<void>; request?: string }>();
+  private control = new Map<string, { released: Promise<void>; release: () => void; queue: Promise<void>; request?: string; since: number }>();
 
   constructor(private readonly app: App) {}
 
@@ -478,7 +478,9 @@ export class BrowserService {
     if (!this.control.has(threadId)) {
       let release = () => {};
       const released = new Promise<void>((r) => (release = r));
-      this.control.set(threadId, { released, release, queue: Promise.resolve(), request });
+      this.control.set(threadId, { released, release, queue: Promise.resolve(), request, since: Date.now() });
+    } else if (request) {
+      this.control.get(threadId)!.request = request;
     }
     return true;
   }
@@ -486,6 +488,11 @@ export class BrowserService {
   /** What the agent asked the owner to do in the browser, while it waits for them. */
   request(threadId: string): string | undefined {
     return this.control.get(threadId)?.request;
+  }
+
+  /** Every request Vireo is waiting on the owner for, oldest first. */
+  requests(): { threadId: string; request: string; since: number }[] {
+    return [...this.control.entries()].flatMap(([threadId, c]) => (c.request ? [{ threadId, request: c.request, since: c.since }] : [])).sort((a, b) => a.since - b.since);
   }
 
   /**

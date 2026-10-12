@@ -1342,6 +1342,116 @@ button.link.danger {
   font-size: 13px;
 }
 
+/* ---------- Vireo's ask to use its browser: the owner's turn, in the conversation ---------- */
+.browser-ask {
+  border-radius: var(--radius);
+  padding: 12px 14px 14px;
+  background: var(--orange-tag);
+  box-shadow: inset 3px 0 0 var(--orange);
+}
+
+.browser-ask-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--orange-text);
+  font-size: 12.5px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.browser-ask-head .when {
+  margin-left: auto;
+  font-weight: 400;
+  opacity: 0.8;
+}
+
+.browser-ask-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 176px;
+  grid-template-areas: "text thumb" "buttons thumb";
+  grid-template-rows: auto 1fr;
+  column-gap: 16px;
+}
+
+.browser-ask-text {
+  grid-area: text;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.browser-ask-request {
+  margin: 0;
+  font-size: 16px;
+  line-height: 22px;
+  font-weight: 600;
+  text-wrap: pretty;
+}
+
+.browser-ask-sub {
+  margin: 0;
+  font-size: 13px;
+  color: var(--orange-text);
+}
+
+.browser-ask-buttons {
+  grid-area: buttons;
+  align-self: end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.browser-ask-thumb {
+  grid-area: thumb;
+  align-self: start;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--bg);
+  cursor: zoom-in;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+}
+
+.browser-ask-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top left;
+  display: block;
+}
+
+@media (max-width: 520px) {
+  .browser-ask-main {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "text" "thumb" "buttons";
+    grid-template-rows: auto;
+  }
+
+  .browser-ask-thumb {
+    margin-top: 10px;
+    aspect-ratio: 16 / 6;
+  }
+
+  .browser-ask-buttons .btn {
+    flex: 1;
+    justify-content: center;
+  }
+}
+
+.notice.browser-ask-ended svg {
+  flex: none;
+}
+
 /* ---------- action & procedure cards (callout blocks) ---------- */
 .action-card,
 .procedure-card {

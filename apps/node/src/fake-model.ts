@@ -513,6 +513,10 @@ function browser(t: Turn): AssistantMessage {
   const el = (pattern: RegExp) => lines.find((l) => pattern.test(l))?.match(/\[ref=(\w+)\]/)?.[1];
   const typed = (ref: string | undefined) => ref && snaps.some((s) => s.name === "browser_type" && s.args.ref === ref);
   const hasPassword = /textbox "Password"/i.test(snap);
+  // "I'll sign in myself": hand the browser over instead of using stored credentials.
+  if (hasPassword && /sign in myself|let me sign in|我自己登录/i.test(t.owner) && !snaps.some((s) => s.name === "browser_ask_owner")) {
+    return call("browser_ask_owner", { request: "Sign in to Bistro Vireo" });
+  }
   if (hasPassword) {
     const user = el(/textbox "(Email|Username|Email or username)"/i);
     const pass = el(/textbox "Password"/i);

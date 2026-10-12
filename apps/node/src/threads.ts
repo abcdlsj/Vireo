@@ -205,6 +205,21 @@ export class ThreadStore {
     return this.addMessage(threadId, body, { llm: opts.llm ?? false });
   }
 
+  /** Changes the data of a notice already in the conversation, found by a key in its data (message ids can move). */
+  updateNotice(threadId: string, kind: string, key: { name: string; value: string }, data: Record<string, unknown>): void {
+    const row = this.db.get<{ id: number; body: string }>(
+      "SELECT id, body FROM messages WHERE thread_id = ? AND role = 'notice' AND json_extract(body, '$.kind') = ? AND json_extract(body, '$.data.' || ?) = ?",
+      threadId,
+      kind,
+      key.name,
+      key.value,
+    );
+    if (!row) return;
+    const body = JSON.parse(row.body) as NoticeBody;
+    this.db.run("UPDATE messages SET body = ? WHERE id = ?", JSON.stringify({ ...body, data: { ...body.data, ...data } }), row.id);
+    this.changed(threadId);
+  }
+
   messages(threadId: string, opts: { llmOnly?: boolean; limit?: number } = {}): StoredMessage[] {
     const rows = this.db.all<{ id: number; thread_id: string; role: string; agent: string | null; body: string; llm: number; created_at: number }>(
       `SELECT * FROM (SELECT * FROM messages WHERE thread_id = ? ${opts.llmOnly ? "AND llm = 1" : ""} ORDER BY id DESC LIMIT ?) ORDER BY id ASC`,

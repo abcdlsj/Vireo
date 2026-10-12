@@ -7,7 +7,8 @@ import { ActionCard } from "./ActionCard";
 import { Attachments, FileViewer } from "./Attachments";
 import { Composer } from "./Composer";
 import { ProcedureCard } from "./ProcedureCard";
-import { SHEET_QUERY, SidePanel } from "./SidePanel";
+import { BrowserAsk } from "./BrowserAsk";
+import { BrowserView, SHEET_QUERY, SidePanel } from "./SidePanel";
 import { CardSlot } from "../cards/CardSlot";
 import { Status } from "../cards/Frame";
 import type { Card } from "@vireo/protocol";
@@ -136,6 +137,8 @@ export function ThreadView({ id }: { id: string }) {
   const [panelChoice, setPanelChoice] = useState<boolean | null>(null);
   const [editingTitle, setEditingTitle] = useState(false);
   const [viewing, setViewing] = useState<FileInfo | null>(null);
+  // The browser full size over the thread, for doing what Vireo asked there.
+  const [browserOpen, setBrowserOpen] = useState(false);
   const scroller = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
   const reloadTimer = useRef<number | undefined>(undefined);
@@ -148,6 +151,33 @@ export function ThreadView({ id }: { id: string }) {
     if (browsing && !window.matchMedia(SHEET_QUERY).matches) setPanelChoice(true);
   }, [browsing]);
   const panel = panelChoice ?? panelAuto(detail);
+
+  // What Vireo is paused on for the owner to do in its browser, if anything.
+  const asking = useMemo(() => {
+    if (!detail?.thread.running) return undefined;
+    const n = detail.messages.findLast((m) => m.role === "notice" && m.kind === "browser_request");
+    return n?.role === "notice" && n.data?.state === "waiting" ? { id: n.id, request: n.text } : undefined;
+  }, [detail]);
+  // A new ask opens the browser full size where there is room for it (or when the owner came from
+  // a notification or the board to do it); it closes once the ask is settled.
+  const fromLink = useRef(false);
+  const [linked, setLinked] = useState(0);
+  useEffect(() => {
+    const check = () => {
+      if (!location.hash.includes("?browser")) return;
+      fromLink.current = true;
+      history.replaceState(null, "", `#thread/${encodeURIComponent(id)}`);
+      setLinked((n) => n + 1);
+    };
+    check();
+    window.addEventListener("hashchange", check);
+    return () => window.removeEventListener("hashchange", check);
+  }, [id]);
+  useEffect(() => {
+    if (!asking) return setBrowserOpen(false);
+    if (fromLink.current || (!window.matchMedia(SHEET_QUERY).matches && document.visibilityState === "visible")) setBrowserOpen(true);
+    fromLink.current = false;
+  }, [id, asking?.id, linked]);
 
   const setPanel = (open: boolean) => {
     setPanelChoice(open);
@@ -349,6 +379,9 @@ export function ThreadView({ id }: { id: string }) {
                     actions={actions}
                     files={filesById}
                     onOpen={setViewing}
+                    onOpenBrowser={() => setBrowserOpen(true)}
+                    threadId={t.id}
+                    running={t.running}
                     onChange={load}
                     // A run that ended in an error can be tried again, as long as nothing came after it.
                     retry={!t.running && !live && it === items[items.length - 1] ? () => void api.post(`/api/threads/${t.id}/retry`).then(load) : undefined}
@@ -358,7 +391,7 @@ export function ThreadView({ id }: { id: string }) {
               {t.running || live ? (
                 <div className="msg assistant live" data-testid="live">
                   {/* While working: one line saying what is happening now; when done it becomes the folded summary. */}
-                  <Steps steps={trailing} now={live?.text ? undefined : t.statusLine || "Working…"} />
+                  <Steps steps={trailing} now={live?.text ? undefined : asking ? "Waiting for you" : t.statusLine || "Working…"} />
                   {live?.text ? <Markdown text={live.text} /> : null}
                 </div>
               ) : null}
@@ -371,8 +404,9 @@ export function ThreadView({ id }: { id: string }) {
             placeholder={t.state === "done" ? "Message to reopen this thread" : isOverview ? "Ask Vireo anything" : "Message Vireo"}
           />
         </div>
-        {panel ? <SidePanel detail={detail} running={t.running} browsing={browsing} onClose={() => setPanel(false)} onOpenFile={setViewing} /> : null}
+        {panel ? <SidePanel detail={detail} running={t.running} browsing={browsing} asking={asking?.request} onClose={() => setPanel(false)} onOpenFile={setViewing} /> : null}
       </div>
+      {browserOpen ? <BrowserView threadId={t.id} running={t.running} asking={asking?.request} overlay onClose={() => setBrowserOpen(false)} /> : null}
       {viewing ? <FileViewer file={viewing} onClose={() => setViewing(null)} /> : null}
     </div>
   );
@@ -404,6 +438,9 @@ function ItemView({
   actions,
   files,
   onOpen,
+  onOpenBrowser,
+  threadId,
+  running,
   onChange,
   retry,
 }: {
@@ -411,6 +448,9 @@ function ItemView({
   actions: Map<string, Action>;
   files: Map<string, FileInfo>;
   onOpen: (f: FileInfo) => void;
+  onOpenBrowser: () => void;
+  threadId: string;
+  running: boolean;
   onChange: () => void;
   retry?: () => void;
 }) {
@@ -450,6 +490,11 @@ function ItemView({
       if (n.kind === "action") {
         const a = actions.get(String(n.data?.actionId));
         return a ? <ActionCard action={a} onChange={onChange} /> : null;
+      }
+      if (n.kind === "browser_request") {
+        // An ask still marked waiting in a thread that no longer runs was cut off (a restart).
+        const state = String(n.data?.state ?? "");
+        return <BrowserAsk threadId={threadId} request={n.text} state={state === "waiting" && !running ? "stopped" : state} since={n.createdAt} onOpen={onOpenBrowser} />;
       }
       if (n.kind === "procedure") return <ProcedureCard id={String(n.data?.procedureId)} text={n.text} onChange={onChange} />;
       if (n.kind === "thread_link") {

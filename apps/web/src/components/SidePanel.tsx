@@ -81,12 +81,15 @@ export function SidePanel({
   detail,
   running,
   browsing,
+  asking,
   onClose,
   onOpenFile,
 }: {
   detail: ThreadDetail;
   running: boolean;
   browsing: boolean;
+  /** What Vireo is waiting for the owner to do in the browser, if anything. */
+  asking?: string;
   onClose: () => void;
   onOpenFile?: (f: FileInfo) => void;
 }) {
@@ -201,7 +204,7 @@ export function SidePanel({
             })}
           </div>
         ) : tab === "browser" ? (
-          <BrowserView threadId={tid} running={running} />
+          <BrowserView threadId={tid} running={running} asking={asking} />
         ) : tab === "usage" ? (
           <UsageView threadId={tid} detail={detail} />
         ) : (
@@ -460,11 +463,17 @@ const BUTTONS = ["left", "middle", "right"] as const;
  * The thread's browser tab; refreshes frame by frame while the agent is working.
  * It opens full size in an overlay, where the owner can take over the browser
  * and use it by hand; the agent's browser steps wait until it is handed back.
+ * As `overlay` it is only that full-size view, opened from the conversation
+ * when Vireo asks the owner to do something in the browser.
  */
-function BrowserView({ threadId, running }: { threadId: string; running: boolean }) {
+export function BrowserView({ threadId, running, asking, overlay, onClose }: { threadId: string; running: boolean; asking?: string; overlay?: boolean; onClose?: () => void }) {
   const [tick, setTick] = useState(0);
   const [state, setState] = useState<"loading" | "shown" | "none">("loading");
-  const [full, setFull] = useState(false);
+  const [full, setFullState] = useState(Boolean(overlay));
+  const setFull = (on: boolean) => {
+    setFullState(on);
+    if (!on) onClose?.();
+  };
   const [control, setControl] = useState<Control>({ page: false, controlled: false });
   const [error, setError] = useState("");
   const timer = useRef<number | undefined>(undefined);
@@ -478,25 +487,14 @@ function BrowserView({ threadId, running }: { threadId: string; running: boolean
   useEffect(() => setTick((n) => n + 1), [running, control.controlled]);
   useEffect(() => () => window.clearTimeout(timer.current), []);
   useEffect(() => {
-    void api.get<Control>(`/api/threads/${threadId}/browser/control`).then(setControl).catch(() => undefined);
-  }, [threadId, running, state]);
-  // While Vireo works it may hand the browser over (to sign in); notice that and open it full size.
-  useEffect(() => {
-    if (!running || control.controlled) return;
-    const t = window.setInterval(() => {
-      void api
-        .get<Control>(`/api/threads/${threadId}/browser/control`)
-        .then((c) => {
-          setControl(c);
-          if (c.controlled && c.request) {
-            setFull(true);
-            window.setTimeout(() => stage.current?.focus(), 0);
-          }
-        })
-        .catch(() => undefined);
-    }, 1500);
-    return () => window.clearInterval(t);
-  }, [threadId, running, control.controlled]);
+    void api
+      .get<Control>(`/api/threads/${threadId}/browser/control`)
+      .then((c) => {
+        setControl(c);
+        if (overlay && c.controlled) window.setTimeout(() => stage.current?.focus(), 0);
+      })
+      .catch(() => undefined);
+  }, [threadId, running, state, asking, overlay]);
 
   const next = () => {
     window.clearTimeout(timer.current);
@@ -507,6 +505,8 @@ function BrowserView({ threadId, running }: { threadId: string; running: boolean
     setError("");
     try {
       setControl(await api.post<Control>(`/api/threads/${threadId}/browser/control`, { on }));
+      // Opened for Vireo's ask, handing back is the end of it.
+      if (!on && overlay) setFull(false);
       if (on) {
         setFull(true);
         window.setTimeout(() => stage.current?.focus(), 0);
@@ -516,18 +516,20 @@ function BrowserView({ threadId, running }: { threadId: string; running: boolean
     }
   };
 
-  // Leaving the thread hands the browser back, so the agent is never left waiting on a closed view.
-  const controlled = useRef(false);
-  controlled.current = control.controlled;
+  // Leaving the thread hands back a browser the owner took over themselves, so the agent is never left
+  // waiting on a closed view. One Vireo asked for stays the owner's: the ask waits in the conversation
+  // and on the board until they do it or hand it back.
+  const taken = useRef(false);
+  taken.current = control.controlled && !control.request;
   useEffect(
     () => () => {
-      if (controlled.current) void api.post(`/api/threads/${threadId}/browser/control`, { on: false }).catch(() => undefined);
+      if (taken.current) void api.post(`/api/threads/${threadId}/browser/control`, { on: false }).catch(() => undefined);
     },
     [threadId],
   );
 
   const close = () => {
-    if (control.controlled) void setControlled(false);
+    if (control.controlled && !control.request) void setControlled(false);
     setFull(false);
   };
 
@@ -607,7 +609,7 @@ function BrowserView({ threadId, running }: { threadId: string; running: boolean
 
   return (
     <div className="panel-body browser-view" data-testid="browser-view">
-      {full ? <div className="browser-backdrop" onClick={control.controlled ? undefined : close} /> : null}
+      {full ? <div className="browser-backdrop" onClick={control.controlled && !control.request ? undefined : close} /> : null}
       <div
         className={`browser-stage ${full ? "full" : ""} ${control.controlled ? "controlled" : ""}`}
         ref={stage}
@@ -624,7 +626,7 @@ function BrowserView({ threadId, running }: { threadId: string; running: boolean
           <span className="browser-actions">
             {canTakeOver || control.controlled ? (
               <button className={`btn small ${control.controlled ? "primary" : "ghost"}`} onClick={() => void setControlled(!control.controlled)} data-testid="browser-takeover">
-                {control.controlled ? "Hand back" : "Take over"}
+                {control.controlled ? (control.request ? "Done, hand back" : "Hand back") : "Take over"}
               </button>
             ) : null}
             {state === "shown" ? (
@@ -656,7 +658,7 @@ function BrowserView({ threadId, running }: { threadId: string; running: boolean
         />
         {control.controlled && control.request ? (
           <p className="browser-request" data-testid="browser-request">
-            <b>Vireo asks:</b> {control.request.replace(/[.。!！]+$/, "")}. Hand the browser back when you're done.
+            <b>Vireo asks:</b> {control.request.replace(/[.。!！]+$/, "")}. Vireo is paused until you hand the browser back.
           </p>
         ) : control.controlled ? (
           <p className="muted fine">Vireo waits while you use the browser. Hand it back when you're done.</p>

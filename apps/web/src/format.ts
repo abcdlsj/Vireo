@@ -62,6 +62,7 @@ const TOOL_LABELS: Record<string, string> = {
   browser_wait: "Waited for the page",
   browser_back: "Went back",
   browser_tab: "Switched tab",
+  browser_ask_owner: "Handed you the browser",
   list_credentials: "Checked sign-ins",
   read_file: "Read a file",
   create_file: "Created a file",

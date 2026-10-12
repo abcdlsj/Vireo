@@ -1,5 +1,6 @@
 import { Type } from "typebox";
 import { formatSnapshot } from "../browser.js";
+import { newId } from "../util.js";
 import { defineTool, type ToolContext, type ToolDef } from "./types.js";
 
 function snapshotOutput(ctx: ToolContext, snap: Awaited<ReturnType<ToolContext["app"]["browser"]["snapshot"]>>) {
@@ -180,10 +181,29 @@ const tools = [
     }),
     async run(args, ctx) {
       const request = args.request.trim().slice(0, 120);
-      ctx.app.threads.setStatus(ctx.thread.id, `Waiting for you in the browser: ${request}`);
-      void ctx.app.push.notify({ title: "Vireo needs you in the browser", body: request, url: `/#thread/${ctx.thread.id}`, tag: `browser-${ctx.thread.id}` });
-      const done = await ctx.app.browser.askOwner(ctx.thread.id, request, 20 * 60_000, ctx.signal);
-      const snap = await ctx.app.browser.snapshot(ctx.thread.id);
+      const threadId = ctx.thread.id;
+      // The ask is the owner's turn, so it goes in the conversation and on the board as "Needs you", not only in the steps.
+      const requestId = newId("ask");
+      ctx.app.threads.addNotice(threadId, "browser_request", request, { data: { requestId, state: "waiting" } });
+      ctx.app.threads.update(threadId, { needs_you: 1 });
+      ctx.app.threads.setStatus(threadId, `Waiting for you in the browser: ${request}`);
+      const title = ctx.app.threads.get(threadId)?.title;
+      void ctx.app.push.notify({
+        title: title ? `Your turn in the browser: ${title}` : "Vireo needs you in the browser",
+        body: request,
+        url: `/#thread/${threadId}?browser`,
+        tag: `browser-${threadId}`,
+      });
+      let state: "done" | "expired" | "stopped" = "stopped";
+      let done = false;
+      try {
+        done = await ctx.app.browser.askOwner(threadId, request, 20 * 60_000, ctx.signal);
+        state = done ? "done" : "expired";
+      } finally {
+        ctx.app.threads.updateNotice(threadId, "browser_request", { name: "requestId", value: requestId }, { state, endedAt: Date.now() });
+        ctx.app.threads.update(threadId, { needs_you: 0 });
+      }
+      const snap = await ctx.app.browser.snapshot(threadId);
       const out = snapshotOutput(ctx, snap);
       return {
         ...out,
