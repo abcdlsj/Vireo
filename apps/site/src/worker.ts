@@ -1,7 +1,6 @@
 /**
  * askvireo.com. The pages are static assets; this only sends www to the
- * bare domain first, keeping the path (the app now lives on app.askvireo.com,
- * and the page forwards its old #link= and #thread/ addresses there).
+ * bare domain first, keeping the path (the app lives on app.askvireo.com).
  */
 interface Env {
   ASSETS: Fetcher;

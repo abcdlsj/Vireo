@@ -47,10 +47,6 @@ export function page(t, other) {
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="preload" href="/fonts/manrope.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/site.css">
-<script>
-  // The app used to live here: its links (a node's link code, a thread) open in the app.
-  if (/^#(link=|thread\\/|new|threads|settings|memory)/.test(location.hash)) location.replace("${APP}/" + location.hash);
-</script>
 </head>
 <body>
 <header class="top">
