@@ -38,25 +38,33 @@ export function PluginsCard({ reload, focus }: { reload: () => Promise<void>; fo
 
   const installed = plugins?.filter((p) => p.installed) ?? [];
   const available = plugins?.filter((p) => !p.installed) ?? [];
+  // One plugin opens its settings by itself: the one a link pointed at, else
+  // the first that needs setup or is failing. Opening every such plugin at
+  // once buried the rest of the page under forms.
+  const attention = (p: PluginView) => p.status?.state === "setup" || p.status?.state === "error";
+  const focused = installed.find((p) => p.id === focus && p.status?.state !== "ready");
+  const autoOpen = (focused ?? installed.find(attention))?.id;
   return (
-    <section className="card" data-testid="plugins-card">
-      <div className="card-head">
-        <p className="muted small">{browsing ? "Plugins that ship with Vireo. Each stays off until you add it." : `${installed.length} added on this host.`}</p>
-        <button className="btn small" onClick={() => setBrowsing((b) => !b)} aria-expanded={browsing} data-testid="community-plugins">
+    <div className="plugins" data-testid="plugins-card">
+      <div className="plugins-bar">
+        <p className="muted small">{plugins ? `${installed.length} added on this host` : ""}</p>
+        <button className={`btn small${!browsing && plugins?.length && installed.length === 0 ? " primary" : ""}`} onClick={() => setBrowsing((b) => !b)} aria-expanded={browsing} data-testid="community-plugins">
           {browsing ? "Done" : "Community plugins"}
         </button>
       </div>
       {error ? <p className="error small">{error}</p> : null}
       {browsing ? (
-        <div className="plugin-catalog" data-testid="plugin-catalog">
+        <section className="card plugin-catalog" data-testid="plugin-catalog">
+          <h3>Community plugins</h3>
+          <p className="muted small">Plugins that ship with Vireo. Each stays off until you add it.</p>
           {available.length === 0 ? <p className="muted small">Every community plugin is added.</p> : null}
           {available.map((p) => (
             <div key={p.id} className={`plugin-row${p.id === focus ? " focused" : ""}`} data-plugin={p.id}>
-              <div>
+              <div className="plugin-about">
                 <b>{p.name}</b> <span className="muted small">by {p.author}</span>
                 <p className="muted small">{p.description}</p>
                 {p.browserSetup ? (
-                  <p className="muted small">
+                  <p className="small plugin-hint">
                     Or let Vireo set it up: it opens the sign-in page in its browser, you sign in, it creates the keys. <SetUpWithVireo plugin={p} run={run} />
                   </p>
                 ) : null}
@@ -66,13 +74,17 @@ export function PluginsCard({ reload, focus }: { reload: () => Promise<void>; fo
               </button>
             </div>
           ))}
-        </div>
+        </section>
       ) : null}
-      {plugins && installed.length === 0 && !browsing ? <p className="muted small">No plugins yet. Add Google, Tailscale and more from Community plugins.</p> : null}
+      {plugins && installed.length === 0 && !browsing ? (
+        <section className="card">
+          <p className="muted small">No plugins yet. Add Google, Tailscale and more from Community plugins.</p>
+        </section>
+      ) : null}
       {installed.map((p) => (
-        <Plugin key={p.id} plugin={p} run={run} focused={p.id === focus} />
+        <Plugin key={p.id} plugin={p} run={run} focused={p.id === focus} autoOpen={p.id === autoOpen} />
       ))}
-    </section>
+    </div>
   );
 }
 
@@ -101,30 +113,64 @@ function SetUpWithVireo({ plugin, run, primary }: { plugin: PluginView; run: (fn
 
 const STATE_LABEL: Record<string, string> = { ready: "Ready", setup: "Needs setup", login: "Sign in needed", starting: "Starting", error: "Error" };
 
-function Plugin({ plugin: p, run, focused }: { plugin: PluginView; run: (fn: () => Promise<unknown>) => Promise<void>; focused: boolean }) {
+function Plugin({ plugin: p, run, focused, autoOpen }: { plugin: PluginView; run: (fn: () => Promise<unknown>) => Promise<void>; focused: boolean; autoOpen: boolean }) {
   const st = p.status;
-  // A plugin that needs setup or is failing opens its settings, so the field
-  // that fixes it (e.g. Tailscale's Connection) is the first thing in view.
   const needsAttention = st?.state === "setup" || st?.state === "error";
-  const [open, setOpen] = useState(needsAttention || (focused && st?.state !== "ready"));
+  // The plugin that needs setup or is failing opens its settings, so the field
+  // that fixes it (e.g. Tailscale's Connection) is the first thing in view.
+  const [open, setOpen] = useState(autoOpen);
   const [form, setForm] = useState<Record<string, unknown>>({});
   const [note, setNote] = useState("");
   // The status arrives after the card does (and after a plugin is added), so a
   // plugin that needs attention opens then, not only on first render.
   useEffect(() => {
-    if (needsAttention) setOpen(true);
-  }, [needsAttention]);
+    if (autoOpen) setOpen(true);
+  }, [autoOpen]);
   const value = (f: PluginField) => (f.key in form ? form[f.key] : f.type === "secret" ? "" : (p.config[f.key] ?? f.default ?? ""));
   const set = (k: string, v: unknown) => setForm((s) => ({ ...s, [k]: v }));
+  // A plugin whose whole form is one list (Coding agents, say) needs no second heading.
+  const solo = p.fields.length === 1 && p.fields[0]!.type === "list";
 
   return (
-    <div className={`plugin${focused ? " focused" : ""}`} data-testid={`plugin-${p.id}`} data-plugin={p.id}>
-      <div className="plugin-row">
-        <div>
-          <b>{p.name}</b> {st ? <span className={`plugin-state ${st.state}`}>{STATE_LABEL[st.state] ?? st.state}</span> : null}
-          {st ? <p className="small" data-testid={`plugin-${p.id}-status`}>{st.message}</p> : null}
+    <section className={`card plugin${focused ? " focused" : ""}${open ? " open" : ""}`} data-testid={`plugin-${p.id}`} data-plugin={p.id}>
+      <div className="plugin-head">
+        <div className="plugin-title">
+          <b>{p.name}</b>
+          {st ? <span className={`plugin-state is-${st.state}`}>{STATE_LABEL[st.state] ?? st.state}</span> : null}
+        </div>
+        <div className="row-buttons plugin-actions">
+          {st && st.state !== "ready" ? <SetUpWithVireo plugin={p} run={run} primary={!st.link} /> : null}
+          {p.actions.map((a) => (
+            <button
+              key={a.id}
+              className={`btn small${a.primary ? " primary" : ""}`}
+              onClick={() =>
+                void run(async () => {
+                  const r = await api.post<{ message?: string; redirect?: string }>(`/api/plugins/${p.id}/actions/${a.id}`);
+                  if (r.redirect) location.href = r.redirect;
+                  setNote(r.message ?? "");
+                })
+              }
+            >
+              {a.label}
+            </button>
+          ))}
+          <button
+            className={`btn small${!open && needsAttention ? " primary" : ""}`}
+            aria-expanded={open}
+            onClick={() => setOpen((o) => !o)}
+            data-testid={`plugin-${p.id}-settings`}
+          >
+            {open ? "Hide settings" : "Settings"}
+          </button>
         </div>
       </div>
+      {st ? (
+        <p className={`plugin-status small${st.state === "error" ? " error" : ""}`} data-testid={`plugin-${p.id}-status`}>
+          {st.message}
+        </p>
+      ) : null}
+      {note ? <p className="muted small">{note}</p> : null}
       {st?.link ? (
         <p>
           <a className="btn small primary" href={st.link.href} target="_blank" rel="noreferrer">
@@ -142,44 +188,9 @@ function Plugin({ plugin: p, run, focused }: { plugin: PluginView; run: (fn: () 
           ))}
         </dl>
       ) : null}
-      <div className="row-buttons">
-        {st && st.state !== "ready" ? <SetUpWithVireo plugin={p} run={run} primary={!st.link} /> : null}
-        {p.actions.map((a) => (
-          <button
-            key={a.id}
-            className={`btn small${a.primary ? " primary" : " ghost"}`}
-            onClick={() =>
-              void run(async () => {
-                const r = await api.post<{ message?: string; redirect?: string }>(`/api/plugins/${p.id}/actions/${a.id}`);
-                if (r.redirect) location.href = r.redirect;
-                setNote(r.message ?? "");
-              })
-            }
-          >
-            {a.label}
-          </button>
-        ))}
-        <button
-          className={`btn small${!open && needsAttention ? " primary" : " ghost"}`}
-          aria-expanded={open}
-          onClick={() => setOpen((o) => !o)}
-          data-testid={`plugin-${p.id}-settings`}
-        >
-          {open ? "Hide settings" : "Settings"}
-        </button>
-        <button
-          className="btn small ghost"
-          onClick={() => {
-            if (confirm(`Remove the ${p.name} plugin? Its settings are deleted.`)) void run(() => api.del(`/api/plugins/${p.id}`));
-          }}
-        >
-          Remove
-        </button>
-        {note ? <span className="muted small">{note}</span> : null}
-      </div>
       {open ? (
         <form
-          className="stack"
+          className="stack plugin-settings"
           onSubmit={(e) => {
             e.preventDefault();
             void run(async () => {
@@ -190,9 +201,9 @@ function Plugin({ plugin: p, run, focused }: { plugin: PluginView; run: (fn: () 
           }}
         >
           {p.fields.map((f) => (
-            <Field key={f.key} field={f} value={value(f)} onChange={(v) => set(f.key, v)} />
+            <Field key={f.key} field={f} value={value(f)} onChange={(v) => set(f.key, v)} hideLabel={solo} />
           ))}
-          <div className="row-buttons">
+          <div className="plugin-foot">
             <button className="btn primary small" disabled={Object.keys(form).length === 0}>
               Save
             </button>
@@ -201,14 +212,23 @@ function Plugin({ plugin: p, run, focused }: { plugin: PluginView; run: (fn: () 
                 Open {p.name} console
               </a>
             ) : null}
+            <button
+              type="button"
+              className="link danger small plugin-remove"
+              onClick={() => {
+                if (confirm(`Remove the ${p.name} plugin? Its settings are deleted.`)) void run(() => api.del(`/api/plugins/${p.id}`));
+              }}
+            >
+              Remove plugin
+            </button>
           </div>
         </form>
       ) : null}
-    </div>
+    </section>
   );
 }
 
-function Field({ field: f, value, onChange }: { field: PluginField; value: unknown; onChange: (v: unknown) => void }) {
+function Field({ field: f, value, onChange, hideLabel }: { field: PluginField; value: unknown; onChange: (v: unknown) => void; hideLabel?: boolean }) {
   const id = `pf-${f.key}`;
   const help = f.help ? <span className="muted small">{f.help}</span> : null;
   if (f.type === "list") {
@@ -217,29 +237,30 @@ function Field({ field: f, value, onChange }: { field: PluginField; value: unkno
     const change = (i: number, key: string, v: unknown) => onChange(rows.map((r, j) => (j === i ? { ...r, [key]: v } : r)));
     return (
       <div className="pf-list" data-testid={id}>
-        <span>{f.label}</span>
+        {hideLabel ? null : <span className="pf-list-label">{f.label}</span>}
         {help}
         {rows.map((row, i) => (
           <div className="pf-row" key={i} data-testid={`${id}-${i}`}>
-            {items.map((item) => (
-              <label key={item.key}>
-                <span className="muted small">{item.label}</span>
-                <Control field={item} id={`${id}-${i}-${item.key}`} value={row[item.key]} onChange={(v) => change(i, item.key, v)} />
-                {item.help ? <span className="muted small">{item.help}</span> : null}
-              </label>
-            ))}
-            <button
-              type="button"
-              className="btn small ghost"
-              data-testid={`${id}-${i}-remove`}
-              onClick={() => onChange(rows.filter((_, j) => j !== i))}
-            >
-              Remove
-            </button>
+            <div className="pf-row-head">
+              <b>{typeof row.name === "string" && row.name.trim() ? row.name : `#${i + 1}`}</b>
+              <button type="button" className="link danger small" data-testid={`${id}-${i}-remove`} onClick={() => onChange(rows.filter((_, j) => j !== i))}>
+                Remove
+              </button>
+            </div>
+            <div className="pf-grid">
+              {items.map((item) => (
+                <label key={item.key} className={item.multiline ? "wide" : undefined}>
+                  <span>{item.label}</span>
+                  <Control field={item} id={`${id}-${i}-${item.key}`} value={row[item.key] ?? item.default ?? ""} onChange={(v) => change(i, item.key, v)} />
+                  {/* The same help under every row is noise; the first row carries it. */}
+                  {item.help && i === 0 ? <span className="muted small">{item.help}</span> : null}
+                </label>
+              ))}
+            </div>
           </div>
         ))}
-        <button type="button" className="btn small" data-testid={`${id}-add`} onClick={() => onChange([...rows, {}])}>
-          Add {f.label.toLowerCase()}
+        <button type="button" className="btn small pf-add" data-testid={`${id}-add`} onClick={() => onChange([...rows, {}])}>
+          + Add another
         </button>
       </div>
     );

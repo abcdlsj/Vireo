@@ -479,6 +479,17 @@
   border-right: none;
 }
 
+/* Plugins: each row of a list setting, and a plugin's status details, sit on the soft tint. */
+.shell .settings :is(.pf-row, .plugin-details) {
+  background: var(--c-soft);
+  border-color: var(--c-line);
+  border-radius: 14px;
+}
+
+.shell .settings .plugin-settings {
+  border-top-color: var(--c-line);
+}
+
 .shell .settings-nav-item {
   padding: 7px 12px;
   margin-bottom: 2px;
