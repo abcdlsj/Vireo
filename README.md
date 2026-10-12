@@ -11,14 +11,16 @@ Vireo is three pieces:
 | Piece | Code | What it is | Where it runs |
 |---|---|---|---|
 | **node** | `apps/node` (npm: `vireo-node`) | Your agent: threads, memory, plugins, model settings and the browser it drives. Everything you tell Vireo stays here. | Your own machine: a laptop, a home server, a VPS |
-| **app** | `apps/web` | The UI, a static React PWA. Holds no data. | Vercel (or the cloud serves it) |
+| **app** | `apps/web` | The UI, a static React PWA. Holds no data. | app.askvireo.com, on Cloudflare or Vercel (or the cloud serves it) |
 | **cloud** | `apps/cloud` | Signs people in with GitHub, keeps which nodes belong to whom, issues short-lived tokens for them, and relays the app's requests to nodes. Stores none of your conversations. | Cloudflare Workers, with D1 and Durable Objects (or a server, in Docker) |
+
+The website at [askvireo.com](https://askvireo.com) is `apps/site`, in English and Chinese.
 
 Everyone signs in to the same app with GitHub and runs their own node. Each account reaches only its own nodes, and each node only accepts tokens signed for it and its owner.
 
 ## Quick start: your own node
 
-1. Open the Vireo app at https://askvireo.com and sign in with GitHub.
+1. Open the Vireo app at https://app.askvireo.com and sign in with GitHub.
 2. On the machine Vireo should run on (Node 22.13 or newer):
    ```bash
    npx vireo-node

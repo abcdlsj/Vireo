@@ -1,12 +1,13 @@
 # Deploying Vireo
 
-Vireo is three pieces that deploy separately:
+Vireo is three pieces that deploy separately, plus the website:
 
 | Piece | Code | What it is | Where it runs |
 |---|---|---|---|
 | **cloud** | `apps/cloud` | GitHub sign-in, which nodes belong to whom, short-lived node tokens, and the relay between the app and nodes. Holds no conversations. | Cloudflare Workers (or a server, in Docker) |
 | **app** | `apps/web` | The UI, a static React PWA. Holds no data. | Vercel, Cloudflare, or the cloud itself |
 | **node** | `apps/node` | Each person's agent and data. | Each person's own machine: `npx vireo-node` |
+| **site** | `apps/site` | The website, in English and Chinese. Static pages. | Cloudflare Workers, on askvireo.com |
 
 You deploy the cloud and the app once; everyone who signs in runs their own node.
 
@@ -14,7 +15,7 @@ You deploy the cloud and the app once; everyone who signs in runs their own node
 
 At [github.com/settings/developers](https://github.com/settings/developers) → **New OAuth App**:
 
-- **Homepage URL:** the app's address, e.g. `https://vireo.example.com`
+- **Homepage URL:** the app's address, e.g. `https://app.askvireo.com`
 - **Authorization callback URL:** `https://<cloud domain>/auth/github/callback`, e.g. `https://cloud.askvireo.com/auth/github/callback`
 
 Keep the client ID and a client secret for the cloud.
@@ -55,7 +56,7 @@ The app is a static build of `apps/web` (`npm run build` there, output `apps/web
 
 **Vercel:** import the repository and set **Root Directory** to `apps/web`. `apps/web/vercel.json` sets the install and build commands, the SPA fallback and cache headers. Add `VITE_VIREO_CLOUD` under Environment Variables and redeploy.
 
-**Cloudflare Workers:** `cd apps/web && VITE_VIREO_CLOUD=... npm run build && npx wrangler deploy` (configured by `wrangler.jsonc`).
+**Cloudflare Workers:** `cd apps/web && VITE_VIREO_CLOUD=... npm run build && npx wrangler deploy` (configured by `wrangler.jsonc`, on `app.askvireo.com`).
 
 **Cloudflare Pages:** root directory `apps/web`, build command `npm run build`, output directory `dist`, and `VITE_VIREO_CLOUD` as an environment variable.
 
@@ -63,7 +64,19 @@ The cloud must know the app's address (`VIREO_WEB_URL`, plus any preview origins
 
 On a server without a separate host for the app, the cloud serves it itself: the `cloud` image includes the built app and serves it on its own origin.
 
-## 4. Nodes
+## 4. The website
+
+`apps/site` is askvireo.com: one page in English (`/`) and one in Chinese (`/zh/`), built from the same template (`src/page.mjs`, words in `src/strings.mjs`) with no framework. A small Worker serves them and sends `www.askvireo.com` to the bare domain; the page forwards the app's old addresses (`askvireo.com/#link=…`, `#thread/…`) to app.askvireo.com.
+
+```bash
+cd apps/site
+npm run dev      # build, then serve it locally
+npm run deploy   # build, then deploy to askvireo.com and www.askvireo.com
+```
+
+`routes` in its `wrangler.jsonc` claims both domains, so take them off whatever served the app there before deploying.
+
+## 5. Nodes
 
 Each person signs in to the app and runs `npx vireo-node` on their machine (see the README). A node uses the official cloud unless told otherwise: `npx vireo-node --cloud https://cloud.example.com`, or `VIREO_CLOUD_URL`.
 
