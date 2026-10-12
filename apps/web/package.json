@@ -1,6 +1,6 @@
 {
   "name": "@vireo/web",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "The Vireo app: a static React PWA. Signs in with the Vireo cloud and talks to the owner's nodes.",
   "private": true,
   "type": "module",

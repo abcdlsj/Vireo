@@ -1,6 +1,6 @@
 {
   "name": "@vireo/site",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "askvireo.com: Vireo's website, in English and Chinese. Static pages built from one template, served by a Cloudflare Worker.",
   "private": true,
   "type": "module",
