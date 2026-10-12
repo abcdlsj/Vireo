@@ -1,4 +1,4 @@
-import type { LinkPoll, LinkRequest, LinkStart, LinkStartRequest, NodeAccess, NodeMode, NodeSummary, User } from "@vireo/protocol";
+import type { LinkPoll, LinkRequest, LinkStart, LinkStartRequest, NodeAccess, NodeMode, NodePeers, NodeSummary, User } from "@vireo/protocol";
 import type { Accounts } from "./accounts.js";
 import type { CloudConfig } from "./config.js";
 import type { Sql } from "./sql.js";
@@ -117,14 +117,31 @@ export class Nodes {
   }
 
   /** A short-lived token for one node, and where the app should send it. */
-  async access(user: User, nodeId: string): Promise<NodeAccess | undefined> {
+  async access(user: User, nodeId: string, via?: string): Promise<NodeAccess | undefined> {
     const node = await this.owned(user.id, nodeId);
     if (!node) return undefined;
     const iat = Math.floor(now() / 1000);
     const exp = iat + Math.floor(this.config.accessTtlMs / 1000);
-    const token = await this.key.sign({ iss: this.config.publicUrl, sub: user.id, aud: node.id, login: user.login, role: "owner", iat, exp });
+    const token = await this.key.sign({ iss: this.config.publicUrl, sub: user.id, aud: node.id, login: user.login, role: "owner", ...(via ? { via } : {}), iat, exp });
     const direct = node.mode === "tailscale" && node.directUrl;
     return { token, expiresAt: exp * 1000, baseUrl: direct ? node.directUrl! : this.relayUrl(node.id), mode: node.mode };
+  }
+
+  /**
+   * The owner's other nodes, for one of their nodes to reach on their behalf:
+   * every node of an account works for the same person, so nothing needs
+   * pairing. Each token says which node asked for it.
+   */
+  async peers(node: NodeRecord): Promise<NodePeers> {
+    const owner = await this.accounts.user(node.ownerId);
+    if (!owner) return { peers: [] };
+    const out: NodePeers["peers"] = [];
+    for (const other of await this.forUser(owner.id)) {
+      if (other.id === node.id) continue;
+      const access = await this.access(owner, other.id, node.id);
+      if (access) out.push({ node: other, access });
+    }
+    return { peers: out };
   }
 
   relayUrl(nodeId: string): string {

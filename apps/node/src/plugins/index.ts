@@ -19,7 +19,7 @@ import { nodesPlugin } from "./nodes/index.js";
 import { searchPlugin } from "./search/index.js";
 import { tailscalePlugin } from "./tailscale/index.js";
 import { telegramPlugin } from "./telegram/index.js";
-import type { ActionResult, ConfigField, PluginDef, PluginHost, PluginRuntime, PluginState, PluginStatus, Providers, RequestInfo } from "./types.js";
+import type { ActionResult, ConfigField, McpCaller, PluginDef, PluginHost, PluginRuntime, PluginState, PluginStatus, Providers, RequestInfo } from "./types.js";
 
 export * from "./types.js";
 
@@ -90,6 +90,9 @@ export class Plugins {
       },
       notify: (n) => void app.push.notify(n),
       describe: () => this.describe(),
+      get peers() {
+        return app.peers;
+      },
       onRunFinished: (fn) => app.bus.subscribe((e) => e.type === "run.finished" && fn(e.threadId, e.text, e.startedAt)),
       redact: (text) => app.vault.redact(text),
     };
@@ -132,7 +135,14 @@ export class Plugins {
   }
 
   installed(id: string): boolean {
-    return Boolean(this.all()[id]?.enabled);
+    return this.all()[id]?.enabled ?? Boolean(CATALOG.find((d) => d.id === id)?.defaultOn);
+  }
+
+  /** An MCP request the owner's own node or app made, served by Vireo over MCP whether or not it is added. */
+  mcp(req: Request, caller: McpCaller): Promise<Response> {
+    const handle = this.runtimes.get("endpoint")?.handleMcp;
+    if (!handle) return Promise.resolve(Response.json({ error: "No MCP endpoint" }, { status: 404 }));
+    return handle(req, caller);
   }
 
   runtime(id: string): PluginRuntime | undefined {
@@ -194,7 +204,7 @@ export class Plugins {
   private write(id: string, patch: Record<string, unknown>, enabled?: boolean): void {
     const def = this.def(id);
     const all = this.all();
-    const cur: Stored = all[id] ?? { enabled: false, config: {} };
+    const cur: Stored = all[id] ?? { enabled: this.installed(id), config: {} };
     const config = { ...cur.config };
     for (const f of def.fields) {
       if (!(f.key in patch)) continue;
@@ -244,7 +254,9 @@ export class Plugins {
     this.def(id);
     await this.runtimes.get(id)?.stop?.().catch(() => undefined);
     const all = this.all();
-    delete all[id];
+    // A plugin that starts added stays removed once the owner removes it.
+    if (this.def(id).defaultOn) all[id] = { enabled: false, config: {} };
+    else delete all[id];
     this.app.db.setKv(KEY, all);
     this.statuses.delete(id);
     this.changed();

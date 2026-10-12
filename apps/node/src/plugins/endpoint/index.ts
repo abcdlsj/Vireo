@@ -3,26 +3,26 @@ import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { CallToolRequestSchema, ListToolsRequestSchema, type CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { Type, type TSchema } from "typebox";
-import { defineTool } from "../../tools/types.js";
+import { APPROVAL_TOOL } from "../../tools/approval.js";
 import { errorMessage, newId, now, sha256, truncate } from "../../util.js";
 import { VERSION } from "../../version.js";
-import type { PluginContext, PluginDef, PluginStatus } from "../types.js";
+import type { McpCaller, PluginContext, PluginDef, PluginStatus } from "../types.js";
 
 /**
  * Vireo over MCP: this node serves a Model Context Protocol endpoint, so
- * Claude Code, Codex, scripts and the owner's other Vireo nodes can reach
- * Vireo the way Vireo reaches them. They can ask Vireo something, read its
+ * Claude Code, Codex and scripts can reach Vireo the way Vireo reaches them. They can ask Vireo something, read its
  * threads and memory, tell the owner something, and ask the owner to approve
  * a step; the approval is an ordinary confirmation card, so it shows in the
  * app, in push notifications and in linked chats.
  *
- * The endpoint lives under /public/ so the cloud relay passes it through
- * without a cloud sign-in; every request must carry one of the keys made
- * here, which are stored only as hashes.
+ * For agents the endpoint lives under /public/ so the cloud relay passes it
+ * through without a cloud sign-in; every request must carry one of the keys
+ * made here, which are stored only as hashes. The owner's own nodes need no
+ * key: they come in at /api/mcp with a token the cloud signed for this node
+ * and its owner, whether or not this plugin is added.
  */
 
 export const PATH = "/public/mcp";
-const APPROVAL_TOOL = "agent_approval";
 
 interface EndpointConfig {
   memory: boolean;
@@ -36,8 +36,11 @@ interface Key {
   hint: string;
   createdAt: number;
   usedAt: number | null;
-  /** A key for one of the owner's own Vireo nodes: it may also confirm or decline this node's pending confirmations, after the owner did so there. */
-  node?: boolean;
+}
+
+/** Who a request comes from: an agent with a key, or the owner's own node (signed for by the cloud). */
+interface Caller extends McpCaller {
+  keyId?: string;
 }
 
 const text = (t: string, isError = false): CallToolResult => ({ content: [{ type: "text", text: t }], ...(isError ? { isError: true } : {}) });
@@ -123,7 +126,7 @@ function toolList(memory: boolean, node: boolean) {
   return tools;
 }
 
-function serve(ctx: PluginContext, key: Key, keys: { touch(id: string): void }): Server {
+function serve(ctx: PluginContext, key: Caller, keys: { touch(id: string): void }): Server {
   const host = ctx.host;
   const cfg = () => ctx.config<EndpointConfig>();
   const server = new Server(
@@ -222,7 +225,7 @@ function serve(ctx: PluginContext, key: Key, keys: { touch(id: string): void }):
       case "node_info":
         return text(await host.describe());
       case "decide_action": {
-        if (!key.node) return text("This key cannot decide confirmations.", true);
+        if (!key.node) return text("Only your own Vireo nodes can decide confirmations; a key cannot.", true);
         const id = String(args.action_id ?? "");
         const a = host.actions.get(id);
         if (!a) return text(`No confirmation ${id}.`, true);
@@ -267,7 +270,7 @@ function serve(ctx: PluginContext, key: Key, keys: { touch(id: string): void }):
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: toolList(cfg().memory, Boolean(key.node)) as never }));
   server.setRequestHandler(CallToolRequestSchema, async (req, extra) => {
-    keys.touch(key.id);
+    if (key.keyId) keys.touch(key.keyId);
     try {
       return await call(req.params.name, (req.params.arguments ?? {}) as Record<string, unknown>, extra.signal);
     } catch (err) {
@@ -281,7 +284,7 @@ export const endpointPlugin: PluginDef = {
   id: "endpoint",
   name: "Vireo over MCP",
   description:
-    "Let your other agents reach Vireo: Claude Code, Codex, scripts and your other Vireo nodes connect over MCP to ask Vireo, read its threads, notify you, and ask your approval before risky steps.",
+    "Let your coding agents and scripts reach Vireo: Claude Code, Codex and others connect over MCP to ask Vireo, read its threads, notify you, and ask your approval before risky steps.",
   author: "Vireo community",
   homepage: "https://modelcontextprotocol.io/docs/develop/connect-remote-servers",
   fields: [{ key: "memory", label: "Share memory", type: "boolean", default: true, help: "Agents with a key can search what Vireo remembers about you." }],
@@ -305,49 +308,38 @@ export const endpointPlugin: PluginDef = {
       return list().find((k) => k.hash === hash);
     };
 
+    /** Stateless: every request gets its own server, so nothing is kept between calls. */
+    async function respond(req: Request, caller: Caller): Promise<Response> {
+      const server = serve(ctx, caller, keys);
+      const transport = new WebStandardStreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
+      await server.connect(transport);
+      try {
+        return await transport.handleRequest(req);
+      } finally {
+        void server.close();
+      }
+    }
+
     return {
-      tools: [
-        defineTool({
-          name: APPROVAL_TOOL,
-          label: "Approve an agent's request",
-          description: "An approval an agent asked the owner for over MCP. Only the owner's confirmation card runs it.",
-          parameters: Type.Object({ from: Type.String(), description: Type.Optional(Type.String()) }),
-          confirm: () => true,
-          settles: true,
-          async run(args) {
-            return { text: `Approved; ${args.from} is told when it checks.`, display: { note: `${args.from} can go ahead.` } };
-          },
-        }),
-      ],
+      tools: [],
       async status(): Promise<PluginStatus> {
         const all = list();
         const details = [
           { label: "Server URI", value: url() },
-          ...all.map((k) => ({ label: k.name, value: `${k.node ? "node key, " : ""}…${k.hint}, made ${when(k.createdAt)}, ${k.usedAt ? `last used ${when(k.usedAt)}` : "not used yet"}` })),
+          ...all.map((k) => ({ label: k.name, value: `…${k.hint}, made ${when(k.createdAt)}, ${k.usedAt ? `last used ${when(k.usedAt)}` : "not used yet"}` })),
         ];
         if (!all.length) return { state: "setup", message: "Press New key, then add Vireo to your agent with the command it shows.", details };
         return { state: "ready", message: `Agents with one of your ${all.length === 1 ? "key" : `${all.length} keys`} can reach Vireo at this address.`, details };
       },
       actions() {
-        return [{ id: "new", label: "New key", primary: list().length === 0 }, { id: "new_node", label: "New key for a Vireo node" }, ...(list().length ? [{ id: "revoke", label: "Revoke all keys" }] : [])];
+        return [{ id: "new", label: "New key", primary: list().length === 0 }, ...(list().length ? [{ id: "revoke", label: "Revoke all keys" }] : [])];
       },
       async runAction(id) {
-        if (id === "new" || id === "new_node") {
-          const node = id === "new_node";
+        if (id === "new") {
           const all = list();
           const secret = `vireo_${randomBytes(24).toString("base64url")}`;
           const name = `Key ${all.reduce((n, k) => Math.max(n, Number(k.name.replace(/\D/g, "")) || 0), 0) + 1}`;
-          save([...all, { id: newId("key"), name, hash: sha256(secret), hint: secret.slice(-4), createdAt: now(), usedAt: null, ...(node ? { node: true } : {}) }]);
-          if (node)
-            return {
-              message: [
-                `${name}, for another of your Vireo nodes, shown only this once. It can also confirm what you confirm there.`,
-                "",
-                "On that node, in Settings → Plugins → Other nodes, add a row with:",
-                `Address: ${url()}`,
-                `Key: ${secret}`,
-              ].join("\n"),
-            };
+          save([...all, { id: newId("key"), name, hash: sha256(secret), hint: secret.slice(-4), createdAt: now(), usedAt: null }]);
           return {
             message: [
               `${name}, shown only this once: ${secret}`,
@@ -355,8 +347,7 @@ export const endpointPlugin: PluginDef = {
               "Claude Code:",
               `claude mcp add --transport http vireo ${url()} --header "Authorization: Bearer ${secret}"`,
               "",
-              "Another Vireo node (Settings → Plugins → MCP servers):",
-              `"vireo": { "url": "${url()}", "headers": { "Authorization": "Bearer ${secret}" } }`,
+              "Codex and others: the address above, with the header Authorization: Bearer <key>.",
             ].join("\n"),
           };
         }
@@ -366,21 +357,15 @@ export const endpointPlugin: PluginDef = {
         }
         throw new Error(`Unknown action: ${id}`);
       },
+      // The owner's own nodes, already checked by the node's API (no key, nothing to add).
+      handleMcp: (req, caller) => respond(req, caller),
       publicRoutes(api) {
         api.all(PATH, async (c) => {
           if (!ctx.enabled()) return c.json({ error: "Not enabled" }, 404);
           const auth = c.req.header("authorization");
           const key = match(auth?.startsWith("Bearer ") ? auth.slice(7).trim() : undefined);
           if (!key) return c.json({ error: "A Vireo key is required: Settings → Plugins → Vireo over MCP → New key." }, 401);
-          // Stateless: every request gets its own server, so nothing is kept between calls.
-          const server = serve(ctx, key, keys);
-          const transport = new WebStandardStreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
-          await server.connect(transport);
-          try {
-            return await transport.handleRequest(c.req.raw);
-          } finally {
-            void server.close();
-          }
+          return respond(c.req.raw, { keyId: key.id, name: key.name, node: false });
         });
       },
     };

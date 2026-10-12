@@ -143,6 +143,50 @@ describe.each([
     expect(Buffer.from(await down.arrayBuffer()).equals(Buffer.alloc(300_000, 7))).toBe(true);
   });
 
+  it("lets the owner's nodes work with each other, with nothing to set up", async () => {
+    let code: LinkStart | undefined;
+    const nas = await runNode(
+      nodeConfig({ VIREO_DATA_DIR: tempDir(), VIREO_PORT: String(await freePort()), VIREO_CLOUD_URL: base, VIREO_NAME: "nas", VIREO_FAKE_MODEL: "1", VIREO_FAKE_GOOGLE: "1" }),
+      { onLinkCode: (s) => (code = s) },
+    );
+    try {
+      const start = await until(() => code);
+      const nasId = (await json<{ node: NodeSummary }>(`/api/link/${start.userCode}/approve`, { method: "POST", token: ana, body: JSON.stringify({}) })).body.node.id;
+      await until(async () => (await json<{ nodes: NodeSummary[] }>("/api/nodes", { token: ana })).body.nodes.find((n) => n.id === nasId && n.online));
+
+      // Only a node of the account, with its own secret, learns about the others.
+      expect((await json("/api/node/peers", { method: "POST", token: `${nodeId}:wrong` })).status).toBe(401);
+      const peers = await node.app.peers.list(true);
+      expect(peers).toEqual([expect.objectContaining({ id: nasId, name: "nas", url: `${base}/n/${nasId}/api/mcp` })]);
+      // That token works for MCP on the other node, and only there.
+      expect((await fetch(`${base}/n/${nodeId}/api/threads`, { headers: { authorization: `Bearer ${peers[0]!.token}` } })).status).toBe(401);
+
+      const thread = node.app.threads.create({});
+      const run = (tool: string, args: Record<string, unknown>) => node.app.tools.get(tool)!.run(args as never, { app: node.app, thread, agent: "remote", confirmed: true });
+      expect(node.app.plugins.installed("nodes")).toBe(true);
+      expect((await run("node_list", {})).text).toContain("## nas");
+
+      // Something on the NAS waits on the owner; the laptop confirms it after the owner did, but only that one.
+      const there = nas.app.threads.create({ temporary: true });
+      const pending = nas.app.actions.create(there.id, "agent_approval", { from: "test" }, "Restart the backup job");
+      expect((await run("node_confirm", { node: "nas", action_id: pending.id, summary: "Wipe the disks" })).failed).toBe(true);
+      expect(nas.app.actions.get(pending.id)!.status).toBe("pending");
+      expect((await run("node_confirm", { node: "nas", action_id: pending.id, summary: "Restart the backup job" })).text).toContain("Done");
+      expect(nas.app.actions.get(pending.id)!.status).toBe("done");
+      const other = nas.app.actions.create(there.id, "agent_approval", { from: "test" }, "Drop the table");
+      await run("node_decline", { node: "nas", action_id: other.id });
+      expect(nas.app.actions.get(other.id)!.status).toBe("cancelled");
+
+      const asked = await run("node_ask", { node: "nas", task: "What's on my calendar today?", wait_seconds: 60 });
+      expect(asked.text).toContain("thread_id:");
+      const nasThread = nas.app.threads.list().find((t) => t.origin?.kind === "mcp" && !t.temporary)!;
+      expect(JSON.stringify(nas.app.threads.messages(nasThread.id).find((m) => m.role === "user")!.body)).toContain("Vireo on laptop");
+      expect((await json(`/api/nodes/${nasId}`, { method: "DELETE", token: ana })).status).toBe(200);
+    } finally {
+      await nas.stop();
+    }
+  }, 60_000);
+
   it("forgets the node once its owner removes it", async () => {
     expect((await json(`/api/nodes/${nodeId}`, { method: "DELETE", token: ana })).status).toBe(200);
     await until(() => !node.app.identity.get());

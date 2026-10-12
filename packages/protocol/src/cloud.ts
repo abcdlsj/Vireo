@@ -53,8 +53,15 @@ export interface NodeClaims {
   aud: string;
   login: string;
   role: "owner";
+  /** Set when the owner's other node asks on their behalf: that node's id. */
+  via?: string;
   iat: number;
   exp: number;
+}
+
+/** POST /api/node/peers, by a linked node: the owner's other nodes, each with a token for this node to use. */
+export interface NodePeers {
+  peers: { node: NodeSummary; access: NodeAccess }[];
 }
 
 /** POST /api/link/start, by a node that is not linked yet. */

@@ -1,3 +1,4 @@
+import { approvalTools } from "./approval.js";
 import { browserTools } from "./browser.js";
 import { calendarTools } from "./calendar.js";
 import { cardTools } from "./cards.js";
@@ -11,6 +12,6 @@ import type { ToolDef } from "./types.js";
 
 /** Every built-in tool, plus tools from installed plugins. */
 export function buildTools(extra: ToolDef[] = []): Map<string, ToolDef> {
-  const all = [...extra, ...memoryTools, ...threadTools, ...cardTools, ...researchTools, ...calendarTools, ...emailTools, ...browserTools, ...fileTools, ...setupTools] as ToolDef[];
+  const all = [...extra, ...memoryTools, ...threadTools, ...cardTools, ...researchTools, ...calendarTools, ...emailTools, ...browserTools, ...fileTools, ...setupTools, ...approvalTools] as ToolDef[];
   return new Map(all.map((t) => [t.name, t]));
 }

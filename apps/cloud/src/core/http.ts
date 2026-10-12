@@ -134,6 +134,14 @@ export function createHttp(cloud: Cloud): Hono<Env> {
     return c.json(await nodes.poll(deviceCode ?? ""));
   });
 
+  // ---- what a linked node calls, with its secret ----
+  app.post("/api/node/peers", async (c) => {
+    const [nodeId, nodeSecret] = (bearer(c) ?? "").split(":");
+    const node = nodeId && nodeSecret ? await nodes.authenticate(nodeId, nodeSecret) : undefined;
+    if (!node) return c.json({ error: "Unknown node" }, 401);
+    return c.json(await nodes.peers(node));
+  });
+
   // ---- signed-in ----
   const signedIn = new Hono<Env>();
   signedIn.use("*", async (c, next) => {

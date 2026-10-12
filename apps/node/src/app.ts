@@ -11,6 +11,7 @@ import type { Config } from "./config.js";
 import { Db } from "./db.js";
 import { Files } from "./files.js";
 import { Identity } from "./identity.js";
+import { Peers } from "./peers.js";
 import { Integrations } from "./integrations/index.js";
 import { ThreadLifecycle } from "./lifecycle.js";
 import { MemoryStore } from "./memory.js";
@@ -61,6 +62,8 @@ export interface App {
   lifecycle: ThreadLifecycle;
   scheduler: Scheduler;
   plugins: Plugins;
+  /** The owner's other nodes, found through the cloud. */
+  peers: Peers;
   /** Built-in tools plus those of installed plugins; rebuilt when plugins change. */
   tools: Map<string, ToolDef>;
   buildTools(): Map<string, ToolDef>;
@@ -84,6 +87,7 @@ export function createApp(config: Config): App {
   app.push = new Push(db);
   app.files = new Files(db, config.dataDir, app.bus);
   app.browser = new BrowserService(app);
+  app.peers = new Peers(identity);
   app.plugins = new Plugins(app);
   app.vault.extraSecrets = () => app.plugins.secrets();
   app.push.onNotify = (n) => app.plugins.notify(n);

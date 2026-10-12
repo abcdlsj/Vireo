@@ -9,41 +9,45 @@ import type { ConfigField, PluginDef, PluginStatus } from "../types.js";
 
 /**
  * Other nodes: this Vireo reaches the owner's other Vireo nodes (a laptop, a
- * NAS, a work machine) over the MCP endpoint each of them serves (Vireo over
- * MCP). One node becomes the place the owner talks to; work that belongs on
- * another machine — its repositories and coding agents, its files, its
- * services — is handed to the Vireo running there, and what that node wants
- * confirmed comes back here as a confirmation card of this node's own.
+ * NAS, a work machine) with nothing to set up. Every node on the account
+ * works for the same person, so the cloud lists them and signs a short-lived
+ * token for each; each node serves MCP to its owner's tokens. One node
+ * becomes the place the owner talks to; work that belongs on another machine
+ * — its repositories and coding agents, its files, its services — is handed
+ * to the Vireo running there, and what that node wants confirmed comes back
+ * here as a confirmation card of this node's own.
  */
 
 interface Peer {
+  id: string;
   name: string;
+  online: boolean;
   url: string;
-  key: string;
+  token: string;
   about: string;
 }
 
 interface Connected {
   client: Client;
   url: string;
-  key: string;
+  token: string;
 }
 
 const ROW_FIELDS: ConfigField[] = [
-  { key: "name", label: "Name", type: "text", placeholder: "laptop", help: "How you and Vireo refer to that node." },
-  { key: "url", label: "Address", type: "text", placeholder: "https://cloud.askvireo.com/n/…/public/mcp", help: "From that node: Settings → Plugins → Vireo over MCP → New key for a Vireo node." },
-  { key: "key", label: "Key", type: "secret", placeholder: "vireo_…" },
+  { key: "name", label: "Node", type: "text", placeholder: "laptop", help: "The node's name, as in Settings → Nodes." },
   {
     key: "about",
     label: "What's there",
     type: "text",
     multiline: true,
     placeholder: "My MacBook: the vireo and blog repositories, Xcode, photos",
-    help: "Optional. What lives on that machine and what to send there; Vireo also asks the node itself.",
+    help: "What lives on that machine and what to send there. Vireo also asks the node itself.",
   },
 ];
 
-const FIELDS: ConfigField[] = [{ key: "nodes", label: "Nodes", type: "list", items: ROW_FIELDS, help: "One row per Vireo node this one may hand work to." }];
+const FIELDS: ConfigField[] = [
+  { key: "nodes", label: "Notes", type: "list", items: ROW_FIELDS, default: [], help: "Optional. Your other nodes are found by themselves; a note helps Vireo pick the right one." },
+];
 
 const REMOTE_AGENT: AgentDef = {
   name: "remote",
@@ -71,32 +75,39 @@ export const nodesPlugin: PluginDef = {
     "Make this Vireo the one place you talk to: it hands work to your other Vireo nodes — run a coding agent in a repository on your laptop, check something on your NAS — and brings their confirmations to you here.",
   author: "Vireo",
   homepage: "https://github.com/abcdlsj/Vireo",
+  defaultOn: true,
   fields: FIELDS,
   create(ctx) {
-    const peers = (): Peer[] =>
-      (ctx.config<{ nodes: PluginRow[] }>().nodes ?? [])
-        .map((r) => ({ name: str(r, "name"), url: str(r, "url"), key: str(r, "key"), about: str(r, "about") }))
-        .filter((p) => p.name && p.url);
+    const notes = () => {
+      const out = new Map<string, string>();
+      for (const r of ctx.config<{ nodes: PluginRow[] }>().nodes ?? []) if (str(r, "name")) out.set(str(r, "name").toLowerCase(), str(r, "about"));
+      return out;
+    };
+    const withNotes = (list: Awaited<ReturnType<typeof ctx.host.peers.list>>): Peer[] => {
+      const n = notes();
+      return list.map((p) => ({ id: p.id, name: p.name, online: p.online, url: p.url, token: p.token, about: n.get(p.name.toLowerCase()) ?? "" }));
+    };
+    const peers = async (): Promise<Peer[]> => withNotes(await ctx.host.peers.list());
     const clients = new Map<string, Connected>();
 
-    function peer(named: string): Peer {
-      const all = peers();
-      if (!all.length) throw new Error("No other node is added yet. Add one in Settings → Plugins → Other nodes.");
-      const found = all.find((p) => p.name.toLowerCase() === named.trim().toLowerCase());
-      if (!found) throw new Error(`No node named “${named}”. Added: ${all.map((p) => p.name).join(", ")}.`);
+    async function peer(named: string): Promise<Peer> {
+      const all = await peers();
+      if (!all.length) throw new Error("This is the only node on the owner's account. Run `npx @abcdlsj/vireo-node` on another machine to add one.");
+      const wanted = named.trim().toLowerCase();
+      const found = all.find((p) => p.name.toLowerCase() === wanted || p.id === named.trim());
+      if (!found) throw new Error(`No node named “${named}”. The owner's other nodes: ${all.map((p) => p.name).join(", ")}.`);
       return found;
     }
 
     async function client(p: Peer): Promise<Client> {
-      const had = clients.get(p.name);
-      if (had && had.url === p.url && had.key === p.key) return had.client;
+      const had = clients.get(p.id);
+      if (had && had.url === p.url && had.token === p.token) return had.client;
       if (had) void had.client.close().catch(() => undefined);
-      clients.delete(p.name);
-      if (!p.key) throw new Error(`No key for ${p.name} yet. Make one on that node and add it in Settings → Plugins → Other nodes.`);
+      clients.delete(p.id);
       const c = new Client({ name: `vireo ${ctx.host.name}`, version: "1" });
-      const transport = new StreamableHTTPClientTransport(new URL(p.url), { requestInit: { headers: { authorization: `Bearer ${p.key}` } } });
+      const transport = new StreamableHTTPClientTransport(new URL(p.url), { requestInit: { headers: { authorization: `Bearer ${p.token}` } } });
       await Promise.race([c.connect(transport), new Promise((_, fail) => setTimeout(() => fail(new Error("Timed out connecting after 20s")), 20_000))]);
-      clients.set(p.name, { client: c, url: p.url, key: p.key });
+      clients.set(p.id, { client: c, url: p.url, token: p.token });
       return c;
     }
 
@@ -109,8 +120,10 @@ export const nodesPlugin: PluginDef = {
           const out = ((r.content ?? []) as { type: string; text?: string }[]).map((x) => x.text ?? "").join("\n");
           return { text: ctx.host.redact(out), failed: Boolean(r.isError) };
         } catch (err) {
-          clients.delete(p.name);
+          clients.delete(p.id);
           if (attempt > 0 || signal?.aborted) throw new Error(`${p.name} did not answer: ${errorMessage(err)}`);
+          // A fresh token, in case the old one ran out.
+          p = (await ctx.host.peers.list(true).then(withNotes)).find((x) => x.id === p.id) ?? p;
         }
       }
     }
@@ -126,11 +139,11 @@ export const nodesPlugin: PluginDef = {
         description: "The owner's other Vireo nodes: what the owner says is there, and what each node reports it can do now (its machine, coding agents and repositories, other plugins).",
         parameters: Type.Object({}),
         async run(_args, tctx: ToolContext) {
-          const all = peers();
-          if (!all.length) return { text: "No other node is added yet. Add one in Settings → Plugins → Other nodes." };
+          const all = await peers();
+          if (!all.length) return { text: "This is the only node on the owner's account. Run `npx @abcdlsj/vireo-node` on another machine to add one." };
           const parts = await Promise.all(
             all.map(async (p) => {
-              const head = `## ${p.name}${p.about ? `\nThe owner says: ${p.about}` : ""}`;
+              const head = `## ${p.name}${p.online ? "" : " (offline)"}${p.about ? `\nThe owner says: ${p.about}` : ""}`;
               try {
                 const r = await call(p, "node_info", {}, tctx.signal, 30_000);
                 return `${head}\n${r.text}`;
@@ -153,7 +166,7 @@ export const nodesPlugin: PluginDef = {
           wait_seconds: Type.Optional(Type.Number({ minimum: 0, maximum: 600, description: "How long to wait for the reply (default 90)." })),
         }),
         async run(args, tctx) {
-          const p = peer(args.node);
+          const p = await peer(args.node);
           const r = await call(p, "ask_vireo", { text: args.task, thread_id: args.thread_id, from: from(), wait_seconds: args.wait_seconds ?? 90 }, tctx.signal);
           return out(p, r);
         },
@@ -164,7 +177,7 @@ export const nodesPlugin: PluginDef = {
         description: "Read a thread on another node: its latest messages, whether it is still working, and what it waits on the owner to confirm.",
         parameters: Type.Object({ node: nodeArg, thread_id: Type.String() }),
         async run(args, tctx) {
-          const p = peer(args.node);
+          const p = await peer(args.node);
           return out(p, await call(p, "read_thread", { thread_id: args.thread_id }, tctx.signal, 60_000));
         },
       }),
@@ -180,7 +193,7 @@ export const nodesPlugin: PluginDef = {
         confirm: () => true,
         summarize: (args) => `On ${args.node}: ${args.summary}`,
         async run(args, tctx) {
-          const p = peer(args.node);
+          const p = await peer(args.node);
           return out(p, await call(p, "decide_action", { action_id: args.action_id, decision: "confirm", expected_summary: args.summary, wait_seconds: 90 }, tctx.signal));
         },
       }),
@@ -190,7 +203,7 @@ export const nodesPlugin: PluginDef = {
         description: "Decline something another node waits on the owner for, when the owner said no.",
         parameters: Type.Object({ node: nodeArg, action_id: Type.String(), reason: Type.Optional(Type.String()) }),
         async run(args, tctx) {
-          const p = peer(args.node);
+          const p = await peer(args.node);
           return out(p, await call(p, "decide_action", { action_id: args.action_id, decision: "decline", reason: args.reason }, tctx.signal, 60_000));
         },
       }),
@@ -200,39 +213,47 @@ export const nodesPlugin: PluginDef = {
       tools,
       agents: [REMOTE_AGENT],
       get routing() {
-        const all = peers();
-        return `- remote: work that belongs on another of the owner's machines, through the Vireo running there (${all.length ? all.map((p) => (p.about ? `${p.name}: ${truncate(p.about, 120)}` : p.name)).join("; ") : "none added yet"}): its repositories and coding agents, its files, its services, or what it can do.`;
+        const all = withNotes(ctx.host.peers.known());
+        if (!all.length) return undefined;
+        return `- remote: work that belongs on another of the owner's machines, through the Vireo running there (${all.map((p) => (p.about ? `${p.name}: ${truncate(p.about, 120)}` : p.name)).join("; ")}): its repositories and coding agents, its files, its services, or what it can do.`;
       },
       async start() {
         for (const c of clients.values()) void c.client.close().catch(() => undefined);
         clients.clear();
-        ctx.changed();
+        // Learn the other nodes in the background, so routing knows them.
+        void ctx.host.peers
+          .list(true)
+          .then(() => ctx.changed())
+          .catch(() => undefined);
       },
       async stop() {
         for (const c of clients.values()) await c.client.close().catch(() => undefined);
         clients.clear();
       },
       async status(): Promise<PluginStatus> {
-        const all = peers();
-        if (!all.length) return { state: "setup", message: "Add a node: on that node make a key in Vireo over MCP, then paste its address and key here." };
+        let all: Peer[];
+        try {
+          all = await peers();
+        } catch (err) {
+          return { state: "error", message: `Couldn't ask the Vireo cloud for your other nodes: ${errorMessage(err)}` };
+        }
+        if (!all.length) return { state: "ready", message: "This is your only node. Run `npx @abcdlsj/vireo-node` on another machine and it shows up here by itself." };
         const checks = await Promise.all(
           all.map(async (p) => {
+            if (!p.online) return { p, note: "offline" };
             try {
               const c = await Promise.race([client(p), new Promise<never>((_, fail) => setTimeout(() => fail(new Error("timed out")), 10_000))]);
               await c.ping({ timeout: 10_000 });
-              return { p, ok: true, note: "reachable" };
+              return { p, note: "reachable" };
             } catch (err) {
-              clients.delete(p.name);
-              return { p, ok: false, note: truncate(errorMessage(err), 160) };
+              clients.delete(p.id);
+              return { p, note: `can't reach it: ${truncate(errorMessage(err), 140)}` };
             }
           }),
         );
-        const details = checks.map((c) => ({ label: c.p.name, value: c.note }));
-        const down = checks.filter((c) => !c.ok);
-        if (down.length) return { state: "error", message: `Can't reach ${down.map((c) => c.p.name).join(", ")}.`, details };
-        return { state: "ready", message: `Hands work to ${all.map((p) => p.name).join(", ")}.`, details };
+        return { state: "ready", message: `Hands work to ${all.map((p) => p.name).join(", ")}.`, details: checks.map((c) => ({ label: c.p.name, value: c.note })) };
       },
-      secrets: () => peers().map((p) => p.key),
+      secrets: () => ctx.host.peers.known().map((p) => p.token),
     };
   },
 };

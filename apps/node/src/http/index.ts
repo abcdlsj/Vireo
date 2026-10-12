@@ -71,6 +71,12 @@ export function createHttp(app: App): Hono<Env> {
     await next();
   });
 
+  // Vireo over MCP for the owner's own nodes: the same cloud-signed token as the app, so nothing needs pairing.
+  http.all("/api/mcp", (c) => {
+    const via = c.get("claims").via;
+    return app.plugins.mcp(c.req.raw, { name: via ? "your other Vireo node" : "you", node: true });
+  });
+
   for (const routes of [eventRoutes, threadRoutes, workRoutes, browserRoutes, memoryRoutes, settingsRoutes]) http.route("/api", routes(app));
   if (app.config.testMode) http.route("/api", testRoutes(app));
 

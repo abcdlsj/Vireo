@@ -4,6 +4,7 @@ import type { AgentDef } from "../agents.js";
 import type { Actions } from "../actions.js";
 import type { CalendarProvider, DriveProvider, MailProvider } from "../integrations/types.js";
 import type { MemoryStore } from "../memory.js";
+import type { Peers } from "../peers.js";
 import type { Notification } from "../push.js";
 import type { SearchResult } from "../tools/research.js";
 import type { ThreadStore } from "../threads.js";
@@ -67,6 +68,8 @@ export interface PluginHost {
   send(threadId: string, text: string): void;
   actions: Pick<Actions, "get" | "pending" | "confirm" | "cancel" | "create" | "forThread">;
   memory: Pick<MemoryStore, "list">;
+  /** The owner's other nodes on the same account, each with a fresh token for its MCP endpoint. */
+  peers: Pick<Peers, "list" | "known">;
   /** What this node is and what it can do now: its name, platform, and each added plugin with its status. */
   describe(): Promise<string>;
   /** Tells the owner: push notifications and linked chats. */
@@ -100,8 +103,17 @@ export interface Providers {
   drive?(): DriveProvider | undefined;
 }
 
+/** Who is calling this node's MCP endpoint. */
+export interface McpCaller {
+  name: string;
+  /** The owner's own Vireo node, signed for by the cloud: it may also decide confirmations, after the owner did on that node. */
+  node: boolean;
+}
+
 export interface PluginRuntime {
   tools: ToolDef[];
+  /** Serves an MCP request from the owner's own node or app, already checked; only Vireo over MCP has one. */
+  handleMcp?(req: Request, caller: McpCaller): Promise<Response>;
   /** Plugin tools offered to built-in agents, by agent name. */
   grants?: Record<string, string[]>;
   /** Specialists the plugin adds; triage and general can hand off to them. */
@@ -134,6 +146,8 @@ export interface PluginDef {
   description: string;
   author: string;
   homepage?: string;
+  /** Added from the start; the owner can still remove it. */
+  defaultOn?: boolean;
   fields: ConfigField[];
   /**
    * Steps for setting the plugin up in Vireo's browser: the agent opens the
