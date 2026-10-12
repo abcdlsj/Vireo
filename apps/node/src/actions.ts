@@ -1,3 +1,4 @@
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import type { App } from "./app.js";
 import { forModel } from "./tools/types.js";
 import { errorMessage, newId, now, safeJson, truncate } from "./util.js";
@@ -60,8 +61,39 @@ export class Actions {
       body: summary,
       url: `/#thread/${threadId}`,
       tag: `action-${id}`,
+      decide: { confirm: this.decisionUrl(id, "confirm"), cancel: this.decisionUrl(id, "cancel") },
     });
     return this.get(id)!;
+  }
+
+  /** The key that signs one-tap decision links; made once, kept in the database. */
+  private decisionKey(): string {
+    let key = this.app.db.getKv<string>("actions.decision_key");
+    if (!key) {
+      key = randomBytes(32).toString("base64url");
+      this.app.db.setKv("actions.decision_key", key);
+    }
+    return key;
+  }
+
+  private signature(id: string, decision: "confirm" | "cancel"): string {
+    return createHmac("sha256", this.decisionKey()).update(`${id}:${decision}`).digest("base64url");
+  }
+
+  /**
+   * A link that confirms or declines one pending action with no sign-in, for
+   * the buttons on a push notification. It is signed for that action and that
+   * decision, and only reaches the owner inside their encrypted push.
+   */
+  decisionUrl(id: string, decision: "confirm" | "cancel"): string {
+    return `${this.app.address.publicUrl().replace(/\/$/, "")}/public/decide/${id}/${decision}?sig=${this.signature(id, decision)}`;
+  }
+
+  verifyDecision(id: string, decision: string, sig: string | undefined): decision is "confirm" | "cancel" {
+    if ((decision !== "confirm" && decision !== "cancel") || !sig) return false;
+    const want = Buffer.from(this.signature(id, decision));
+    const got = Buffer.from(sig);
+    return want.length === got.length && timingSafeEqual(want, got);
   }
 
   get(id: string): Action | undefined {

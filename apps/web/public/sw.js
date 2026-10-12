@@ -45,13 +45,40 @@ self.addEventListener("push", (event) => {
       tag: data.tag,
       icon: "/icon-192.png",
       badge: "/icon-192.png",
-      data: { url: data.url || "/" },
+      data: { url: data.url || "/", decide: data.decide },
+      // Answer a confirmation from the notification itself, where the platform shows buttons.
+      actions: data.decide
+        ? [
+            { action: "confirm", title: "Confirm" },
+            { action: "cancel", title: "Decline" },
+          ]
+        : undefined,
+      requireInteraction: Boolean(data.decide),
     }),
   );
 });
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
+  const decide = event.notification.data && event.notification.data.decide;
+  if (decide && (event.action === "confirm" || event.action === "cancel")) {
+    const title = event.notification.title;
+    event.waitUntil(
+      fetch(decide[event.action], { method: "POST" })
+        .then((r) => r.json().then((body) => ({ ok: r.ok, body })))
+        .then(({ ok, body }) => {
+          const done = { done: "Confirmed", executing: "Confirmed", failed: "Confirmed, but it failed", cancelled: "Declined" }[body.status];
+          return self.registration.showNotification(ok && done ? done : "Couldn't record that", {
+            body: ok ? body.summary || title : body.error || "Open Vireo to answer it.",
+            icon: "/icon-192.png",
+            badge: "/icon-192.png",
+            data: { url: event.notification.data.url },
+          });
+        })
+        .catch(() => self.registration.showNotification("Couldn't reach Vireo", { body: "Open Vireo to answer it.", data: { url: event.notification.data.url } })),
+    );
+    return;
+  }
   const target = (event.notification.data && event.notification.data.url) || "/";
   event.waitUntil(
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((wins) => {

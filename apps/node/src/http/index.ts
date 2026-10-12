@@ -62,6 +62,17 @@ export function createHttp(app: App): Hono<Env> {
 
   app.plugins.publicRoutes(http as unknown as Hono);
 
+  // One-tap Confirm / Decline on a push notification: the link is signed for that action and that answer.
+  http.post("/public/decide/:id/:decision", async (c) => {
+    const { id, decision } = c.req.param();
+    if (!app.actions.verifyDecision(id, decision, c.req.query("sig"))) return c.json({ error: "This link is not valid." }, 403);
+    const action = app.actions.get(id);
+    if (!action) return c.json({ error: "Not found" }, 404);
+    if (action.status !== "pending") return c.json({ status: action.status, summary: action.summary });
+    const done = decision === "confirm" ? await app.actions.confirm(id) : app.actions.cancel(id, "Declined from a notification");
+    return c.json({ status: done.status, summary: done.summary });
+  });
+
   http.use("/api/*", async (c, next) => {
     const identity = app.identity.get();
     if (!identity) return c.json({ error: "This node is not linked to an account yet. Run `npx @abcdlsj/vireo-node` on it." }, 503);

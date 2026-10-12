@@ -105,3 +105,24 @@ describe("Vireo over MCP keys", () => {
     await client.close();
   });
 });
+
+describe("one-tap decisions on a notification", () => {
+  it("confirm or decline a pending action with a link signed for it", async () => {
+    const app = testApp();
+    apps.push(app);
+    const http = createHttp(app);
+    const t = app.threads.create({ temporary: true });
+    const a = app.actions.create(t.id, "agent_approval", { from: "x" }, "Deploy");
+    const { decide } = app.push.recent[0]!;
+    expect(decide?.confirm).toContain(`/public/decide/${a.id}/confirm?sig=`);
+    const path = (u: string) => u.replace(/^https?:\/\/[^/]+/, "");
+    // A link for one answer does not work for the other, nor for another action.
+    expect((await http.request(path(decide!.confirm).replace("/confirm?", "/cancel?"), { method: "POST" })).status).toBe(403);
+    const b = app.actions.create(t.id, "agent_approval", { from: "x" }, "Delete");
+    expect((await http.request(path(decide!.confirm).replace(a.id, b.id), { method: "POST" })).status).toBe(403);
+    expect(await (await http.request(path(decide!.confirm), { method: "POST" })).json()).toMatchObject({ status: "done" });
+    expect(app.actions.get(a.id)!.status).toBe("done");
+    const declined = await http.request(path(app.push.recent[0]!.decide!.cancel), { method: "POST" });
+    expect(await declined.json()).toMatchObject({ status: "cancelled" });
+  });
+});

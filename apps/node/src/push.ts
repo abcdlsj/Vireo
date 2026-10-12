@@ -11,6 +11,8 @@ export interface Notification {
   body: string;
   url?: string;
   tag?: string;
+  /** One-tap answers on the notification itself, where the platform shows buttons: URLs that confirm or decline. */
+  decide?: { confirm: string; cancel: string };
 }
 
 export class Push {
