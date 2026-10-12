@@ -214,8 +214,16 @@ h2 {
   cursor: pointer;
 }
 
+.cmd {
+  max-width: 100%;
+}
+
 .cmd code {
   font: 500 14px/1 var(--mono);
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .cmd .prompt {
@@ -224,6 +232,7 @@ h2 {
 }
 
 .cmd-act {
+  flex-shrink: 0;
   font-size: 12px;
   font-weight: 600;
   color: var(--sage-ink);

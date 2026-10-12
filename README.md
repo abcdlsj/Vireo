@@ -21,25 +21,30 @@ Everyone signs in to the same app with GitHub and runs their own node. Each acco
 ## Quick start: your own node
 
 1. Open the Vireo app at https://app.askvireo.com and sign in with GitHub.
-2. On the machine Vireo should run on (Node 22.13 or newer):
+2. On the machine Vireo should run on (macOS or Linux):
    ```bash
-   npx @abcdlsj/vireo-node
+   curl -fsSL https://askvireo.com/install.sh | sh
    ```
-3. It asks how the app should reach it:
-   - **Through the Vireo cloud** (recommended): the node keeps a connection to the cloud open, so nothing needs to be opened on your network.
-   - **Over Tailscale**: the app talks to the node straight over your tailnet at its `https://<machine>.<tailnet>.ts.net` address, from your own devices only. Uses the `tailscale` CLI if it is installed, else Vireo runs its own and shows a sign-in link.
-4. It prints a code and opens the app; check the code matches and approve. The node is now in the app.
+   That is the whole setup. It uses the Node.js already there when it is 22.13 or newer, else puts its own copy in `~/.config/vireo/runtime` and touches nothing else. Then it:
+   - asks how the app should reach the node: **through the Vireo cloud** (recommended; nothing to open on your network) or **over Tailscale** (the app talks to it at its `https://<machine>.<tailnet>.ts.net` address, from your own devices only);
+   - prints a code and opens the app; check the code matches and approve;
+   - runs the node in the background, started at login and restarted if it stops (launchd on macOS, a systemd user service on Linux), and keeps it up to date by itself;
+   - connects Claude Code and Codex if they are on the machine (see [Coding agents on this machine](#coding-agents-on-this-machine)).
+
+   Running it again upgrades the node. Prefer a terminal you watch? `npx @abcdlsj/vireo-node` runs the same node in the foreground.
 
 Everything the node keeps (its link, database, files, browser profile and logs) lives in `~/.config/vireo` (`$XDG_CONFIG_HOME/vireo`; `--data` to change); a `~/.vireo` from an older version moves there by itself.
 
-To keep it running in the background, started at login and restarted if it stops (launchd on macOS, a systemd user service on Linux):
+The background service, by hand:
 
 ```bash
-npx @abcdlsj/vireo-node service install    # links first if needed
-npx @abcdlsj/vireo-node service upgrade    # later: the latest version, restarted
+npx @abcdlsj/vireo-node service install    # what install.sh runs; links first if needed
+npx @abcdlsj/vireo-node service upgrade    # the latest version now, without waiting for the automatic update
 npx @abcdlsj/vireo-node service status     # running? where it logs (~/.config/vireo/logs/node.log)
 npx @abcdlsj/vireo-node service uninstall  # your data stays
 ```
+
+The service checks npm for a new version every few hours and moves to it once nothing is running; set `VIREO_AUTO_UPDATE=off` before installing to keep the version you have.
 
  `npx @abcdlsj/vireo-node status`, `link` and `unlink` manage the link; `npx @abcdlsj/vireo-node --help` lists the options. Run several nodes (laptop, home server) and switch between them from the menu at the top of the sidebar; **Settings → Nodes** renames and removes them.
 
@@ -48,11 +53,24 @@ Then set a model in **Settings → Model**, or start the node with `OPENAI_API_K
 - **Model:** with only an OpenAI key, Vireo lists the endpoint's models and picks a strong one for conversations and a cheaper one for routine work such as titles and memory upkeep. You can change both in **Settings → Model**.
 - **Another provider or endpoint?** Enter a base URL, API key and model in **Settings → Model** (no restart needed), or set `VIREO_LLM_BASE_URL`, `VIREO_LLM_API_KEY` and `VIREO_MODEL`. **Test connection** checks it. The Docker setup below includes LiteLLM for providers that don't speak the OpenAI API.
 - **Calendar and email:** these work immediately with a built-in local calendar. For Google Calendar, Gmail and Drive, add the **Google** plugin in **Settings → Plugins → Community plugins**.
-- **Plugins:** **Settings → Plugins → Community plugins** lists the plugins that ship with Vireo. **Tailscale** joins your tailnet so Vireo can list, ping, call services on and run SSH commands on your other machines; with an API token it can also authorise, remove and tag them. **Telegram** and **Feishu / Lark** let you talk to Vireo from a bot of your own, with confirmations as buttons; link a chat with the one-time code from **Link a chat**. **MCP servers** connects Model Context Protocol servers (GitHub, Notion, Linear and others) in Claude Desktop's `mcpServers` format. **Vireo over MCP** works the other way round: it makes this node an MCP server, so Claude Code, Codex and scripts can ask Vireo things, read its threads and memory, notify you, and ask your approval before a risky step (you get the usual confirmation card, push notification and chat buttons). Press **New key** and it shows the `claude mcp add` command to paste; keys are stored only as hashes and **Revoke all keys** shuts the door. **Other nodes** needs no setup at all: every node on your account finds the others through the cloud, so the node you talk to hands work that belongs on another machine (a coding agent in a repository on your laptop, a check on your NAS) to the Vireo running there, and when that node needs your confirmation, the card comes to you here. Add a note per node on what lives there if you like. The board also shows what needs you or is in progress on your other nodes. **Coding agents** hands work in a repository on this machine to Claude Code, Codex, opencode, pi or any other agent the ACP client knows: add one row per agent, project or provider, with its own directory, permission mode and environment (point claude at your own wrapper with `CLAUDE_CODE_EXECUTABLE`, codex with `CODEX_PATH`). Every run waits for your confirmation and reports what the agent did. **Search providers** switches web search to Tavily, Exa, Serper, Jina or Bocha, and reads hard pages and PDFs through Jina Reader. Outward or changing actions wait for your confirmation. Vireo knows which plugins are missing or unfinished: ask for something that needs one and it links you to that plugin's settings, then picks the request up again by itself once the plugin is ready.
+- **Plugins:** **Settings → Plugins → Community plugins** lists the plugins that ship with Vireo. **Tailscale** joins your tailnet so Vireo can list, ping, call services on and run SSH commands on your other machines; with an API token it can also authorise, remove and tag them. **Telegram** and **Feishu / Lark** let you talk to Vireo from a bot of your own, with confirmations as buttons; link a chat with the one-time code from **Link a chat**. **MCP servers** connects Model Context Protocol servers (GitHub, Notion, Linear and others) in Claude Desktop's `mcpServers` format. **Vireo over MCP** works the other way round: it makes this node an MCP server, so Claude Code, Codex and scripts can ask Vireo things, read its threads and memory, notify you, and ask your approval before a risky step (you get the usual confirmation card, push notification and chat buttons). The service install connects Claude Code and Codex by itself (below); for anything else press **New key** and it shows the `claude mcp add` command to paste. Keys are stored only as hashes and **Revoke all keys** shuts the door. **Other nodes** needs no setup at all: every node on your account finds the others through the cloud, so the node you talk to hands work that belongs on another machine (a coding agent in a repository on your laptop, a check on your NAS) to the Vireo running there, and when that node needs your confirmation, the card comes to you here. Add a note per node on what lives there if you like. The board also shows what needs you or is in progress on your other nodes, and you confirm or decline their requests right there, without switching node. Your nodes share one memory: what you tell one, the others know too (the oldest node on your account keeps the shared copy). If a node stays offline for half an hour you get a notification, and another when it is back. **Coding agents** hands work in a repository on this machine to Claude Code, Codex, opencode, pi or any other agent the ACP client knows: add one row per agent, project or provider, with its own directory, permission mode and environment (point claude at your own wrapper with `CLAUDE_CODE_EXECUTABLE`, codex with `CODEX_PATH`). Every run waits for your confirmation and reports what the agent did. **Search providers** switches web search to Tavily, Exa, Serper, Jina or Bocha, and reads hard pages and PDFs through Jina Reader. Outward or changing actions wait for your confirmation. Vireo knows which plugins are missing or unfinished: ask for something that needs one and it links you to that plugin's settings, then picks the request up again by itself once the plugin is ready.
 - **Web search** works without a key. Vireo uses DuckDuckGo's HTML endpoint by default; set `VIREO_SEARXNG_URL` or `BRAVE_API_KEY` to use something else.
 - **Browser actions** use Playwright's Chromium. If it is missing, run `npx playwright install chromium`. The Docker image already includes it.
 
 Requires Node 22.13 or newer. Vireo uses the built-in `node:sqlite`, so there are no native modules to compile.
+
+### Coding agents on this machine
+
+`service install` (and so `install.sh`) connects the coding agents it finds; run `npx @abcdlsj/vireo-node connect` to do it again, say after installing one. Each agent gets its own key, and:
+
+- **Claude Code** gets Vireo as an MCP server (`claude mcp add --scope user`) and hooks in `~/.claude/settings.json`: you get a notification when a task that ran over two minutes finishes or when it waits on you, and a risky shell command (`rm -rf`, `git push --force`, `terraform apply`, `npm publish`, `DROP TABLE`, deploys and the like) waits for your confirmation in Vireo. If you don't answer, or the node can't be reached, Claude Code asks in the terminal as usual.
+- **Codex** gets Vireo as an MCP server in `~/.codex/config.toml`, and a `notify` command that tells you when a turn finishes (unless you already have a `notify` of your own).
+
+Running it again replaces what it set up before instead of adding to it.
+
+### Notifications
+
+Turn on notifications in **Settings → Notifications** and confirmations reach your phone or computer with **Confirm** and **Decline** buttons on the notification itself, where the platform shows them (desktop browsers and Android do; iOS opens the app instead).
 
 ## Self-hosting everything
 
@@ -95,6 +113,7 @@ Node (`npx @abcdlsj/vireo-node` options override these):
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | – | Google OAuth client; this can also be entered in the Google plugin |
 | `VIREO_CHROMIUM_PATH` | Playwright's | Chromium executable for browser actions |
 | `VIREO_BROWSER_HEADLESS` | `true` | Set to `false` to watch the browser |
+| `VIREO_AUTO_UPDATE` | on, for the background service | Set to `off` to keep the installed version |
 | `VIREO_SCHEDULER` | on | Set to `off` to disable reminders and inbox and calendar checks |
 | `VIREO_FAKE_MODEL` | – | Use the scripted model, for demos and tests |
 | `VIREO_FAKE_GOOGLE` | – | Use an in-memory calendar and mailbox |

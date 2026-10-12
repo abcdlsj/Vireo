@@ -19,8 +19,11 @@ const desk = (name, t, alt, [w, h]) => `<picture><source media="(prefers-color-s
 const phone = (name, t, alt) =>
   `<picture><source media="(prefers-color-scheme: dark)" srcset="/img/dark-${name}-${t.img}.webp"><img src="/img/${name}-${t.img}.webp" width="900" height="1948" alt="${esc(alt)}" loading="lazy" decoding="async"></picture>`;
 
+/** Sets up a node as a background service, Node.js included when the machine has none (src/install.sh). */
+const INSTALL = `curl -fsSL ${SITE}/install.sh | sh`;
+
 const copyCmd = (t) =>
-  `<button class="cmd" type="button" data-copy="npx @abcdlsj/vireo-node" data-done="${esc(t.copied)}"><code><span class="prompt">$</span> npx @abcdlsj/vireo-node</code><span class="cmd-act">${esc(t.copy)}</span></button>`;
+  `<button class="cmd" type="button" data-copy="${esc(INSTALL)}" data-done="${esc(t.copied)}" title="${esc(INSTALL)}"><code><span class="prompt">$</span> ${esc(INSTALL)}</code><span class="cmd-act">${esc(t.copy)}</span></button>`;
 
 export function page(t, other) {
   const alt = (l) => `${SITE}${l.path}`;

@@ -24,6 +24,7 @@ writeFileSync(join(out, "404.html"), notFound(en, zh));
 copyFileSync(join(here, "src", "site.css"), join(out, "site.css"));
 copyFileSync(join(here, "src", "_headers"), join(out, "_headers"));
 copyFileSync(join(here, "src", "og.png"), join(out, "og.png"));
+copyFileSync(join(here, "src", "install.sh"), join(out, "install.sh"));
 cpSync(join(here, "src", "img"), join(out, "img"), { recursive: true });
 copyFileSync(font("@fontsource-variable/manrope", "manrope-latin-wght-normal.woff2"), join(out, "fonts", "manrope.woff2"));
 copyFileSync(font("@fontsource-variable/inter", "inter-latin-wght-normal.woff2"), join(out, "fonts", "inter.woff2"));
