@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { api, ApiError, onEvent, type Action, type FileInfo, type Message, type ThreadDetail } from "../api";
 import { dateTime, prettyDates, shortTime, stepOutcome, stepSubject, toolLabel } from "../format";
-import { Markdown } from "../markdown";
+import { cjkLang, Markdown } from "../markdown";
 import { go } from "../route";
 import { ActionCard } from "./ActionCard";
 import { Attachments, FileViewer } from "./Attachments";
@@ -430,7 +430,7 @@ function ItemView({
             <img key={i} src={src} alt="" className="msg-image" />
           ))}
           <Attachments files={attached} onOpen={onOpen} />
-          {item.m.text ? <div className="bubble">{item.m.text}</div> : null}
+          {item.m.text ? <div className="bubble" lang={cjkLang(item.m.text)}>{item.m.text}</div> : null}
         </div>
       );
     }
