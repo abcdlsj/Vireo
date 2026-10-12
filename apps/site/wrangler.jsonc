@@ -1,0 +1,23 @@
+// askvireo.com, the website. From apps/site: `npm run deploy` (builds dist/,
+// then `wrangler deploy`). `npm run dev` serves it locally.
+//
+// The app is on app.askvireo.com (apps/web) and the cloud on
+// cloud.askvireo.com (apps/cloud); both domains must be zones in the same
+// Cloudflare account, which makes their DNS records and certificates.
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "vireo-site",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-09-01",
+  "routes": [
+    { "pattern": "askvireo.com", "custom_domain": true },
+    { "pattern": "www.askvireo.com", "custom_domain": true }
+  ],
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "404-page",
+    // The Worker sees www first, to send it to the bare domain.
+    "run_worker_first": true
+  }
+}

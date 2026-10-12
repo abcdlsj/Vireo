@@ -1,0 +1,21 @@
+{
+  "name": "@vireo/site",
+  "version": "0.1.0",
+  "description": "askvireo.com: Vireo's website, in English and Chinese. Static pages built from one template, served by a Cloudflare Worker.",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "tsc -p tsconfig.json",
+    "dev": "npm run build && wrangler dev",
+    "deploy": "npm run build && wrangler deploy"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261010.1",
+    "@fontsource-variable/fraunces": "^5.3.0",
+    "@fontsource-variable/inter": "^5.3.0",
+    "typescript": "^7.0.2",
+    "wrangler": "^4.149.0"
+  }
+}
