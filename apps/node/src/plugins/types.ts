@@ -67,7 +67,7 @@ export interface PluginHost {
   /** Posts a message in a thread as the owner and gets Vireo working on it. */
   send(threadId: string, text: string): void;
   actions: Pick<Actions, "get" | "pending" | "confirm" | "cancel" | "create" | "forThread">;
-  memory: Pick<MemoryStore, "list">;
+  memory: Pick<MemoryStore, "list" | "addFact" | "delete" | "entity">;
   /** The owner's other nodes on the same account, each with a fresh token for its MCP endpoint. */
   peers: Pick<Peers, "list" | "known">;
   /** What this node is and what it can do now: its name, platform, and each added plugin with its status. */

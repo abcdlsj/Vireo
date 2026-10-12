@@ -65,6 +65,8 @@ function environment(p: ServicePaths): Record<string, string> {
   const env: Record<string, string> = {};
   for (const [k, v] of Object.entries(process.env)) if (v !== undefined && KEEP.test(k)) env[k] = v;
   env.VIREO_DATA_DIR = p.dataDir;
+  // Lets the node keep its own copy up to date (watch.ts).
+  env.VIREO_SERVICE = "1";
   return env;
 }
 

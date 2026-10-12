@@ -6,6 +6,8 @@ import { createApp, type App } from "./app.js";
 import type { Config } from "./config.js";
 import { createHttp } from "./http/index.js";
 import { linkNode } from "./link.js";
+import { MemorySync } from "./memory-sync.js";
+import { AutoUpdate, PeerWatch } from "./watch.js";
 import { RelayClient } from "./relay-client.js";
 import { errorMessage } from "./util.js";
 import { VERSION } from "./version.js";
@@ -77,6 +79,12 @@ export async function runNode(config: Config, opts: RunOptions = {}): Promise<Ru
   });
   app.runner.resumeInterrupted();
   app.scheduler.start();
+  const memorySync = new MemorySync(app);
+  const peerWatch = new PeerWatch(app);
+  const autoUpdate = new AutoUpdate(app);
+  memorySync.start();
+  peerWatch.start();
+  autoUpdate.start();
 
   if (app.identity.get()) connect();
   else {
@@ -108,6 +116,9 @@ export async function runNode(config: Config, opts: RunOptions = {}): Promise<Ru
       linking.abort();
       relay?.stop();
       app.scheduler.stop();
+      memorySync.stop();
+      peerWatch.stop();
+      autoUpdate.stop();
       server.close();
       await Promise.race([app.runner.idle(), new Promise((r) => setTimeout(r, 5000))]);
       await app.browser.shutdown();

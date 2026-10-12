@@ -61,6 +61,8 @@ export interface NodeClaims {
 
 /** POST /api/node/peers, by a linked node: the owner's other nodes, each with a token for this node to use. */
 export interface NodePeers {
+  /** The node that asked, as the account sees it. */
+  self?: NodeSummary;
   peers: { node: NodeSummary; access: NodeAccess }[];
 }
 

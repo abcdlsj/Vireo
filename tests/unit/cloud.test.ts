@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { loadConfig as cloudConfig } from "../../apps/cloud/src/node/config.js";
 import { runCloud, type RunningCloud } from "../../apps/cloud/src/node/server.js";
 import { loadConfig as nodeConfig } from "../../apps/node/src/config.js";
+import { MemorySync } from "../../apps/node/src/memory-sync.js";
 import { runNode, type RunningNode } from "../../apps/node/src/server.js";
 import { tempDir } from "./helpers.js";
 
@@ -181,6 +182,23 @@ describe.each([
       expect(asked.text).toContain("thread_id:");
       const nasThread = nas.app.threads.list().find((t) => t.origin?.kind === "mcp" && !t.temporary)!;
       expect(JSON.stringify(nas.app.threads.messages(nasThread.id).find((m) => m.role === "user")!.body)).toContain("Vireo on laptop");
+      // One memory: the first node (the laptop) is home; the NAS keeps a copy and sends home what it learns.
+      expect(await nas.app.peers.home()).toMatchObject({ id: nodeId });
+      expect(await node.app.peers.home()).toBeUndefined();
+      node.app.memory.addFact({ entity: "Momo", entityKind: "pet", key: "species", statement: "Momo is the owner's dog" });
+      nas.app.memory.addFact({ key: "drink", statement: "The owner prefers tea" });
+      const sync = new MemorySync(nas.app);
+      await sync.sync();
+      const statements = (app: typeof node.app) => app.memory.list().map((f) => f.statement).sort();
+      expect(statements(nas.app)).toEqual(expect.arrayContaining(["Momo is the owner's dog", "The owner prefers tea"]));
+      expect(statements(node.app)).toEqual(statements(nas.app));
+      // What the owner takes back on the NAS is gone at home too.
+      nas.app.memory.delete(nas.app.memory.list().find((f) => f.statement.startsWith("Momo"))!.id);
+      await sync.sync();
+      expect(statements(node.app)).not.toContain("Momo is the owner's dog");
+      expect(statements(nas.app)).toEqual(statements(node.app));
+      sync.stop();
+
       expect((await json(`/api/nodes/${nasId}`, { method: "DELETE", token: ana })).status).toBe(200);
     } finally {
       await nas.stop();

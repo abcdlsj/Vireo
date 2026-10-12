@@ -136,12 +136,16 @@ export class Nodes {
     const owner = await this.accounts.user(node.ownerId);
     if (!owner) return { peers: [] };
     const out: NodePeers["peers"] = [];
+    let self: NodeSummary | undefined;
     for (const other of await this.forUser(owner.id)) {
-      if (other.id === node.id) continue;
+      if (other.id === node.id) {
+        self = other;
+        continue;
+      }
       const access = await this.access(owner, other.id, node.id);
       if (access) out.push({ node: other, access });
     }
-    return { peers: out };
+    return { self, peers: out };
   }
 
   relayUrl(nodeId: string): string {

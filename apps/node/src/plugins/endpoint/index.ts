@@ -132,6 +132,35 @@ function toolList(memory: boolean, node: boolean) {
         wait_seconds: wait(60, 600),
       }),
     });
+  if (node)
+    tools.push(
+      {
+        name: "export_memory",
+        description: "Every current fact this node remembers about the owner, for the owner's other nodes to keep in step with this one.",
+        inputSchema: Type.Object({}),
+      },
+      {
+        name: "remember_facts",
+        description: "Facts the owner's other node learned, to keep here in the owner's one memory. A fact with the same entity and key replaces the old one.",
+        inputSchema: Type.Object({
+          facts: Type.Array(
+            Type.Object({
+              entity: Type.String(),
+              entity_kind: Type.Optional(Type.String()),
+              key: Type.String(),
+              statement: Type.String(),
+              kind: Type.Optional(Type.String()),
+              valid_until: Type.Optional(Type.Union([Type.Number(), Type.Null()])),
+            }),
+          ),
+        }),
+      },
+      {
+        name: "forget_facts",
+        description: "Facts the owner took back on another node, by this node's ids from export_memory.",
+        inputSchema: Type.Object({ ids: Type.Array(Type.String()) }),
+      },
+    );
   if (memory)
     tools.push({
       name: "search_memory",
@@ -264,6 +293,42 @@ function serve(ctx: PluginContext, key: Caller, keys: { touch(id: string): void 
         const waiting = waitingLine(a.threadId);
         if (waiting) lines.push(waiting);
         return text(lines.join("\n"));
+      }
+      case "export_memory": {
+        if (!key.node) return text("Only your own Vireo nodes can do that.", true);
+        const facts = host.memory.list({ limit: 5000 }).map((f) => ({
+          id: f.id,
+          entity: f.entityName,
+          entity_kind: host.memory.entity(f.entityId)?.kind,
+          key: f.key,
+          statement: f.statement,
+          kind: f.kind,
+          valid_until: f.validUntil,
+        }));
+        return text(JSON.stringify({ facts }));
+      }
+      case "remember_facts": {
+        if (!key.node) return text("Only your own Vireo nodes can do that.", true);
+        const facts = Array.isArray(args.facts) ? (args.facts as Record<string, unknown>[]) : [];
+        let added = 0;
+        for (const f of facts.slice(0, 500)) {
+          if (typeof f.statement !== "string" || !f.statement.trim()) continue;
+          const r = host.memory.addFact({
+            entity: typeof f.entity === "string" ? f.entity : undefined,
+            entityKind: typeof f.entity_kind === "string" ? f.entity_kind : undefined,
+            key: typeof f.key === "string" ? f.key : undefined,
+            statement: f.statement,
+            kind: f.kind === "procedural" ? "procedural" : "semantic",
+            validUntil: typeof f.valid_until === "number" ? f.valid_until : null,
+          });
+          if (!r.unchanged) added++;
+        }
+        return text(`Kept ${added} new of ${facts.length}.`);
+      }
+      case "forget_facts": {
+        if (!key.node) return text("Only your own Vireo nodes can do that.", true);
+        const ids = Array.isArray(args.ids) ? args.ids.filter((x): x is string => typeof x === "string") : [];
+        return text(`Forgot ${ids.filter((id) => host.memory.delete(id)).length}.`);
       }
       case "approval_status":
         return approval(String(args.approval_id ?? ""), seconds(args.wait_seconds, 0, 600), signal);
