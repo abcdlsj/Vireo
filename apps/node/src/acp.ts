@@ -3,10 +3,12 @@ import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 
 /**
- * The ACP engine. `acpx` (openclaw/acpx) is the headless ACP client: it starts
- * a coding agent, keeps its session, and mediates permission requests. We drive
- * it as a child process and read its JSON-RPC stream, so any agent it knows
- * (Claude Code, Codex, opencode, pi, …) works here without more code.
+ * Coding agents over the Agent Client Protocol.
+ *
+ * `acpx` (openclaw/acpx) is a headless ACP client: it starts a coding agent,
+ * keeps its session, and mediates permission requests. Vireo drives it as a
+ * child process and reads its JSON-RPC stream, so every agent acpx knows
+ * (Claude Code, Codex, opencode, pi, …) works without more code.
  */
 
 const require = createRequire(import.meta.url);

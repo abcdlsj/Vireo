@@ -10,7 +10,6 @@
   },
   "workspaces": [
     "packages/protocol",
-    "packages/mcp-acp",
     "apps/node",
     "apps/cloud",
     "apps/web",
