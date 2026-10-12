@@ -275,6 +275,54 @@ test.describe("Milestone 1 — Threads that think", () => {
     await context.close();
   });
 
+  test("[Thread] on a slow phone connection the answer never blinks out, and nothing is wider than the screen", async ({ browser, baseURL, request }) => {
+    const { defaultBrowserType: _, ...phone } = devices["iPhone 13"];
+    const context = await browser.newContext({ ...phone, baseURL, storageState: ".vireo-test/owner.json" });
+    const page = await context.newPage();
+    // Every reload of the thread is slow, as it is through the relay on mobile data.
+    await page.route(/\/api\/threads\/t_[^/]+$/, async (route) => {
+      if (route.request().method() === "GET") await new Promise((r) => setTimeout(r, 350));
+      await route.fallback();
+    });
+    await startThread(page, "How does a vireo build its nest?");
+    await settle(request);
+    await expect(page.getByTestId("msg-assistant")).toHaveCount(1);
+    // Each frame from here, whether the next answer is on screen, streaming or saved.
+    await page.evaluate(() => {
+      const w = window as unknown as { shown: boolean[] };
+      w.shown = [];
+      const tick = () => {
+        w.shown.push(Boolean(document.querySelector("[data-testid=live] .md")?.textContent) || document.querySelectorAll("[data-testid=msg-assistant]").length > 1);
+        requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    });
+    // Long enough that the scripted answer streams for a while.
+    await sendMessage(page, `And the outside? ${"The cup, the bark strips, the spider silk and the lichen. ".repeat(12)}`);
+    await settle(request);
+    await expect(page.getByTestId("live")).toHaveCount(0);
+    await expect(page.getByTestId("msg-assistant")).toHaveCount(2);
+    const shown = await page.evaluate(() => (window as unknown as { shown: boolean[] }).shown);
+    expect(shown.indexOf(true)).toBeGreaterThan(-1);
+    expect(shown.slice(shown.indexOf(true)).every(Boolean)).toBe(true);
+
+    // An answer with a wide table: the table scrolls inside itself, the page stays the phone's width.
+    await page.route(/\/api\/threads\/t_[^/]+$/, async (route) => {
+      const res = await route.fetch();
+      const d = await res.json();
+      const last = d.messages.findLast((m: { role: string }) => m.role === "assistant");
+      const table = ["| Option | Price | Duration | Notes | Link |", "|---|---|---|---|---|", "| Shinkansen Nozomi | ¥14,720 | 2h 15m | Fastest, every 10 minutes | https://smart-ex.jp/en/reservation/long/path |"];
+      d.messages.push({ ...last, id: last.id + 1000, text: table.join("\n") });
+      await route.fulfill({ response: res, json: d });
+    });
+    await page.reload();
+    const table = page.locator("[data-testid=msg-assistant] table");
+    await expect(table).toBeVisible();
+    expect(await table.evaluate((t) => t.scrollWidth > t.clientWidth)).toBe(true);
+    expect(await page.evaluate(() => [document.documentElement.scrollWidth, document.querySelector(".conversation")!.scrollWidth])).toEqual([390, 390]);
+    await context.close();
+  });
+
   test("[M1.5] model access is configurable", async ({ page, request }) => {
     // The endpoint's models are listed over the OpenAI API, and the owner can pick per tier.
     const models = await (await request.get("/api/models")).json();

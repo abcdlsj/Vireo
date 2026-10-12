@@ -104,6 +104,21 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
+/*
+ * The app is never wider than the screen: anything wide (a table, code)
+ * scrolls inside itself, so on a phone the page can't be dragged sideways.
+ * Double-tap zoom is off too; an element that sets its own touch-action keeps it.
+ */
+html,
+body {
+  overflow-x: hidden;
+  overscroll-behavior-x: none;
+}
+
+:where(html, body, body *) {
+  touch-action: manipulation;
+}
+
 ::selection {
   background: rgba(78, 138, 99, 0.22);
 }
@@ -730,7 +745,9 @@ button.link.danger {
 
 .conversation {
   flex: 1;
+  overflow-x: hidden;
   overflow-y: auto;
+  overscroll-behavior-x: none;
   min-width: 0;
 }
 
@@ -908,7 +925,12 @@ button.link.danger {
   margin: 1em 0;
 }
 
+/* A table wider than the message scrolls on its own instead of squeezing its words apart. */
 .md table {
+  display: block;
+  max-width: 100%;
+  width: max-content;
+  overflow-x: auto;
   border-collapse: collapse;
   margin: 0.4em 0 0.9em;
   font-size: 14px;
@@ -919,6 +941,9 @@ button.link.danger {
   border: 1px solid var(--line-strong);
   padding: 5px 9px;
   text-align: left;
+  min-width: 5em;
+  word-break: normal;
+  overflow-wrap: normal;
 }
 
 .md th {

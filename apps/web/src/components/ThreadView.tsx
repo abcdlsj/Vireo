@@ -126,6 +126,20 @@ interface Live {
   streamId: string;
   text: string;
   thinking: string;
+  /** The model has finished; the text stays on screen until a load brings the saved message. */
+  ended?: boolean;
+}
+
+/**
+ * Whether a finished stream can leave the page: its message is in what was
+ * loaded (the node saves it only after the stream ends, so the first reload
+ * can miss it), it streamed no text, or the run is over. Dropping it any
+ * sooner blanks the answer until the next reload.
+ */
+function settled(l: Live, d: ThreadDetail): boolean {
+  const text = l.text.trim();
+  if (!text || !d.thread.running) return true;
+  return d.messages.some((m) => m.role === "assistant" && m.text.trim() === text);
 }
 
 export function ThreadView({ id }: { id: string }) {
@@ -142,6 +156,8 @@ export function ThreadView({ id }: { id: string }) {
   const scroller = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
   const reloadTimer = useRef<number | undefined>(undefined);
+  // Loads can finish out of order on a slow connection; only the newest one counts.
+  const loadSeq = useRef(0);
 
   const browsing = Boolean(detail?.thread.running) && liveSteps.some((s) => s.tool.startsWith("browser_"));
   useEffect(() => setPanelChoice(null), [id]);
@@ -185,9 +201,13 @@ export function ThreadView({ id }: { id: string }) {
   };
 
   const load = useCallback(async () => {
+    const seq = ++loadSeq.current;
     try {
       const d = await api.get<ThreadDetail>(`/api/threads/${id}`);
+      if (seq !== loadSeq.current) return;
+      // In the same render as the new detail, so the answer never blinks out between the two.
       setDetail(d);
+      setLive((l) => (l?.ended && settled(l, d) ? null : l));
       setError("");
       if (!d.thread.running) setLiveSteps([]);
     } catch (err) {
@@ -211,7 +231,7 @@ export function ThreadView({ id }: { id: string }) {
           );
           break;
         case "message.stream_end":
-          window.setTimeout(() => setLive((l) => (l?.streamId === e.streamId ? null : l)), 50);
+          setLive((l) => (l?.streamId === e.streamId ? { ...l, ended: true } : l));
           void load();
           break;
         case "step":

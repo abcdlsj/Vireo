@@ -11,6 +11,21 @@ import { initTheme } from "./theme";
 
 initTheme();
 
+/*
+ * iPhone and iPad: focusing a field must not zoom the page (it stays zoomed,
+ * and then slides sideways), and once installed the app doesn't pinch-zoom
+ * either. maximum-scale only stops the focus zoom on iOS; Safari still lets
+ * people pinch in a browser tab.
+ */
+const ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+if (ios) {
+  const viewport = document.querySelector('meta[name="viewport"]');
+  viewport?.setAttribute("content", `${viewport.getAttribute("content")}, maximum-scale=1`);
+  if (matchMedia("(display-mode: standalone)").matches || (navigator as { standalone?: boolean }).standalone) {
+    document.addEventListener("gesturestart", (e) => e.preventDefault());
+  }
+}
+
 if ("serviceWorker" in navigator && location.protocol !== "file:") {
   navigator.serviceWorker.register("/sw.js").catch(() => undefined);
   navigator.serviceWorker.addEventListener("message", (e) => {
