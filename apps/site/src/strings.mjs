@@ -1,0 +1,52 @@
+/**
+ * Everything the website says, in English and Chinese. The page template
+ * (page.mjs) is the same for both; build.mjs writes one page per language.
+ * The screenshots carry the page, so the words stay few. Headings are
+ * arrays of lines, broken where the language would break them.
+ */
+export const strings = {
+  en: {
+    lang: "en",
+    path: "/",
+    img: "en",
+    title: "Vireo · Your personal agent",
+    description: "A personal agent that runs on your own machine. Open source.",
+    other: "中文",
+    otherLabel: "阅读中文版",
+    app: "Open the app",
+    copy: "Copy",
+    copied: "Copied",
+    headline: ["Your personal agent,", "on your own machine."],
+    boardAlt: "The Vireo home board: a reply to the landlord waiting for confirmation, with a trip, an answer and a checklist in hand.",
+    confirm: ["Asks before", "it sends."],
+    threadAlt: "A thread in Vireo: a drafted email with Confirm, Edit and Cancel.",
+    phone: ["On your", "phone, too."],
+    phoneAlt: ["The home board on a phone.", "A thread on a phone."],
+    facts: ["Self-hosted", "Any OpenAI-compatible model", "Telegram and Feishu", "MIT licensed"],
+    docs: "Self-hosting",
+    notFound: "Nothing here.",
+    notFoundBack: "Back home",
+  },
+  zh: {
+    lang: "zh-Hans",
+    path: "/zh/",
+    img: "zh",
+    title: "Vireo · 你的个人助理",
+    description: "跑在你自己机器上的个人助理，开源。",
+    other: "EN",
+    otherLabel: "Read in English",
+    app: "打开应用",
+    copy: "复制",
+    copied: "已复制",
+    headline: ["你的个人助理，", "跑在你自己的机器上。"],
+    boardAlt: "Vireo 首页：给房东的回复等你确认，机票、问答和待办清单都在处理中。",
+    confirm: ["发出去之前，", "先问你。"],
+    threadAlt: "Vireo 里的一个线程：写好的邮件，带确认、修改和取消。",
+    phone: ["手机上也能用。"],
+    phoneAlt: ["手机上的首页。", "手机上的线程。"],
+    facts: ["自己部署", "兼容 OpenAI 接口的任意模型", "支持 Telegram 和飞书", "MIT 开源"],
+    docs: "部署文档",
+    notFound: "这个页面不存在。",
+    notFoundBack: "回首页",
+  },
+};

@@ -10,7 +10,11 @@ export default defineCard({
     return (
       <Frame card={card} expanded={expanded}>
         <h3 className="c-title">{card.title}</h3>
-        {text ? <Markdown text={text} /> : null}
+        {text ? (
+          <div className="c-text fade">
+            <Markdown text={text} />
+          </div>
+        ) : null}
       </Frame>
     );
   },

@@ -59,7 +59,7 @@ export default defineCard({
             </span>
           </div>
         ) : null}
-        {review ? <p className="c-sub">{review}</p> : null}
+        {review ? <p className="c-sub gh-review">{review}</p> : null}
       </Frame>
     );
   },

@@ -16,7 +16,7 @@
   "routes": [{ "pattern": "cloud.askvireo.com", "custom_domain": true }],
   "vars": {
     "VIREO_CLOUD_URL": "https://cloud.askvireo.com",
-    "VIREO_WEB_URL": "https://www.askvireo.com",
+    "VIREO_WEB_URL": "https://app.askvireo.com",
     // More app origins allowed to call the cloud, comma-separated (e.g. Vercel previews).
     "VIREO_WEB_ORIGINS": "",
     // The GitHub OAuth app's client ID; its secret is set with `wrangler secret put GITHUB_CLIENT_SECRET`.

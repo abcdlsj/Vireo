@@ -16,6 +16,7 @@ COPY packages/protocol packages/protocol
 COPY apps/node/package.json apps/node/
 COPY apps/cloud/package.json apps/cloud/
 COPY apps/web/package.json apps/web/
+COPY apps/site/package.json apps/site/
 
 # ---- cloud (with the app it serves) ----
 FROM base AS cloud-build

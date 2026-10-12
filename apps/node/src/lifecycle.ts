@@ -18,7 +18,7 @@ export class ThreadLifecycle {
           threadId,
           tier,
           system:
-            "Name this matter for a to-do style list. Reply with the title only: at most 7 words, in the same language as the message, specific (include names, places, dates when present), no quotes, no trailing punctuation. Example: Book flight to Shanghai, Oct 15",
+            "Name this matter for a to-do style list. Reply with the title only: at most 7 words (in Chinese or Japanese, about 12 characters), in the same language as the message, specific (include names, places, dates when present), no quotes, no trailing punctuation. Example: Book flight to Shanghai, Oct 15",
           prompt: firstMessage.slice(0, 2000),
           maxTokens: 400,
         });

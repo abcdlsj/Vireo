@@ -24,8 +24,9 @@ interface ReturnOption {
 const amount = (price?: string) => Number(String(price ?? "").replace(/[^\d.]/g, "")) || 0;
 
 /**
- * A round trip: each chosen leg as a line of a ticket; while the return is
- * open, the cheapest return per date as bars, the cheapest one picked out.
+ * A round trip: each chosen leg as a line of a ticket. While the return is
+ * open, the board says only the cheapest return, as a leg of its own; the
+ * peek lays out every date as bars, the cheapest one picked out.
  */
 export default defineCard({
   kind: "trip",
@@ -47,15 +48,24 @@ export default defineCard({
             </span>
           ) : null}
         </div>
-        {outbound ? <LegRow leg={outbound} label="Out" /> : null}
-        {back ? <LegRow leg={back} label="Back" /> : options.length ? <ReturnBars options={options} /> : null}
+        {outbound ? <LegRow leg={outbound} label="Out" expanded={expanded} /> : null}
+        {back ? (
+          <LegRow leg={back} label="Back" expanded={expanded} />
+        ) : options.length ? (
+          expanded ? (
+            <ReturnBars options={options} />
+          ) : (
+            <CheapestReturn options={options} />
+          )
+        ) : null}
         {note && expanded ? <p className="c-sub">{note}</p> : null}
       </Frame>
     );
   },
 });
 
-function LegRow({ leg, label }: { leg: Leg; label: string }) {
+/** The flight number and airline are detail for the peek; the board keeps the day, the route and the price. */
+function LegRow({ leg, label, expanded }: { leg: Leg; label: string; expanded: boolean }) {
   return (
     <div className="leg">
       <span className="leg-label">{label}</span>
@@ -65,8 +75,21 @@ function LegRow({ leg, label }: { leg: Leg; label: string }) {
         <span className="leg-arrow">→</span>
         <b>{leg.to}</b> {leg.arrives}
       </span>
-      <span className="leg-flight">{[leg.airline, leg.flight].filter(Boolean).join(" ")}</span>
+      {expanded ? <span className="leg-flight">{[leg.airline, leg.flight].filter(Boolean).join(" ")}</span> : null}
       <span className="leg-price">{leg.price}</span>
+    </div>
+  );
+}
+
+function CheapestReturn({ options }: { options: ReturnOption[] }) {
+  const prices = options.map((o) => amount(o.price));
+  const best = options[prices.indexOf(Math.min(...prices.filter((p) => p > 0)))] ?? options[0]!;
+  return (
+    <div className="leg open">
+      <span className="leg-label">Back</span>
+      <span className="leg-date">{dayLabel(best.date!)}</span>
+      <span className="leg-route leg-note">Cheapest of {options.length} dates</span>
+      <span className="leg-price">{best.price}</span>
     </div>
   );
 }

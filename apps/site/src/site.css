@@ -1,0 +1,461 @@
+/*
+ * askvireo.com. The app's own look (its warm greys, its sage, Manrope over
+ * Inter) so the screenshots sit on the page as if it were the app. The
+ * pictures do the talking; the type stays out of their way.
+ */
+@font-face {
+  font-family: "Manrope";
+  src: url("/fonts/manrope.woff2") format("woff2");
+  font-weight: 200 800;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Inter";
+  src: url("/fonts/inter.woff2") format("woff2");
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+:root {
+  --bg: #f8f8f5;
+  --ink: #2b2a26;
+  --ink-2: rgba(43, 42, 38, 0.66);
+  --ink-3: rgba(43, 42, 38, 0.45);
+  --rule: rgba(43, 42, 38, 0.1);
+  --rule-2: rgba(43, 42, 38, 0.2);
+  --field: #ffffff;
+  --sage: #4e8a63;
+  --sage-ink: #2f6446;
+  --sage-soft: #e6efe5;
+  --shadow: 0 1px 2px rgba(43, 42, 38, 0.06), 0 24px 60px -24px rgba(43, 42, 38, 0.28);
+  --cjk: "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", "Source Han Sans SC", "Microsoft YaHei", sans-serif;
+  --display: "Manrope", "Inter", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", var(--cjk);
+  --sans: "Inter", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", var(--cjk);
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --wrap: 1200px;
+  --gutter: clamp(16px, 4vw, 48px);
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #191919;
+    --ink: #e8e7e3;
+    --ink-2: rgba(232, 231, 227, 0.66);
+    --ink-3: rgba(232, 231, 227, 0.42);
+    --rule: rgba(232, 231, 227, 0.1);
+    --rule-2: rgba(232, 231, 227, 0.22);
+    --field: #222221;
+    --sage: #6ea882;
+    --sage-ink: #8cc29f;
+    --sage-soft: #233029;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 24px 60px -24px rgba(0, 0, 0, 0.8);
+    color-scheme: dark;
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  overflow-x: clip;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 16px/1.6 var(--sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+:lang(zh) {
+  text-autospace: normal;
+}
+
+a {
+  color: inherit;
+}
+
+img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+figure {
+  margin: 0;
+}
+
+h1,
+h2 {
+  text-wrap: balance;
+}
+
+::selection {
+  background: var(--sage-soft);
+}
+
+.mark {
+  width: 24px;
+  height: 24px;
+  fill: var(--sage);
+}
+
+.mark .vein {
+  fill: none;
+  stroke: var(--bg);
+  stroke-width: 14;
+  stroke-linecap: round;
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font: 700 18px/1 var(--display);
+  letter-spacing: -0.02em;
+  text-decoration: none;
+}
+
+/* ---------- top ---------- */
+.top {
+  max-width: var(--wrap);
+  margin: 0 auto;
+  padding: 20px var(--gutter);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.top nav {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  font-size: 14px;
+}
+
+.top nav .lang {
+  color: var(--ink-2);
+  text-decoration: none;
+}
+
+.top nav .lang:hover {
+  color: var(--ink);
+}
+
+.pill {
+  padding: 7px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--rule-2);
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.pill:hover {
+  background: var(--ink);
+  color: var(--bg);
+  border-color: var(--ink);
+}
+
+/* ---------- buttons ---------- */
+.cta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 12px 22px;
+  border-radius: 999px;
+  background: var(--sage-ink);
+  color: #fff;
+  font-weight: 600;
+  font-size: 15px;
+  text-decoration: none;
+  transition: background 0.15s ease;
+}
+
+.btn:hover {
+  background: var(--ink);
+}
+
+@media (prefers-color-scheme: dark) {
+  .btn {
+    background: var(--sage);
+    color: #0f1a13;
+  }
+
+  .btn:hover {
+    background: var(--ink);
+  }
+}
+
+.cmd {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 8px 8px 16px;
+  border: 1px solid var(--rule-2);
+  border-radius: 999px;
+  background: var(--field);
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+}
+
+.cmd code {
+  font: 500 14px/1 var(--mono);
+}
+
+.cmd .prompt {
+  color: var(--ink-3);
+  margin-right: 4px;
+}
+
+.cmd-act {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--sage-ink);
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: var(--sage-soft);
+}
+
+/* ---------- page ---------- */
+main {
+  max-width: var(--wrap);
+  margin: 0 auto;
+  padding: 0 var(--gutter);
+}
+
+.hero {
+  padding: clamp(48px, 9vw, 112px) 0 clamp(40px, 6vw, 64px);
+}
+
+.hero h1 {
+  margin: 0 0 32px;
+  font: 700 clamp(38px, 6.6vw, 84px) / 1.02 var(--display);
+  letter-spacing: -0.04em;
+}
+
+:lang(zh) .hero h1 {
+  font-size: clamp(34px, 5.6vw, 72px);
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+}
+
+/* Screenshots: the app's own window edge, nothing more. */
+.shot img {
+  border-radius: 14px;
+  border: 1px solid var(--rule);
+  box-shadow: var(--shadow);
+  background: var(--field);
+}
+
+/* The board runs a little wider than the words. */
+.shot-board {
+  margin: 0 calc(-1 * min(80px, var(--gutter)));
+}
+
+.pair {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 8fr);
+  gap: 48px;
+  align-items: start;
+  padding-top: clamp(80px, 12vw, 160px);
+}
+
+.pair h2 {
+  margin: 0;
+  position: sticky;
+  top: 32px;
+  font: 700 clamp(26px, 3vw, 36px) / 1.15 var(--display);
+  letter-spacing: -0.03em;
+}
+
+:lang(zh) .pair h2 {
+  letter-spacing: 0;
+  line-height: 1.35;
+}
+
+.phone-row {
+  display: flex;
+  justify-content: center;
+  gap: clamp(16px, 4vw, 56px);
+}
+
+.phone {
+  flex: 0 1 280px;
+}
+
+/* Staggered, as two phones on a table would be. */
+.phone + .phone {
+  margin-top: 72px;
+}
+
+.phone img {
+  border-radius: 32px;
+}
+
+.end {
+  padding: clamp(96px, 14vw, 180px) 0 clamp(64px, 10vw, 120px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 28px;
+}
+
+.facts {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px 0;
+  font-size: 15px;
+  color: var(--ink-2);
+}
+
+.facts li + li::before {
+  content: "·";
+  margin: 0 12px;
+  color: var(--ink-3);
+}
+
+.end .cta {
+  justify-content: center;
+}
+
+/* ---------- foot ---------- */
+.foot {
+  max-width: var(--wrap);
+  margin: 0 auto;
+  padding: 28px var(--gutter) max(28px, env(safe-area-inset-bottom));
+  border-top: 1px solid var(--rule);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.foot .brand {
+  font-size: 16px;
+}
+
+.foot nav {
+  display: flex;
+  gap: 22px;
+  font-size: 14px;
+}
+
+.foot nav a {
+  color: var(--ink-2);
+  text-decoration: none;
+}
+
+.foot nav a:hover {
+  color: var(--ink);
+}
+
+/* ---------- 404 ---------- */
+.lost main {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.lost h1 {
+  margin: 24px 0 0;
+  font: 700 clamp(40px, 6vw, 72px) / 1.05 var(--display);
+  letter-spacing: -0.04em;
+}
+
+.lost p {
+  margin: 0 0 12px;
+  font-size: 18px;
+  color: var(--ink-2);
+}
+
+/* ---------- narrower ---------- */
+@media (max-width: 860px) {
+  .pair {
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
+
+  .pair h2 {
+    position: static;
+  }
+
+  .shot-board {
+    margin: 0;
+  }
+}
+
+@media (max-width: 560px) {
+  .top nav {
+    gap: 14px;
+  }
+
+  .shot img {
+    border-radius: 10px;
+  }
+
+  .phone img {
+    border-radius: 22px;
+  }
+
+  .phone + .phone {
+    margin-top: 40px;
+  }
+
+  /* English rewraps by itself on a phone; Chinese keeps its break at the comma. */
+  :lang(en) .hero h1 br {
+    display: none;
+  }
+
+  /* On a phone the whole board is too small to read: show its middle. */
+  .shot-board img {
+    aspect-ratio: 1;
+    object-fit: cover;
+    object-position: 58% 0;
+  }
+
+  .facts {
+    gap: 6px 18px;
+  }
+
+  .facts li + li::before {
+    content: none;
+  }
+
+  .hero .cta {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .cta .btn {
+    justify-content: center;
+  }
+
+  .cmd {
+    justify-content: space-between;
+  }
+}
