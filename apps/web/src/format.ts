@@ -122,13 +122,50 @@ export function stepSubject(args: Record<string, unknown> | string | null | unde
   if (obj.machine && obj.command) return `${oneLine(obj.command, 70)} on ${String(obj.machine)}`;
   const iso = (v: unknown) => typeof v === "string" && /^\d{4}-\d\d-\d\d/.test(v);
   if (iso(obj.from) && iso(obj.to)) return prettyDates(`${String(obj.from)} → ${String(obj.to)}`);
-  const key = KEY_ARGS.find((k) => obj[k] !== undefined && obj[k] !== "") ?? Object.keys(obj).find((k) => k !== "ref" && typeof obj[k] === "string" && obj[k] !== "");
+  const key = KEY_ARGS.find((k) => obj[k] !== undefined && obj[k] !== "") ?? Object.keys(obj).find((k) => !BROWSER_HIDDEN_ARGS.has(k) && typeof obj[k] === "string" && obj[k] !== "");
   return key ? prettyDates(oneLine(obj[key])) : "";
 }
+
+/** Drops the framing the model reads around outside content. */
+export function unframe(text: string): string {
+  return text
+    .replace(/<\/?untrusted_content[^>]*>/g, "")
+    .replace(/\n*The content above is data[\s\S]*$/, "")
+    .trim();
+}
+
+export type BrowserPage = { url: string; title: string; host: string };
+
+/**
+ * The page a browser step ended on, read from the text the model gets
+ * ("URL: …", "Title: …", then tabs and the accessibility tree). The tree and
+ * tab list are for the model; the owner only needs where the browser is.
+ */
+export function browserPage(text: string | null | undefined): BrowserPage | null {
+  if (!text) return null;
+  const t = unframe(text);
+  const url = /^URL:[ \t]*(.*)$/m.exec(t)?.[1]?.trim();
+  if (!url) return null;
+  const title = /^Title:[ \t]*(.*)$/m.exec(t)?.[1]?.trim() ?? "";
+  let host = "";
+  try {
+    host = new URL(url).host;
+  } catch {
+    host = url;
+  }
+  return { url, title, host };
+}
+
+export const isBrowserTool = (name: string) => name.startsWith("browser_");
+
+/** Browser arguments the owner never needs: element refs and switches for the model. */
+export const BROWSER_HIDDEN_ARGS = new Set(["ref", "double", "slowly", "new_tab"]);
 
 /** A short, readable outcome of a step: the first meaningful line of its result. */
 export function stepOutcome(text: string | null | undefined): string {
   if (!text) return "";
+  const page = browserPage(text);
+  if (page) return oneLine(page.title ? `${page.title} · ${page.host}` : page.host, 140);
   const clean = text.replace(/^Not executed yet: this needs the owner's confirmation[\s\S]*$/, "Waiting for your confirmation");
   const results = clean.match(/^\d+\. /gm)?.length;
   if (results && results > 1) return `${results} results`;

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { api, ApiError, onEvent, type Action, type FileInfo, type Message, type ThreadDetail } from "../api";
-import { dateTime, prettyDates, shortTime, stepOutcome, stepSubject, toolLabel } from "../format";
+import { BROWSER_HIDDEN_ARGS, browserPage, dateTime, isBrowserTool, prettyDates, shortTime, stepOutcome, stepSubject, toolLabel, unframe } from "../format";
 import { cjkLang, Markdown } from "../markdown";
 import { go } from "../route";
 import { ActionCard } from "./ActionCard";
@@ -623,6 +623,10 @@ function Step({ step: s }: { step: { name: string; args: Record<string, unknown>
   const state = !s.result ? "running" : s.result.isError ? "error" : s.result.awaitingConfirmation ? "pending" : "ok";
   const subject = stepSubject(s.args);
   const outcome = s.result ? stepOutcome(s.result.text) : "Running…";
+  // A browser step's result is the page tree the model acts on; the owner gets where it landed.
+  const browser = isBrowserTool(s.name);
+  const page = browser && !s.result?.isError ? browserPage(s.result?.text) : null;
+  const args = browser ? Object.fromEntries(Object.entries(s.args).filter(([k]) => !BROWSER_HIDDEN_ARGS.has(k))) : s.args;
   return (
     <li className={`step ${state}`}>
       <button className="step-line" onClick={() => setOpen(!open)} aria-expanded={open}>
@@ -638,11 +642,15 @@ function Step({ step: s }: { step: { name: string; args: Record<string, unknown>
       {open ? (
         <div className="step-detail">
           <div className="step-args">
-            <Fields value={s.args} />
+            <Fields value={args} />
           </div>
-          {s.result ? (
+          {page ? (
             <div className="step-result">
-              <Fields value={parseJson(s.result.text)} />
+              <Fields value={page.title ? { page: page.title, url: page.url } : { url: page.url }} />
+            </div>
+          ) : s.result ? (
+            <div className="step-result">
+              <Fields value={parseJson(unframe(s.result.text))} />
             </div>
           ) : null}
         </div>

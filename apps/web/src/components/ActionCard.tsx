@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { api, type Action } from "../api";
-import { prettyDates, toolLabel } from "../format";
+import { BROWSER_HIDDEN_ARGS, browserPage, isBrowserTool, prettyDates, toolLabel, unframe } from "../format";
 import { Markdown } from "../markdown";
 import { AlertIcon, CheckIcon, ToolIcon, XCircleIcon } from "../icons";
 
@@ -27,7 +27,11 @@ export function ActionCard({ action, onChange }: { action: Action; onChange: () 
   };
 
   const pending = action.status === "pending";
-  const entries = Object.entries(editing ? args : action.args).filter(([k]) => k !== "reply_to_id");
+  const browser = isBrowserTool(action.tool);
+  // A browser step's ref and switches are for the model, and its description is already the summary.
+  const entries = Object.entries(editing ? args : action.args).filter(
+    ([k, v]) => k !== "reply_to_id" && !(browser && (BROWSER_HIDDEN_ARGS.has(k) || (k === "description" && v === action.summary))),
+  );
 
   return (
     <div className={`action-card ${action.status}`} data-testid="action-card" data-status={action.status}>
@@ -39,28 +43,30 @@ export function ActionCard({ action, onChange }: { action: Action; onChange: () 
         <ActionStatus status={action.status} />
       </div>
       <div className="action-summary">{prettyDates(action.summary)}</div>
-      <dl className="action-args">
-        {entries.map(([k, v]) => (
-          <div key={k} className={LONG_FIELDS.has(k) ? "long" : ""}>
-            <dt>{k.replace(/_/g, " ")}</dt>
-            <dd>
-              {editing && (typeof v === "string" || typeof v === "number") ? (
-                LONG_FIELDS.has(k) ? (
-                  <textarea value={String(v)} rows={6} onChange={(e) => setArgs({ ...args, [k]: e.target.value })} data-testid={`edit-${k}`} />
+      {entries.length ? (
+        <dl className="action-args">
+          {entries.map(([k, v]) => (
+            <div key={k} className={LONG_FIELDS.has(k) ? "long" : ""}>
+              <dt>{k.replace(/_/g, " ")}</dt>
+              <dd>
+                {editing && (typeof v === "string" || typeof v === "number") ? (
+                  LONG_FIELDS.has(k) ? (
+                    <textarea value={String(v)} rows={6} onChange={(e) => setArgs({ ...args, [k]: e.target.value })} data-testid={`edit-${k}`} />
+                  ) : (
+                    <input value={String(v)} onChange={(e) => setArgs({ ...args, [k]: typeof v === "number" ? Number(e.target.value) : e.target.value })} data-testid={`edit-${k}`} />
+                  )
+                ) : Array.isArray(v) ? (
+                  v.join(", ")
+                ) : typeof v === "object" && v !== null ? (
+                  JSON.stringify(v)
                 ) : (
-                  <input value={String(v)} onChange={(e) => setArgs({ ...args, [k]: typeof v === "number" ? Number(e.target.value) : e.target.value })} data-testid={`edit-${k}`} />
-                )
-              ) : Array.isArray(v) ? (
-                v.join(", ")
-              ) : typeof v === "object" && v !== null ? (
-                JSON.stringify(v)
-              ) : (
-                prettyDates(String(v))
-              )}
-            </dd>
-          </div>
-        ))}
-      </dl>
+                  prettyDates(String(v))
+                )}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      ) : null}
       {!pending ? <ActionResult action={action} /> : null}
       {error ? <div className="error">{error}</div> : null}
       {pending ? (
@@ -87,7 +93,7 @@ export function ActionCard({ action, onChange }: { action: Action; onChange: () 
   );
 }
 
-/** What came back: raw output like a terminal, then a plain note; else the result as text. */
+/** What came back: raw output like a terminal, then a plain note; the page a browser step ended on; else the result as text. */
 function ActionResult({ action }: { action: Action }) {
   const d = action.display;
   if (d && (d.output || d.note)) {
@@ -98,7 +104,18 @@ function ActionResult({ action }: { action: Action }) {
       </div>
     );
   }
-  const text = action.result ?? "";
+  const page = isBrowserTool(action.tool) ? browserPage(action.result) : null;
+  if (page) {
+    return (
+      <div className="action-result action-page" data-testid="action-result">
+        <a href={page.url} target="_blank" rel="noreferrer">
+          <span className="action-page-title">{page.title || page.host}</span>
+          {page.title ? <span className="action-page-host">{page.host}</span> : null}
+        </a>
+      </div>
+    );
+  }
+  const text = unframe(action.result ?? "");
   return text ? (
     <div className="action-result" data-testid="action-result">
       {prettyDates(text)}
