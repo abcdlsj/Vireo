@@ -2592,6 +2592,18 @@
   color: var(--c-ink-3);
 }
 
+/* An open return on the board: a dashed line of the ticket, not yet bought. */
+.leg.open {
+  background: none;
+  outline: 1px dashed var(--c-line);
+  outline-offset: -1px;
+}
+
+.leg-note {
+  font-size: 13px;
+  color: var(--c-ink-3);
+}
+
 .leg-flight {
   font-size: 12px;
   color: var(--c-ink-3);
