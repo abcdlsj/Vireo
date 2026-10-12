@@ -2330,18 +2330,52 @@ table.usage th {
   margin: 0;
 }
 
-.plugin {
-  padding: 12px 0;
-  border-top: 1px solid var(--line);
+/* Settings → Plugins: a bar with the count, then one card per plugin. */
+.plugins-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: -4px 0 14px;
 }
 
-.plugin:first-of-type {
-  margin-top: 10px;
+.plugins-bar p {
+  margin: 0;
+}
+
+.plugin-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  flex-wrap: wrap;
+}
+
+.plugin-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: 15px;
+}
+
+.plugin-actions {
+  gap: 6px;
+}
+
+.plugin-status {
+  margin: 6px 0 0;
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+
+.plugin-status.error {
+  color: var(--red-text);
 }
 
 .plugin-row {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
 }
@@ -2350,21 +2384,31 @@ table.usage th {
   margin: 2px 0 0;
 }
 
+.plugin-about {
+  min-width: 0;
+}
 
-.plugin-catalog {
-  margin: 10px 0;
-  padding: 4px 12px;
-  border-radius: var(--radius);
-  background: var(--block);
+.plugin-hint {
+  color: var(--text-2);
+}
+
+.plugin-catalog h3 + p {
+  margin: 0 0 6px;
 }
 
 .plugin-catalog .plugin-row {
-  padding: 10px 0;
-  align-items: center;
+  padding: 12px 0;
+}
+
+.plugin-catalog .plugin-row + .plugin-row {
+  border-top: 1px solid var(--line);
 }
 
 /* The plugin a link pointed at (e.g. from the assistant's setup suggestion). */
-.plugin.focused,
+.plugin.focused {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
 .plugin-catalog .plugin-row.focused {
   margin: 0 -12px;
   padding-left: 12px;
@@ -2373,82 +2417,145 @@ table.usage th {
   background: var(--accent-soft);
 }
 
-.plugin-catalog .plugin-row + .plugin-row {
-  border-top: 1px solid var(--line);
-}
-
 .plugin-state {
   display: inline-block;
-  margin-left: 6px;
-  padding: 1px 7px;
+  padding: 1px 8px;
   border-radius: 999px;
   font-size: 12px;
+  font-weight: 500;
+  line-height: 18px;
+  white-space: nowrap;
   background: var(--orange-tag);
   color: var(--orange-text);
 }
 
-.plugin-state.ready {
+.plugin-state.is-ready {
   background: var(--accent-tag);
   color: var(--accent-tag-text);
 }
 
-.plugin-state.error {
+.plugin-state.is-error {
   background: var(--red-tag);
   color: var(--red-text);
 }
 
+.plugin-state.is-starting {
+  background: var(--blue-tag);
+  color: var(--blue-text);
+}
+
 .plugin-details {
   display: grid;
-  gap: 2px;
-  margin: 6px 0 8px;
+  gap: 4px;
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  background: var(--block);
   font-size: 13px;
 }
 
 .plugin-details div {
   display: flex;
-  gap: 8px;
+  gap: 12px;
 }
 
 .plugin-details dt {
-  min-width: 110px;
+  flex: 0 0 110px;
   color: var(--muted);
 }
 
 .plugin-details dd {
   margin: 0;
-  word-break: break-all;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
-/* A list field: one card per row, each with its own inputs. */
+.plugin-settings {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  gap: 14px;
+}
+
+.plugin-foot {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.plugin-remove {
+  margin-left: auto;
+}
+
+/* A list field: one block per row, its fields on a two-column grid. */
 .pf-list {
   display: grid;
-  gap: 8px;
+  gap: 10px;
 }
 
-.pf-list > span:first-child {
+.pf-list-label {
   font-weight: 600;
 }
 
 .pf-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: flex-end;
-  padding: 10px;
+  padding: 12px 14px 14px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--block);
 }
 
-.pf-row label {
+.pf-row-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.pf-grid {
   display: grid;
-  gap: 3px;
-  flex: 1 1 160px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 14px;
+  align-items: start;
+}
+
+.pf-grid label {
+  display: grid;
+  gap: 4px;
   min-width: 0;
 }
 
-.pf-row button {
-  margin-left: auto;
+.pf-grid label > span:first-child {
+  font-size: 13px;
+}
+
+.pf-grid .wide {
+  grid-column: 1 / -1;
+}
+
+.pf-grid :is(input, select, textarea) {
+  width: 100%;
+  min-width: 0;
+}
+
+.pf-grid textarea {
+  font-family: var(--mono);
+  font-size: 13px;
+}
+
+.pf-add {
+  justify-self: start;
+}
+
+@media (max-width: 640px) {
+  .pf-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .plugin-details dt {
+    flex-basis: 84px;
+  }
 }
 
 /* ---------- nodes ---------- */
