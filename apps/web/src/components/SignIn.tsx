@@ -97,7 +97,7 @@ export function ApproveNode({ code }: { code: string }) {
   if (denied) {
     return (
       <Page title="Not linked">
-        <p className="muted">The node was turned away. Run <code>npx vireo-node</code> again if that was a mistake.</p>
+        <p className="muted">The node was turned away. Run <code>npx @abcdlsj/vireo-node</code> again if that was a mistake.</p>
         <a className="btn" href="#">
           Back
         </a>
@@ -176,7 +176,7 @@ export function Unreachable({ node, message, onRetry }: { node: NodeSummary; mes
       <p className="muted small">
         {node.mode === "tailscale"
           ? `This node is reached over Tailscale${node.directUrl ? ` at ${node.directUrl}` : ""}. Check that it is running and that this device is on the same tailnet.`
-          : "Check that it is running (npx vireo-node) and online."}
+          : "Check that it is running (npx @abcdlsj/vireo-node) and online."}
       </p>
       <div className="row-buttons center">
         <button className="btn primary" onClick={onRetry}>

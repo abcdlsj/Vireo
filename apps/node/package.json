@@ -1,7 +1,7 @@
 {
-  "name": "vireo-node",
+  "name": "@abcdlsj/vireo-node",
   "version": "0.1.0",
-  "description": "Your own Vireo node: the agent, its threads and memory, on your machine. Sign in at the Vireo app and run `npx vireo-node`.",
+  "description": "Your own Vireo node: the agent, its threads and memory, on your machine. Sign in at the Vireo app and run `npx @abcdlsj/vireo-node`.",
   "type": "module",
   "license": "MIT",
   "engines": {

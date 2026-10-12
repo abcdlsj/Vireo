@@ -10,4 +10,4 @@ export interface NodeHub {
   drop(nodeId: string): Promise<void>;
 }
 
-export const offline = () => Response.json({ error: "This node is offline. Start it with `npx vireo-node`." }, { status: 503 });
+export const offline = () => Response.json({ error: "This node is offline. Start it with `npx @abcdlsj/vireo-node`." }, { status: 503 });

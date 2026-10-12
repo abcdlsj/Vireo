@@ -1,5 +1,5 @@
 /**
- * Nodes: each person runs their own Vireo node (`npx vireo-node`), with its
+ * Nodes: each person runs their own Vireo node (`npx @abcdlsj/vireo-node`), with its
  * own threads, memory and plugins. The app talks to one node at a time, with
  * a short-lived token the cloud signs for it, through the cloud relay or
  * straight over the owner's tailnet.

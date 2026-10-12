@@ -34,7 +34,7 @@ mkdir -p "$STAGE/app/apps/cloud" "$STAGE/app/apps/node"
 # Production dependencies are pure JS, so ones installed here run on the server.
 # Reinstall only when the lockfile or the profiles change.
 WORKSPACES=(--workspace @vireo/cloud)
-if with_node; then WORKSPACES+=(--workspace vireo-node); fi
+if with_node; then WORKSPACES+=(--workspace @abcdlsj/vireo-node); fi
 LOCK_HASH="$(cat package-lock.json <(echo "${WORKSPACES[*]}") | shasum | cut -d' ' -f1)"
 if [[ "$(cat "$STAGE/lock.sha" 2>/dev/null)" != "$LOCK_HASH" ]]; then
   rm -rf "$STAGE/app"

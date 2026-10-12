@@ -160,12 +160,12 @@ export function createHttp(cloud: Cloud): Hono<Env> {
   });
   signedIn.get("/link/:code", async (c) => {
     const req = await nodes.linkRequest(c.req.param("code"));
-    return req ? c.json({ request: req }) : c.json({ error: "That code is wrong or has expired. Run `npx vireo-node` again for a new one." }, 404);
+    return req ? c.json({ request: req }) : c.json({ error: "That code is wrong or has expired. Run `npx @abcdlsj/vireo-node` again for a new one." }, 404);
   });
   signedIn.post("/link/:code/approve", async (c) => {
     const { name } = await c.req.json<{ name?: string }>().catch(() => ({ name: undefined }));
     const node = await nodes.approve(c.get("user"), c.req.param("code"), name);
-    return node ? c.json({ node }) : c.json({ error: "That code is wrong or has expired. Run `npx vireo-node` again for a new one." }, 404);
+    return node ? c.json({ node }) : c.json({ error: "That code is wrong or has expired. Run `npx @abcdlsj/vireo-node` again for a new one." }, 404);
   });
   signedIn.post("/link/:code/deny", async (c) => c.json({ ok: await nodes.deny(c.req.param("code")) }));
   app.route("/api", signedIn);
