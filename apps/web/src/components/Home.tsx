@@ -8,6 +8,7 @@ import type { Card } from "@vireo/protocol";
 import { ArrowUpIcon, CheckIcon, ChevronRight, ListIcon, SearchIcon } from "../icons";
 import { clearShared, sharedText } from "../route";
 import { currentNode, nodes, nodeTint, peekNode, postNode, switchNode } from "../nodes";
+import { Eyes } from "./Eyes";
 import { NodeName, NodeSwitcher } from "./Nodes";
 
 const NUMBERS = ["No", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine"];
@@ -204,9 +205,9 @@ function OtherNodes() {
             const needs = t.needsYou || t.pendingActions > 0;
             return (
               <button key={`${node.id}:${t.id}`} className={`done-chip${needs ? " needs" : ""}${nodeTint(node.id) ? " node-tint" : ""}`} style={nodeTint(node.id)} title={`${node.name}: ${t.title}`} onClick={() => switchNode(node.id, `thread/${t.id}`)}>
+                <Eyes state={needs ? "needs" : "working"} />
                 <b>{node.name}</b>
                 {t.title}
-                <span className="muted">{needs ? "needs you" : "working"}</span>
               </button>
             );
           })}

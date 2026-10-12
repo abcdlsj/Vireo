@@ -3,7 +3,9 @@ import { api } from "../api";
 import { relTime } from "../format";
 import { ArrowUpRightIcon, CheckIcon } from "../icons";
 import { go } from "../route";
+import { Eyes, nowLine } from "../components/Eyes";
 import { pressButton } from "./registry";
+import { field } from "./util";
 import type { Card, CardButton } from "@vireo/protocol";
 
 /**
@@ -180,18 +182,18 @@ const CHANGE_WINDOW = 36 * 3600e3;
  * changed ("Return ¥2,202 → ¥2,137"), for a day and a half.
  */
 function Pulse({ card, live }: { card: Card; live: boolean }) {
-  // A matter shown as its latest answer already carries its working line.
-  if (card.kind === "thread") return null;
   // The peek and the thread page say what Vireo is doing in their own place.
   if (card.running && !live) return null;
   if (card.running) {
+    const now = nowLine(card.statusLine ?? (card.kind === "thread" ? field(card, "statusLine", "") : ""));
     return (
       <p className="vcard-pulse working" data-testid="card-step">
-        <span className="pulse-dot" />
-        <span className="vcard-pulse-text">{card.statusLine || "Working on it…"}</span>
+        <Eyes state="working" />
+        {now ? <span className="vcard-pulse-text">{now}</span> : null}
       </p>
     );
   }
+  if (card.kind === "thread") return null;
   const changes = card.changes ?? [];
   if (!changes.length || Date.now() - card.updatedAt > CHANGE_WINDOW) return null;
   return (
@@ -209,10 +211,10 @@ function Pulse({ card, live }: { card: Card; live: boolean }) {
 }
 
 export function Status({ card, grouped }: { card: Card; grouped?: boolean }) {
-  // On the board the heading says the status, and a time on every card is noise: the peek says when it moved.
-  if (grouped && !card.running && card.status !== "working") return null;
+  // Working shows once, as the eyes on the card's step line; on the board the heading says the rest, and the peek says when it moved.
+  if (card.running || card.status === "working") return null;
+  if (grouped) return null;
   if (card.status === "needs_you") return <span className="vcard-status needs">Needs you</span>;
-  if (card.running || card.status === "working") return <span className="vcard-status working">Working</span>;
   if (card.status === "watching") return <span className="vcard-status watching">Watching</span>;
   if (card.status === "done") return <span className="vcard-status done">Done</span>;
   return <span className="vcard-status quiet">{relTime(card.updatedAt)}</span>;

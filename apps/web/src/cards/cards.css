@@ -785,17 +785,9 @@
   font-weight: 500;
 }
 
-.vcard-pulse.working .pulse-dot {
-  flex-shrink: 0;
-}
-
 /* What moved is read in full: it wraps rather than trailing off past the card. */
 .vcard-pulse.working {
   align-items: flex-start;
-}
-
-.vcard-pulse.working .pulse-dot {
-  margin-top: 4px;
 }
 
 .vcard-pulse-text {
@@ -2418,9 +2410,6 @@
 }
 
 /* ---------- thread & live browser ---------- */
-.working-line {
-  color: var(--c-accent);
-}
 
 .web-live {
   display: inline-flex;
@@ -2429,13 +2418,9 @@
   font-weight: 600;
 }
 
-.web-live::before {
-  content: "";
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--c-live);
-  box-shadow: 0 0 0 4px rgba(143, 209, 166, 0.2);
+/* On a dark card the working line reads in the live green. */
+.vcard.tone-dark .vcard-pulse.working {
+  color: var(--c-live);
 }
 
 .live-frame {
@@ -3082,24 +3067,6 @@
   margin-bottom: 0;
 }
 
-.peek-working {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 0;
-  padding: 4px 6px;
-  color: var(--c-accent);
-  font-weight: 500;
-}
-
-.pulse-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: currentColor;
-  animation: c-pulse 1.4s ease-in-out infinite;
-}
-
 .peek-reply {
   display: flex;
   align-items: center;
@@ -3214,4 +3181,142 @@
 :root[data-theme="dark"] .return-bar.best .bar,
 :root[data-theme="dark"] .g-bar.hi .g-bar-fill {
   background: var(--c-accent);
+}
+
+/* ---------- attention: one pair of eyes, shown once per view ---------- */
+.eyes {
+  flex: none;
+  display: inline-block;
+  vertical-align: -1px;
+  overflow: visible;
+  color: var(--c-ink-3);
+}
+
+.eyes circle {
+  fill: currentColor;
+}
+
+.eyes path {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+}
+
+.eyes .eye,
+.eyes-look {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.eyes.working {
+  color: var(--c-accent);
+}
+
+/* Busy elsewhere: a slow look left, a look right, and a blink. */
+.eyes.working .eyes-look {
+  animation: eyes-glance 4.2s ease-in-out infinite;
+}
+
+.eyes.working .eye {
+  animation: eyes-blink 4.2s ease-in-out infinite;
+}
+
+.eyes.needs {
+  color: var(--c-needs);
+}
+
+/* Looking at you, with a small hop now and then. */
+.eyes.needs .eyes-look {
+  animation: eyes-hop 3.6s cubic-bezier(0.3, 0.7, 0.4, 1) infinite;
+}
+
+@keyframes eyes-glance {
+  0%,
+  12% {
+    transform: translateX(0);
+  }
+  22%,
+  42% {
+    transform: translateX(-1.6px);
+  }
+  54%,
+  74% {
+    transform: translateX(1.6px);
+  }
+  86%,
+  100% {
+    transform: translateX(0);
+  }
+}
+
+@keyframes eyes-blink {
+  0%,
+  90%,
+  96%,
+  100% {
+    transform: scaleY(1);
+  }
+  93% {
+    transform: scaleY(0.15);
+  }
+}
+
+@keyframes eyes-hop {
+  0%,
+  78%,
+  100% {
+    transform: translateY(0);
+  }
+  84% {
+    transform: translateY(-2px);
+  }
+  90% {
+    transform: translateY(0.4px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .eyes .eyes-look,
+  .eyes .eye {
+    animation: none !important;
+  }
+}
+
+/* The one line that says what a matter is doing: the eyes, then the step. */
+.attn-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.vcard.tone-dark .eyes.working {
+  color: inherit;
+}
+
+/* The peek's head carries the matter's state once: eyes, then what it is doing or when it moved. */
+.peek-when.attn-line {
+  gap: 9px;
+}
+
+.peek-when.attn-line.working {
+  color: var(--c-accent);
+  font-weight: 500;
+}
+
+.peek-when.attn-line.needs {
+  color: var(--c-needs-ink);
+  font-weight: 500;
+}
+
+.peek-when .attn-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vcard-pulse.working > .eyes {
+  margin-top: 3px;
 }

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from "react"
 import { api, onEvent, type ThreadDetail } from "../api";
 import { relTime } from "../format";
 import { ArrowUpIcon, ArrowUpRightIcon, CheckIcon, CloseIcon } from "../icons";
+import { attentionOf, Eyes, nowLine } from "../components/Eyes";
 import { Markdown } from "../markdown";
 import { cardView } from "./registry";
 import type { Card } from "@vireo/protocol";
@@ -61,14 +62,21 @@ export function Peek({ card, onClose, refresh }: { card: Card; onClose: () => vo
           .slice()
           .reverse()
           .find((m) => m.role === "assistant" && m.text.trim());
+  // A pending confirmation is the owner's turn even mid-reply; otherwise a run in progress is working.
+  const attn = attentionOf({ running, needsYou: thread?.needsYou, pendingActions: thread?.pendingActions, status: card.status === "needs_you" ? card.status : undefined });
   const canClose = card.threadId !== "overview" && card.kind !== "reminder" && thread?.state !== "done";
 
   return (
     <div className={`peek ${closing ? "closing" : ""}`} data-testid="peek" onMouseDown={(e) => e.target === e.currentTarget && close()}>
       <div className="peek-sheet" ref={sheet} tabIndex={-1} role="dialog" aria-modal="true" aria-label={card.title}>
         <header className="peek-head">
-          {/* The card below carries the matter's name and status; the head only says when it last moved. */}
-          <span className="peek-when">Updated {relTime(card.updatedAt)}</span>
+          {/* The one place the peek says the matter's state: working (and on what), needs you, or when it last moved. */}
+          <span className={`peek-when attn-line ${attn}`} data-testid={running ? "peek-working" : undefined}>
+            {attn === "working" || attn === "needs" ? <Eyes state={attn} /> : null}
+            <span className="attn-text">
+              {attn === "working" ? nowLine(thread?.statusLine ?? card.statusLine) || "Working" : attn === "needs" ? "Needs you" : `Updated ${relTime(card.updatedAt)}`}
+            </span>
+          </span>
           <span className="grow" />
           {canClose ? (
             <button
@@ -96,12 +104,7 @@ export function Peek({ card, onClose, refresh }: { card: Card; onClose: () => vo
               refresh,
             })}
           </div>
-          {running ? (
-            <p className="peek-working" data-testid="peek-working">
-              <span className="pulse-dot" />
-              {thread?.statusLine || "Working on it…"}
-            </p>
-          ) : latest && latest.role === "assistant" ? (
+          {!running && latest && latest.role === "assistant" ? (
             <div className="peek-latest">
               <span className="peek-latest-head">Vireo · {relTime(latest.createdAt)}</span>
               <Folded text={latest.text} />

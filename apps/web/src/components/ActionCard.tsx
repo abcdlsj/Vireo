@@ -147,10 +147,6 @@ function ActionStatus({ status }: { status: Action["status"] }) {
         Failed
       </span>
     );
-  return (
-    <span className="status-pill">
-      <span className="pulse" />
-      Working
-    </span>
-  );
+  // Running: the thread's live line already shows Vireo working; the card only names the step.
+  return <span className="status-pill">Running</span>;
 }

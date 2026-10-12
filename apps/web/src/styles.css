@@ -544,22 +544,9 @@ button.link.danger {
   flex-shrink: 0;
 }
 
-.dot.attention,
-.dot.warn {
-  background: var(--orange);
-}
-
 .dot.warn {
   margin-left: auto;
-}
-
-.pulse {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--accent);
-  flex-shrink: 0;
-  animation: pulse 1.4s ease-in-out infinite;
+  background: var(--orange);
 }
 
 @keyframes pulse {
@@ -1539,11 +1526,6 @@ button.link.danger {
 .status-pill .icon {
   width: 13px;
   height: 13px;
-}
-
-.status-pill .pulse {
-  width: 6px;
-  height: 6px;
 }
 
 .status-pill.done,

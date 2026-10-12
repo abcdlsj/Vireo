@@ -4,13 +4,14 @@ import type { Card } from "@vireo/protocol";
 import { relTime } from "../format";
 import { ArrowUpIcon, HomeIcon, MemoryIcon, SettingsIcon } from "../icons";
 import { go } from "../route";
+import { type Attention, Eyes, nowLine } from "./Eyes";
 import { useGlide } from "../glide";
 
 interface Item {
   key: string;
   title: string;
   sub: string;
-  tag?: "needs" | "working";
+  tag?: Extract<Attention, "needs" | "working">;
   icon?: "home" | "memory" | "settings" | "ask";
   run: () => void | Promise<void>;
 }
@@ -69,7 +70,8 @@ export function QuickJump({ threads, onClose }: { threads: Thread[]; onClose: ()
       .slice(0, 8)
       .map<Item>((t) => {
         const card = cardOf.get(t.id);
-        const status = t.running ? t.statusLine || "Working…" : t.needsYou ? "Needs you" : t.group === "done" ? "Done" : "";
+        // The eyes in the icon say working or needs you; the line only adds what it is doing.
+        const status = t.running ? nowLine(t.statusLine) : t.group === "done" ? "Done" : "";
         return {
           key: t.id,
           // Named as in the sidebar; the card's own title, when it says more, goes underneath.
@@ -169,6 +171,8 @@ export function QuickJump({ threads, onClose }: { threads: Thread[]; onClose: ()
                     <SettingsIcon />
                   ) : item.icon === "ask" ? (
                     <ArrowUpIcon />
+                  ) : item.tag ? (
+                    <Eyes state={item.tag} />
                   ) : (
                     <span className="qj-dot" />
                   )}

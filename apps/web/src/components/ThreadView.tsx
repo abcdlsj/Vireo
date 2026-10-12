@@ -6,6 +6,7 @@ import { go } from "../route";
 import { ActionCard } from "./ActionCard";
 import { Attachments, FileViewer } from "./Attachments";
 import { Composer } from "./Composer";
+import { Eyes, nowLine } from "./Eyes";
 import { ProcedureCard } from "./ProcedureCard";
 import { BrowserAsk } from "./BrowserAsk";
 import { BrowserView, SHEET_QUERY, SidePanel } from "./SidePanel";
@@ -411,7 +412,7 @@ export function ThreadView({ id }: { id: string }) {
               {t.running || live ? (
                 <div className="msg assistant live" data-testid="live">
                   {/* While working: one line saying what is happening now; when done it becomes the folded summary. */}
-                  <Steps steps={trailing} now={live?.text ? undefined : asking ? "Waiting for you" : t.statusLine || "Working…"} />
+                  <Steps steps={trailing} now={live?.text ? undefined : asking ? "Waiting for you" : nowLine(t.statusLine) || "Working"} waiting={Boolean(asking)} />
                   {live?.text ? <Markdown text={live.text} /> : null}
                 </div>
               ) : null}
@@ -448,8 +449,8 @@ function panelAuto(detail: ThreadDetail | null): boolean {
 
 function StatusTag({ t }: { t: ThreadDetail["thread"] }) {
   if (t.state === "done") return <span className="tag green">Done</span>;
-  if (t.running) return <span className="tag blue">Working</span>;
-  if (t.needsYou) return <span className="tag orange">Needs you</span>;
+  // While it runs, the live line at the foot of the conversation is the one place that says so.
+  if (!t.running && (t.needsYou || t.pendingActions > 0)) return <span className="tag orange">Needs you</span>;
   return <span className="tag">In hand</span>;
 }
 
@@ -587,7 +588,7 @@ function Remembered({ facts, onChange }: { facts: Learned[]; onChange: () => voi
  * is not what the owner came for. Opening it lists each step with its
  * subject and outcome; a step opens to its full arguments and result.
  */
-function Steps({ steps, now }: { steps: { name: string; args: Record<string, unknown>; result?: Extract<Message, { role: "tool" }> }[]; now?: string }) {
+function Steps({ steps, now, waiting }: { steps: { name: string; args: Record<string, unknown>; result?: Extract<Message, { role: "tool" }> }[]; now?: string; waiting?: boolean }) {
   const [open, setOpen] = useState(false);
   // Handoffs are plumbing, and a shown card is already on the page above.
   const visible = steps.filter((s) => !s.name.startsWith("transfer_to_") && s.name !== "show_card");
@@ -598,7 +599,7 @@ function Steps({ steps, now }: { steps: { name: string; args: Record<string, unk
     <div className={`steps ${now ? "now" : ""}`} data-testid="steps">
       <button className="steps-toggle" onClick={() => visible.length && setOpen(!open)} aria-expanded={open}>
         {now ? (
-          <span className="now-dot" aria-hidden="true" />
+          <Eyes state={waiting ? "needs" : "working"} />
         ) : (
           <span className={`chev ${open ? "open" : ""}`}>
             <ChevronRight />

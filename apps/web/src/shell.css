@@ -86,14 +86,6 @@
   color: var(--c-needs-ink);
 }
 
-.shell .dot.attention {
-  background: var(--c-needs);
-}
-
-.shell .pulse {
-  background: var(--c-accent);
-}
-
 .shell .sidebar-foot {
   border-top: none;
   padding: 8px 10px calc(12px + env(safe-area-inset-bottom));
@@ -613,22 +605,9 @@
   white-space: normal;
 }
 
-.steps.now .now-dot {
-  margin-top: 7px;
-}
-
 .steps-toggle .count {
   flex: none;
   white-space: nowrap;
-}
-
-.now-dot {
-  width: 7px;
-  height: 7px;
-  flex-shrink: 0;
-  border-radius: 50%;
-  background: var(--c-accent);
-  animation: c-pulse 1.2s ease-in-out infinite;
 }
 
 .steps-label {
@@ -975,17 +954,6 @@
   border-radius: 50%;
   background: var(--c-ink-3);
   opacity: 0.5;
-}
-
-.qj-icon.needs .qj-dot {
-  background: var(--c-needs);
-  opacity: 1;
-}
-
-.qj-icon.working .qj-dot {
-  background: var(--c-accent);
-  opacity: 1;
-  animation: c-pulse 1.4s ease-in-out infinite;
 }
 
 .qj-text {
@@ -1555,4 +1523,14 @@ button.attach:active {
   .attachments.produced .attach {
     max-width: 100%;
   }
+}
+
+/* At home the board beside the list already shows each matter being worked on; the list doesn't repeat it. */
+.shell.at-home .thread-row.running .eyes {
+  display: none;
+}
+
+/* The eyes sit on the first line of the live step, which can wrap. */
+.steps.now .steps-toggle > .eyes {
+  margin-top: 6px;
 }
