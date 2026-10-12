@@ -63,6 +63,20 @@ export async function peekNode<T>(node: NodeSummary, path: string): Promise<T | 
   }
 }
 
+/** One POST on a node other than the current one; throws with the node's own message when it refuses. */
+export async function postNode<T>(node: NodeSummary, path: string, body: unknown = {}): Promise<T> {
+  const a = await cloud.access(node.id);
+  const res = await fetch(`${a.baseUrl}${path}`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${a.token}`, "content-type": "application/json" },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(30_000),
+  });
+  const data = (await res.json().catch(() => ({}))) as T & { error?: string };
+  if (!res.ok) throw new Error(data.error ?? `${node.name} answered ${res.status}`);
+  return data;
+}
+
 /** A valid token for the current node, fetched or refreshed as needed. */
 export async function nodeAccess(force = false): Promise<NodeAccess> {
   if (!current) throw new Error("No node yet");

@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { api, ApiError, onEvent, type Me, type Thread } from "../api";
+import type { Action, NodeSummary } from "@vireo/protocol";
 import { CardSlot } from "../cards/CardSlot";
 import { BoardContext, type Board } from "../cards/Frame";
 import { Peek } from "../cards/Peek";
 import type { Card } from "@vireo/protocol";
 import { ArrowUpIcon, CheckIcon, ChevronRight, ListIcon, SearchIcon } from "../icons";
 import { clearShared, sharedText } from "../route";
-import { currentNode, nodes, peekNode, switchNode } from "../nodes";
+import { currentNode, nodes, peekNode, postNode, switchNode } from "../nodes";
 import { NodeSwitcher } from "./Nodes";
 
 const NUMBERS = ["No", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine"];
@@ -163,43 +164,94 @@ const OTHERS_EVERY = 60_000;
 
 /**
  * What waits on the owner, or is being worked on, on their other nodes, so
- * this board is the one place to look. Opening one switches to that node.
+ * this board is the one place to look. Confirmations are answered right
+ * here; opening anything else switches to that node.
  */
 function OtherNodes() {
-  const [items, setItems] = useState<{ node: string; nodeId: string; thread: Thread }[]>([]);
+  const [items, setItems] = useState<{ node: NodeSummary; thread: Thread }[]>([]);
+  const [asks, setAsks] = useState<{ node: NodeSummary; action: Action }[]>([]);
+  const check = useCallback(async () => {
+    const others = nodes().filter((n) => n.id !== currentNode()?.id && (n.online || n.mode === "tailscale"));
+    const found = await Promise.all(
+      others.map(async (node) => {
+        const [t, a] = await Promise.all([peekNode<{ threads: Thread[] }>(node, "/api/threads"), peekNode<{ actions: Action[] }>(node, "/api/actions")]);
+        const actions = (a?.actions ?? []).map((action) => ({ node, action }));
+        const asked = new Set(actions.map((x) => x.action.threadId));
+        const threads = (t?.threads ?? [])
+          .filter((th) => th.state === "active" && !asked.has(th.id) && (th.needsYou || th.pendingActions > 0 || th.running))
+          .map((thread) => ({ node, thread }));
+        return { actions, threads };
+      }),
+    );
+    setAsks(found.flatMap((f) => f.actions));
+    setItems(found.flatMap((f) => f.threads).sort((a, b) => Number(b.thread.needsYou || b.thread.pendingActions > 0) - Number(a.thread.needsYou || a.thread.pendingActions > 0)));
+  }, []);
   useEffect(() => {
-    let live = true;
-    const check = async () => {
-      const others = nodes().filter((n) => n.id !== currentNode()?.id && (n.online || n.mode === "tailscale"));
-      const found = await Promise.all(
-        others.map(async (n) => {
-          const r = await peekNode<{ threads: Thread[] }>(n, "/api/threads");
-          return (r?.threads ?? []).filter((t) => t.state === "active" && (t.needsYou || t.pendingActions > 0 || t.running)).map((thread) => ({ node: n.name, nodeId: n.id, thread }));
-        }),
-      );
-      if (live) setItems(found.flat().sort((a, b) => Number(b.thread.needsYou || b.thread.pendingActions > 0) - Number(a.thread.needsYou || a.thread.pendingActions > 0)));
-    };
     void check();
     const every = window.setInterval(() => void check(), OTHERS_EVERY);
-    return () => {
-      live = false;
-      window.clearInterval(every);
-    };
-  }, []);
-  if (!items.length) return null;
+    return () => window.clearInterval(every);
+  }, [check]);
+  if (!items.length && !asks.length) return null;
   return (
-    <div className="done-strip other-nodes" data-testid="other-nodes">
-      <span className="label">On your other nodes</span>
-      {items.slice(0, 12).map(({ node, nodeId, thread: t }) => {
-        const needs = t.needsYou || t.pendingActions > 0;
-        return (
-          <button key={`${nodeId}:${t.id}`} className={`done-chip${needs ? " needs" : ""}`} title={`${node}: ${t.title}`} onClick={() => switchNode(nodeId, `thread/${t.id}`)}>
-            <b>{node}</b>
-            {t.title}
-            <span className="muted">{needs ? "needs you" : "working"}</span>
+    <div className="other-nodes" data-testid="other-nodes">
+      {asks.map(({ node, action }) => (
+        <OtherAsk key={`${node.id}:${action.id}`} node={node} action={action} onDone={() => void check()} />
+      ))}
+      {items.length ? (
+        <div className="done-strip">
+          <span className="label">On your other nodes</span>
+          {items.slice(0, 12).map(({ node, thread: t }) => {
+            const needs = t.needsYou || t.pendingActions > 0;
+            return (
+              <button key={`${node.id}:${t.id}`} className={`done-chip${needs ? " needs" : ""}`} title={`${node.name}: ${t.title}`} onClick={() => switchNode(node.id, `thread/${t.id}`)}>
+                <b>{node.name}</b>
+                {t.title}
+                <span className="muted">{needs ? "needs you" : "working"}</span>
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/** A confirmation waiting on another node, answered without leaving this one. */
+function OtherAsk({ node, action, onDone }: { node: NodeSummary; action: Action; onDone: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState("");
+  const decide = async (how: "confirm" | "cancel") => {
+    setBusy(true);
+    try {
+      const r = await postNode<{ action: Action }>(node, `/api/actions/${action.id}/${how}`);
+      setResult(r.action.status === "cancelled" ? "Declined" : r.action.status === "failed" ? `Failed: ${r.action.result ?? ""}` : "Confirmed");
+      window.setTimeout(onDone, 1500);
+    } catch (err) {
+      setResult((err as Error).message);
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="other-ask" data-testid="other-ask">
+      <div className="other-ask-text">
+        <span className="label">{node.name} asks</span>
+        <b>{action.summary}</b>
+      </div>
+      {result ? (
+        <span className="muted">{result}</span>
+      ) : (
+        <div className="other-ask-buttons">
+          <button className="btn" disabled={busy} onClick={() => void decide("confirm")} data-testid="other-ask-confirm">
+            Confirm
           </button>
-        );
-      })}
+          <button className="btn ghost" disabled={busy} onClick={() => void decide("cancel")}>
+            Decline
+          </button>
+          <button className="btn ghost" disabled={busy} onClick={() => switchNode(node.id, `thread/${action.threadId}`)}>
+            Open
+          </button>
+        </div>
+      )}
     </div>
   );
 }

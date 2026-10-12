@@ -56,4 +56,40 @@ test.describe("Milestone 6 — Accounts and nodes", () => {
     expect(await (await anon.get(`${NODE}/api/health`)).json()).toMatchObject({ ok: true, linked: true });
     await anon.dispose();
   });
+
+  test("[M6.4] a confirmation on another node is answered from this board", async ({ page }) => {
+    // A second node, as the cloud lists it, answering through its own address.
+    const other = "http://nas.test";
+    let decided = "";
+    await page.route("**/api/nodes", async (route) => {
+      const res = await route.fetch();
+      const body = await res.json();
+      body.nodes.push({ id: "nas", name: "NAS", mode: "relay", online: true, directUrl: null, version: "0.1.2", platform: "linux x64", createdAt: Date.now(), lastSeenAt: Date.now() });
+      await route.fulfill({ response: res, json: body });
+    });
+    await page.route("**/api/nodes/nas/token", (route) => route.fulfill({ json: { token: "t", expiresAt: Date.now() + 600_000, baseUrl: other, mode: "relay" } }));
+    await page.route(`${other}/**`, async (route) => {
+      const url = new URL(route.request().url());
+      const cors = { "access-control-allow-origin": "*", "access-control-allow-headers": "authorization, content-type", "access-control-allow-methods": "GET, POST" };
+      if (route.request().method() === "OPTIONS") return route.fulfill({ status: 204, headers: cors });
+      if (url.pathname === "/api/threads") return route.fulfill({ headers: cors, json: { threads: [] } });
+      if (url.pathname === "/api/actions") return route.fulfill({ headers: cors, json: { actions: decided ? [] : [{ id: "a1", threadId: "t1", tool: "agent_approval", args: {}, summary: "Delete old backups", status: "pending", result: null, display: null, createdAt: Date.now(), resolvedAt: null }] } });
+      if (url.pathname === "/api/actions/a1/confirm") {
+        decided = "confirm";
+        return route.fulfill({ headers: cors, json: { action: { id: "a1", status: "done", result: "ok" } } });
+      }
+      return route.fulfill({ status: 404, headers: cors, json: {} });
+    });
+
+    await page.goto("/");
+    const ask = page.getByTestId("other-ask");
+    await expect(ask).toContainText("NAS asks");
+    await expect(ask).toContainText("Delete old backups");
+    await ask.getByTestId("other-ask-confirm").click();
+    await expect(ask).toContainText("Confirmed");
+    expect(decided).toBe("confirm");
+    // Still on this node.
+    await expect(page.getByTestId("node-switch")).toContainText("Test node");
+    await expect(page.getByTestId("other-ask")).toHaveCount(0);
+  });
 });

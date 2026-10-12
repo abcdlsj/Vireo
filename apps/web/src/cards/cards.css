@@ -456,6 +456,14 @@
   text-overflow: ellipsis;
 }
 
+.other-nodes {
+  margin-top: 28px;
+}
+
+.other-nodes .done-strip {
+  margin-top: 12px;
+}
+
 .other-nodes .done-chip {
   border: 0;
   cursor: pointer;
@@ -469,6 +477,46 @@
 
 .other-nodes .done-chip .muted {
   font-size: 12px;
+}
+
+.other-ask {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--c-paper);
+  border: 1px solid var(--c-line);
+}
+
+.other-ask .label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--c-accent);
+}
+
+.other-ask .muted {
+  font-size: 13px;
+  color: var(--c-ink-2);
+}
+
+.other-ask-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.other-ask-text b {
+  overflow-wrap: anywhere;
+}
+
+.other-ask-buttons {
+  display: flex;
+  gap: 8px;
 }
 
 .done-chip svg {
