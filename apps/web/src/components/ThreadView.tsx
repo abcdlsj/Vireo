@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { api, ApiError, onEvent, type Action, type FileInfo, type Message, type ThreadDetail } from "../api";
 import { BROWSER_HIDDEN_ARGS, browserPage, dateTime, isBrowserTool, prettyDates, shortTime, stepOutcome, stepSubject, toolLabel, unframe } from "../format";
-import { cjkLang, Markdown } from "../markdown";
+import { cjkLang, Markdown, StreamingMarkdown } from "../markdown";
 import { go } from "../route";
 import { ActionCard } from "./ActionCard";
 import { Attachments, FileViewer } from "./Attachments";
@@ -11,6 +11,7 @@ import { ProcedureCard } from "./ProcedureCard";
 import { BrowserAsk } from "./BrowserAsk";
 import { BrowserView, SHEET_QUERY, SidePanel } from "./SidePanel";
 import { CardSlot } from "../cards/CardSlot";
+import { cachedThread, forgetThread, rememberThread } from "../thread-cache";
 import { Status } from "../cards/Frame";
 import type { Card } from "@vireo/protocol";
 import { AlertIcon, ArrowUpRightIcon, BellIcon, CheckIcon, ChevronLeft, ChevronRight, ClockIcon, MemoryIcon, PanelIcon, StatusIcon } from "../icons";
@@ -107,7 +108,7 @@ function CardDock({ cards, scroller }: { cards: Card[]; scroller: React.RefObjec
     );
     for (const el of root.querySelectorAll<HTMLElement>("[data-card-id]")) io.observe(el);
     return () => io.disconnect();
-  });
+  }, [cards, scroller]);
   const away = cards.filter((c) => hidden.has(c.id) && c.status !== "done").sort((a, b) => b.updatedAt - a.updatedAt);
   if (!away.length) return null;
   const go = (id: string) => scroller.current?.querySelector(`[data-card-id="${id}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -144,7 +145,8 @@ function settled(l: Live, d: ThreadDetail): boolean {
 }
 
 export function ThreadView({ id }: { id: string }) {
-  const [detail, setDetail] = useState<ThreadDetail | null>(null);
+  // A thread seen lately shows at once from what was loaded then, while a fresh copy loads.
+  const [detail, setDetail] = useState<ThreadDetail | null>(() => cachedThread(id));
   const [error, setError] = useState("");
   const [live, setLive] = useState<Live | null>(null);
   const [liveSteps, setLiveSteps] = useState<{ tool: string; status: string }[]>([]); // only to notice browsing
@@ -154,6 +156,8 @@ export function ThreadView({ id }: { id: string }) {
   const [viewing, setViewing] = useState<FileInfo | null>(null);
   // The browser full size over the thread, for doing what Vireo asked there.
   const [browserOpen, setBrowserOpen] = useState(false);
+  // What the owner just sent, shown before the node has it.
+  const [sending, setSending] = useState<{ text: string; files: string[]; after: number } | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
   const reloadTimer = useRef<number | undefined>(undefined);
@@ -196,10 +200,12 @@ export function ThreadView({ id }: { id: string }) {
     fromLink.current = false;
   }, [id, asking?.id, linked]);
 
-  const setPanel = (open: boolean) => {
+  const setPanel = useCallback((open: boolean) => {
     setPanelChoice(open);
     localStorage.setItem(PANEL_KEY, open ? "open" : "closed");
-  };
+  }, []);
+  const closePanel = useCallback(() => setPanel(false), [setPanel]);
+  const openBrowser = useCallback(() => setBrowserOpen(true), []);
 
   const load = useCallback(async () => {
     const seq = ++loadSeq.current;
@@ -208,30 +214,44 @@ export function ThreadView({ id }: { id: string }) {
       if (seq !== loadSeq.current) return;
       // In the same render as the new detail, so the answer never blinks out between the two.
       setDetail(d);
+      rememberThread(d);
       setLive((l) => (l?.ended && settled(l, d) ? null : l));
       setError("");
       if (!d.thread.running) setLiveSteps([]);
     } catch (err) {
+      if (err instanceof ApiError && err.status === 404) forgetThread(id);
       setError(err instanceof ApiError && err.status === 404 ? "This thread no longer exists." : String(err));
     }
   }, [id]);
 
   useEffect(() => {
     void load();
-    return onEvent((e) => {
+    // Text arrives a token at a time; it is drawn once a frame, not once a token.
+    let pending: { streamId: string; text: string; thinking: string } | null = null;
+    let frame = 0;
+    const flush = () => {
+      frame = 0;
+      const p = pending;
+      pending = null;
+      if (p) setLive((l) => (l && l.streamId === p.streamId ? { ...l, text: l.text + p.text, thinking: l.thinking + p.thinking } : l));
+    };
+    const off = onEvent((e) => {
       if ("threadId" in e && e.threadId !== id && e.threadId !== "*") return;
       switch (e.type) {
         case "message.stream_start":
+          flush();
           setLive({ streamId: e.streamId, text: "", thinking: "" });
           break;
         case "message.delta":
-          setLive((l) =>
-            l && l.streamId === e.streamId
-              ? { ...l, text: e.kind === "text" ? l.text + e.delta : l.text, thinking: e.kind === "thinking" ? l.thinking + e.delta : l.thinking }
-              : l,
-          );
+          if (pending && pending.streamId !== e.streamId) flush();
+          pending ??= { streamId: e.streamId, text: "", thinking: "" };
+          if (e.kind === "text") pending.text += e.delta;
+          else pending.thinking += e.delta;
+          frame ||= requestAnimationFrame(flush);
           break;
         case "message.stream_end":
+          cancelAnimationFrame(frame);
+          flush();
           setLive((l) => (l?.streamId === e.streamId ? { ...l, ended: true } : l));
           void load();
           break;
@@ -253,13 +273,17 @@ export function ThreadView({ id }: { id: string }) {
           reloadTimer.current = window.setTimeout(() => void load(), 80);
       }
     });
+    return () => {
+      off();
+      cancelAnimationFrame(frame);
+    };
   }, [id, load]);
 
   const items = useMemo(() => (detail ? buildItems(detail.messages) : []), [detail]);
   // The steps of the turn in progress live in the "now" line instead of their own row.
   const lastItem = items.at(-1);
   const trailing = lastItem?.kind === "steps" ? lastItem.steps : [];
-  const shown = lastItem?.kind === "steps" ? items.slice(0, -1) : items;
+  const shown = useMemo(() => (items.at(-1)?.kind === "steps" ? items.slice(0, -1) : items), [items]);
   const actions = useMemo(() => new Map<string, Action>((detail?.actions ?? []).map((a) => [a.id, a])), [detail]);
   const filesById = useMemo(() => new Map<string, FileInfo>((detail?.files ?? []).map((f) => [f.id, f])), [detail]);
   // Files Vireo made for the owner, not screenshots taken along the way or files a card already shows.
@@ -273,7 +297,14 @@ export function ThreadView({ id }: { id: string }) {
   useLayoutEffect(() => {
     const el = scroller.current;
     if (el && stick.current) el.scrollTop = el.scrollHeight;
-  }, [items, live, liveSteps]);
+  }, [items, live, liveSteps, sending]);
+
+  // The sent message stays until a load brings the node's copy of it.
+  const userCount = useMemo(() => (detail?.messages ?? []).filter((m) => m.role === "user").length, [detail]);
+  useEffect(() => {
+    if (sending && userCount > sending.after) setSending(null);
+  }, [sending, userCount]);
+  const retry = useCallback(() => void api.post(`/api/threads/${id}/retry`).then(load), [id, load]);
 
   if (error) {
     return (
@@ -282,15 +313,21 @@ export function ThreadView({ id }: { id: string }) {
       </div>
     );
   }
-  if (!detail) return <div className="thread-view" />;
+  if (!detail) return <ThreadSkeleton />;
   const t = detail.thread;
   const isOverview = t.id === "overview";
 
   const send = async (text: string, files: File[]) => {
     stick.current = true;
-    let fileIds: string[] = [];
-    if (files.length) fileIds = (await api.upload(t.id, files)).files.map((f) => f.id);
-    await api.post(`/api/threads/${t.id}/messages`, { text, fileIds });
+    setSending({ text, files: files.map((f) => f.name), after: userCount });
+    try {
+      let fileIds: string[] = [];
+      if (files.length) fileIds = (await api.upload(t.id, files)).files.map((f) => f.id);
+      await api.post(`/api/threads/${t.id}/messages`, { text, fileIds });
+    } catch (err) {
+      setSending(null);
+      throw err;
+    }
     void load();
   };
 
@@ -386,34 +423,31 @@ export function ThreadView({ id }: { id: string }) {
               {items.length === 0 && !live ? (
                 <div className="empty">{isOverview ? "Ask anything." : "No messages yet."}</div>
               ) : null}
-              {placeCards(t.running || live ? shown : items, detail.cards ?? [], made).map((it) =>
-                "files" in it ? (
-                  <Attachments key={`files${it.files[0]!.id}`} files={it.files} onOpen={setViewing} produced />
-                ) : "card" in it ? (
-                  <div key={`card${it.card.id}`} className="thread-cards" data-testid="thread-cards" data-card-id={it.card.id}>
-                    <CardSlot card={it.card} expanded refresh={load} />
-                  </div>
-                ) : (
-                  <ItemView
-                    key={it.kind === "steps" ? it.key : `${it.kind}${it.m.id}`}
-                    item={it}
-                    actions={actions}
-                    files={filesById}
-                    onOpen={setViewing}
-                    onOpenBrowser={() => setBrowserOpen(true)}
-                    threadId={t.id}
-                    running={t.running}
-                    onChange={load}
-                    // A run that ended in an error can be tried again, as long as nothing came after it.
-                    retry={!t.running && !live && it === items[items.length - 1] ? () => void api.post(`/api/threads/${t.id}/retry`).then(load) : undefined}
-                  />
-                ),
-              )}
-              {t.running || live ? (
+              <History
+                items={t.running || live ? shown : items}
+                last={items.at(-1)}
+                cards={detail.cards ?? NO_CARDS}
+                made={made}
+                actions={actions}
+                files={filesById}
+                onOpen={setViewing}
+                onOpenBrowser={openBrowser}
+                threadId={t.id}
+                running={t.running}
+                onChange={load}
+                retry={!t.running && !live ? retry : undefined}
+              />
+              {sending ? (
+                <div className="msg user sending" data-testid="msg-user">
+                  {sending.files.length ? <div className="sending-files">{sending.files.join(", ")}</div> : null}
+                  {sending.text ? <div className="bubble" lang={cjkLang(sending.text)}>{sending.text}</div> : null}
+                </div>
+              ) : null}
+              {t.running || live || sending ? (
                 <div className="msg assistant live" data-testid="live">
                   {/* While working: one line saying what is happening now; when done it becomes the folded summary. */}
                   <Steps steps={trailing} now={live?.text ? undefined : asking || t.pendingActions > 0 ? "Waiting for you" : nowLine(t.statusLine) || "Working"} waiting={Boolean(asking) || t.pendingActions > 0} />
-                  {live?.text ? <Markdown text={live.text} /> : null}
+                  {live?.text ? <StreamingMarkdown text={live.text} /> : null}
                 </div>
               ) : null}
             </div>
@@ -425,7 +459,7 @@ export function ThreadView({ id }: { id: string }) {
             placeholder={t.state === "done" ? "Message to reopen this thread" : isOverview ? "Ask Vireo anything" : "Message Vireo"}
           />
         </div>
-        {panel ? <SidePanel detail={detail} running={t.running} browsing={browsing} asking={asking?.request} onClose={() => setPanel(false)} onOpenFile={setViewing} /> : null}
+        {panel ? <Panel detail={detail} running={t.running} browsing={browsing} asking={asking?.request} onClose={closePanel} onOpenFile={setViewing} /> : null}
       </div>
       {browserOpen ? <BrowserView threadId={t.id} running={t.running} asking={asking?.request} overlay onClose={() => setBrowserOpen(false)} /> : null}
       {viewing ? <FileViewer file={viewing} onClose={() => setViewing(null)} /> : null}
@@ -434,6 +468,85 @@ export function ThreadView({ id }: { id: string }) {
 }
 
 const PANEL_KEY = "vireo.panel";
+const NO_CARDS: Card[] = [];
+
+// The panel only changes with the thread, not with each frame of a streamed answer.
+const Panel = memo(SidePanel);
+
+/** Where a thread will be while its first load is on the way. */
+function ThreadSkeleton() {
+  return (
+    <div className="thread-view loading" aria-busy="true">
+      <div className="conversation">
+        <div className="conversation-inner">
+          <div className="skeleton title" />
+          <div className="skeleton line" />
+          <div className="skeleton line short" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The conversation so far. Kept apart from the answer being streamed, so a
+ * new token redraws only that answer, not every message above it.
+ */
+const History = memo(function History({
+  items,
+  last,
+  cards,
+  made,
+  actions,
+  files,
+  onOpen,
+  onOpenBrowser,
+  threadId,
+  running,
+  onChange,
+  retry,
+}: {
+  items: Item[];
+  last: Item | undefined;
+  cards: Card[];
+  made: FileInfo[];
+  actions: Map<string, Action>;
+  files: Map<string, FileInfo>;
+  onOpen: (f: FileInfo) => void;
+  onOpenBrowser: () => void;
+  threadId: string;
+  running: boolean;
+  onChange: () => void;
+  retry?: () => void;
+}) {
+  return (
+    <>
+      {placeCards(items, cards, made).map((it) =>
+        "files" in it ? (
+          <Attachments key={`files${it.files[0]!.id}`} files={it.files} onOpen={onOpen} produced />
+        ) : "card" in it ? (
+          <div key={`card${it.card.id}`} className="thread-cards" data-testid="thread-cards" data-card-id={it.card.id}>
+            <CardSlot card={it.card} expanded refresh={onChange} />
+          </div>
+        ) : (
+          <ItemView
+            key={it.kind === "steps" ? it.key : `${it.kind}${it.m.id}`}
+            item={it}
+            actions={actions}
+            files={files}
+            onOpen={onOpen}
+            onOpenBrowser={onOpenBrowser}
+            threadId={threadId}
+            running={running}
+            onChange={onChange}
+            // A run that ended in an error can be tried again, as long as nothing came after it.
+            retry={it === last ? retry : undefined}
+          />
+        ),
+      )}
+    </>
+  );
+});
 
 /**
  * The details panel opens by itself only when it has something to show (pages

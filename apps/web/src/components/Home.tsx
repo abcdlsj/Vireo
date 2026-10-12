@@ -7,6 +7,7 @@ import { Peek } from "../cards/Peek";
 import type { Card } from "@vireo/protocol";
 import { ArrowUpIcon, CheckIcon, ChevronRight, ListIcon, SearchIcon } from "../icons";
 import { clearShared, sharedText } from "../route";
+import { cacheGet, cacheSet } from "../local-cache";
 import { currentNode, nodes, nodeTint, peekNode, postNode, switchNode } from "../nodes";
 import { Eyes } from "./Eyes";
 import { NodeName, NodeSwitcher } from "./Nodes";
@@ -19,7 +20,7 @@ const NUMBERS = ["No", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "E
  * appears here while Vireo works on it.
  */
 export function Home({ me, onSearch }: { me: Me | null; onSearch: () => void }) {
-  const [cards, setCards] = useState<Card[] | null>(null);
+  const [cards, setCards] = useState<Card[] | null>(() => cacheGet<Card[]>(`cards.${currentNode()?.id}`) ?? null);
   const [note, setNote] = useState("");
   // The matter open in the peek sheet, by thread: its card can change id as it moves on.
   const [peekThread, setPeekThread] = useState<string | null>(null);
@@ -27,7 +28,9 @@ export function Home({ me, onSearch }: { me: Me | null; onSearch: () => void }) 
 
   const load = useCallback(async () => {
     try {
-      setCards((await api.get<{ cards: Card[] }>("/api/cards")).cards);
+      const r = await api.get<{ cards: Card[] }>("/api/cards");
+      setCards(r.cards);
+      cacheSet(`cards.${currentNode()?.id}`, r.cards);
     } catch (err) {
       if (!(err instanceof ApiError)) throw err;
     }

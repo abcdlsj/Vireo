@@ -35,10 +35,16 @@ export function Composer({
     const t = text.trim();
     if ((!t && files.length === 0) || busy) return;
     setBusy(true);
+    // Cleared at once, as the message shows as sent; it comes back if sending fails.
+    const sent = files;
+    setText("");
+    setFiles([]);
     try {
-      await onSend(t, files);
-      setText("");
-      setFiles([]);
+      await onSend(t, sent);
+    } catch (err) {
+      setText((now) => now || t);
+      setFiles((now) => (now.length ? now : sent));
+      throw err;
     } finally {
       setBusy(false);
       ref.current?.focus();

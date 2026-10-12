@@ -774,6 +774,45 @@ button.link.danger {
   word-break: break-word;
 }
 
+/* Sent, on its way to the node. */
+.msg.user.sending .bubble {
+  opacity: 0.7;
+}
+
+.msg.user.sending .sending-files {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* A thread's first load: its shape, not a blank page. */
+.thread-view.loading .skeleton {
+  border-radius: 6px;
+  background: var(--hover);
+  animation: skeleton-in 0.3s ease 0.15s backwards;
+}
+
+.thread-view.loading .skeleton.title {
+  width: 45%;
+  height: 28px;
+  margin: 24px 0 20px;
+}
+
+.thread-view.loading .skeleton.line {
+  width: 80%;
+  height: 14px;
+  margin-bottom: 10px;
+}
+
+.thread-view.loading .skeleton.short {
+  width: 55%;
+}
+
+@keyframes skeleton-in {
+  from {
+    opacity: 0;
+  }
+}
+
 .msg-image {
   max-width: 240px;
   max-height: 240px;

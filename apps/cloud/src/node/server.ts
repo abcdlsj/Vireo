@@ -29,7 +29,16 @@ export async function runCloud(config: ServerConfig): Promise<RunningCloud> {
   const http = createHttp(cloud);
   if (config.webDir && existsSync(config.webDir)) {
     const root = relative(process.cwd(), config.webDir) || ".";
-    http.use("*", serveStatic({ root }));
+    // Built files are named by their content, so browsers can keep them for good.
+    http.use(
+      "*",
+      serveStatic({
+        root,
+        onFound: (path, c) => {
+          if (/[\\/]assets[\\/]/.test(path)) c.header("Cache-Control", "public, max-age=31536000, immutable");
+        },
+      }),
+    );
     http.get("*", serveStatic({ path: join(root, "index.html") }));
   }
   const sockets = new WebSocketServer({ noServer: true, maxPayload: 4 * 1024 * 1024 });

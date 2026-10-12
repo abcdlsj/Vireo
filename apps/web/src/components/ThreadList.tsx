@@ -1,5 +1,6 @@
 import type { Thread } from "../api";
 import { relTime } from "../format";
+import { prefetchThread } from "../thread-cache";
 import { attentionOf, Eyes, nowLine } from "./Eyes";
 
 const GROUPS: { key: Thread["group"]; label: string }[] = [
@@ -37,7 +38,7 @@ function Row({ t, active }: { t: Thread; active: boolean }) {
   const status = t.pendingActions ? `Waiting for your confirmation${t.pendingActions > 1 ? ` (${t.pendingActions})` : ""}` : t.running ? (active ? "" : nowLine(t.statusLine)) : t.statusLine || (t.group === "done" ? (t.summary ?? "") : "");
   const sub = [t.temporary ? "Temporary" : "", status].filter(Boolean).join(" · ");
   return (
-    <a href={`#thread/${t.id}`} className={`thread-row ${active ? "active" : ""} ${t.group} ${attn === "working" ? "working" : ""} ${sub ? "two-line" : ""}`} data-testid="thread-row" data-thread-id={t.id} title={sub || undefined}>
+    <a href={`#thread/${t.id}`} className={`thread-row ${active ? "active" : ""} ${t.group} ${attn === "working" ? "working" : ""} ${sub ? "two-line" : ""}`} data-testid="thread-row" data-thread-id={t.id} onPointerEnter={() => prefetchThread(t.id)} onTouchStart={() => prefetchThread(t.id)} title={sub || undefined}>
       <span className="row-text">
         <span className="row-top">
           <span className="title">{t.title}</span>

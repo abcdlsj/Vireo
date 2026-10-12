@@ -5,6 +5,7 @@
  * origin.
  */
 
+import { cacheClear } from "./local-cache";
 import type { CloudInfo, LinkRequest, NodeAccess, NodeSummary, User } from "@vireo/protocol";
 
 export const CLOUD_URL = (import.meta.env.VITE_VIREO_CLOUD ?? "").replace(/\/+$/, "");
@@ -50,6 +51,7 @@ export function signedIn(): boolean {
 function endSession(): void {
   session = null;
   store(SESSION, null);
+  cacheClear();
   window.dispatchEvent(new Event(SIGNED_OUT));
 }
 

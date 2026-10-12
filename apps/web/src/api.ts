@@ -70,6 +70,8 @@ function emit(e: NodeEvent): void {
 
 async function follow(signal: AbortSignal): Promise<void> {
   let wait = 1000;
+  // Everything open loads itself as the stream starts; only a reconnect may have missed something.
+  let first = true;
   while (!signal.aborted) {
     try {
       const access = await nodeAccess();
@@ -78,7 +80,10 @@ async function follow(signal: AbortSignal): Promise<void> {
       else if (res.ok && res.body) {
         wait = 1000;
         await readEvents(res.body, (event, data) => {
-          if (event === "ready") emit({ type: "thread.updated", threadId: "*" });
+          if (event === "ready") {
+            if (!first) emit({ type: "thread.updated", threadId: "*" });
+            first = false;
+          }
           else if (event === "message") emit(JSON.parse(data) as NodeEvent);
         });
       }

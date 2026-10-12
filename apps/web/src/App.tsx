@@ -4,7 +4,8 @@ import { api, ApiError, closeEvents, onEvent, type Me, type Thread } from "./api
 import { cloud, SIGNED_OUT, signedIn } from "./cloud";
 import { NodeSwitcher } from "./components/Nodes";
 import { ApproveNode, NoNodes, SignIn, Unreachable } from "./components/SignIn";
-import { currentNode, loadNodes, nodeAccess } from "./nodes";
+import { currentNode, loadNodes, nodeAccess, restoreNodes } from "./nodes";
+import { cacheGet, cacheSet } from "./local-cache";
 import { Home } from "./components/Home";
 import { MemoryPage } from "./components/MemoryPage";
 import { NewThread } from "./components/NewThread";
@@ -32,9 +33,15 @@ export function App({ signInError }: { signInError?: string }) {
   const [state, setState] = useState<State>(() => (signedIn() ? { name: "loading" } : { name: "signed-out" }));
   const [user, setUser] = useState<User | null>(null);
 
-  const connect = useCallback(async () => {
+  /**
+   * `quick` opens the app at once on the nodes and token this device kept
+   * from last time, checking them behind; it falls back to the full check
+   * when there is nothing kept or the current node changed.
+   */
+  const connect = useCallback(async (quick = false) => {
     if (!signedIn()) return setState({ name: "signed-out" });
-    setState({ name: "loading" });
+    const kept = quick && restoreNodes() ? currentNode() : undefined;
+    setState(kept ? { name: "ready", node: kept } : { name: "loading" });
     try {
       const [me] = await Promise.all([cloud.me(), loadNodes()]);
       setUser(me);
@@ -44,8 +51,9 @@ export function App({ signInError }: { signInError?: string }) {
     }
     const node = currentNode();
     if (!node) return setState({ name: "no-nodes" });
+    if (kept && kept.id !== node.id) setState({ name: "loading" });
     try {
-      await nodeAccess(true);
+      await nodeAccess(!kept || kept.id !== node.id);
       await api.get("/api/me");
       setState({ name: "ready", node });
     } catch (err) {
@@ -54,7 +62,7 @@ export function App({ signInError }: { signInError?: string }) {
   }, []);
 
   useEffect(() => {
-    void connect();
+    void connect(true);
     const out = () => {
       closeEvents();
       setState({ name: "signed-out" });
@@ -68,12 +76,13 @@ export function App({ signInError }: { signInError?: string }) {
   if (state.name === "loading") return <div className="splash" aria-busy="true" />;
   if (state.name === "no-nodes") return <NoNodes />;
   if (state.name === "unreachable") return <Unreachable node={state.node} message={state.message} onRetry={() => void connect()} />;
-  return <Shell user={user} />;
+  return <Shell key={state.node.id} user={user} />;
 }
 
 function Shell({ user }: { user: User | null }) {
   const route = useRoute();
-  const [threads, setThreads] = useState<Thread[]>([]);
+  const nodeId = currentNode()?.id;
+  const [threads, setThreads] = useState<Thread[]>(() => cacheGet<Thread[]>(`threads.${nodeId}`) ?? []);
   const [me, setMe] = useState<Me | null>(null);
   const [jump, setJump] = useState(false);
   const timer = useRef<number | undefined>(undefined);
@@ -84,22 +93,24 @@ function Shell({ user }: { user: User | null }) {
     try {
       const r = await api.get<{ threads: Thread[] }>("/api/threads");
       setThreads(r.threads);
+      cacheSet(`threads.${nodeId}`, r.threads);
     } catch (err) {
       if (!(err instanceof ApiError)) throw err;
     }
-  }, []);
+  }, [nodeId]);
 
   const loadMe = useCallback(async () => {
-    setMe(await api.get<Me>("/api/me"));
+    const m = await api.get<Me>("/api/me");
+    setMe(m);
+    return m;
   }, []);
+  const reloadMe = useCallback(async () => void (await loadMe()), [loadMe]);
 
   useEffect(() => {
     void loadThreads();
-    void loadMe();
     // Keep the owner's time zone current so schedules and briefs use local time.
     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    api
-      .get<Me>("/api/me")
+    loadMe()
       .then((m) => {
         if (tz && m.settings.timezone !== tz && !localStorage.getItem("vireo.tz.pinned")) void api.patch("/api/settings", { timezone: tz });
       })
@@ -184,7 +195,7 @@ function Shell({ user }: { user: User | null }) {
         ) : route.name === "memory" ? (
           <MemoryPage />
         ) : route.name === "settings" ? (
-          <SettingsPage section={route.section} me={me} user={user} reload={loadMe} />
+          <SettingsPage section={route.section} me={me} user={user} reload={reloadMe} />
         ) : (
           <Home me={me} onSearch={() => setJump(true)} />
         )}

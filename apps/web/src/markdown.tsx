@@ -28,6 +28,31 @@ export function cjkLang(text: string): "zh-Hans" | "ja" | undefined {
 }
 
 export function Markdown({ text, className }: { text: string; className?: string }) {
-  const html = useMemo(() => DOMPurify.sanitize(marked.parse(text, { async: false }) as string), [text]);
+  const html = useMemo(() => render(text), [text]);
   return <div className={`md ${className ?? ""}`} lang={cjkLang(text)} dangerouslySetInnerHTML={{ __html: html }} />;
+}
+
+const render = (text: string) => DOMPurify.sanitize(marked.parse(text, { async: false }) as string);
+
+/**
+ * An answer still being written. Only the paragraph in progress is parsed
+ * again as text arrives; the finished ones above it are parsed once.
+ */
+export function StreamingMarkdown({ text }: { text: string }) {
+  const cut = settledEnd(text);
+  const head = text.slice(0, cut);
+  const headHtml = useMemo(() => (head ? render(head) : ""), [head]);
+  const html = headHtml + render(text.slice(cut));
+  return <div className="md" lang={cjkLang(text)} dangerouslySetInnerHTML={{ __html: html }} />;
+}
+
+/** Where the last blank line outside a code block is: everything before it is finished. */
+function settledEnd(text: string): number {
+  let at = text.lastIndexOf("\n\n");
+  while (at > 0) {
+    const fences = text.slice(0, at).match(/^\s*(```|~~~)/gm)?.length ?? 0;
+    if (fences % 2 === 0) return at;
+    at = text.lastIndexOf("\n\n", at - 1);
+  }
+  return 0;
 }

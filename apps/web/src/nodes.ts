@@ -8,6 +8,7 @@
 import type { CSSProperties } from "react";
 import type { NodeAccess, NodeSummary } from "@vireo/protocol";
 import { cloud } from "./cloud";
+import { cacheGet, cacheSet } from "./local-cache";
 
 const CURRENT = "vireo.node";
 /** Refresh a token this long before it expires. */
@@ -22,6 +23,30 @@ let renew: number | undefined;
 /** Loads the owner's nodes and picks the current one (the last used, else the first). */
 export async function loadNodes(): Promise<NodeSummary[]> {
   list = await cloud.nodes();
+  cacheSet("nodes", list);
+  pick();
+  return list;
+}
+
+/**
+ * The nodes as last loaded on this device, with the current one's token if
+ * it is still good, so the app can open before the cloud answers. False when
+ * there is nothing to go on.
+ */
+export function restoreNodes(): boolean {
+  const saved = cacheGet<NodeSummary[]>("nodes");
+  if (!saved?.length) return false;
+  list = saved;
+  pick();
+  const kept = current && cacheGet<NodeAccess>(`access.${current.id}`);
+  if (kept && kept.expiresAt - MARGIN > Date.now()) {
+    access = kept;
+    renewLater();
+  }
+  return Boolean(current);
+}
+
+function pick(): void {
   let saved: string | null = null;
   try {
     saved = localStorage.getItem(CURRENT);
@@ -32,7 +57,6 @@ export async function loadNodes(): Promise<NodeSummary[]> {
   if (next?.id !== current?.id) access = undefined;
   current = next;
   paint();
-  return list;
 }
 
 /** Hues closer than this are hard to tell apart in a faint tint. */
@@ -122,10 +146,16 @@ export async function nodeAccess(force = false): Promise<NodeAccess> {
   if (!force && access && access.expiresAt - MARGIN > Date.now()) return access;
   fetching ??= cloud.access(current.id).finally(() => (fetching = undefined));
   access = await fetching;
-  // Keep a fresh token at hand for the URLs the browser loads itself.
+  cacheSet(`access.${current.id}`, access);
+  renewLater();
+  return access;
+}
+
+/** Keeps a fresh token at hand for the URLs the browser loads itself. */
+function renewLater(): void {
+  if (!access) return;
   window.clearTimeout(renew);
   renew = window.setTimeout(() => void nodeAccess(true).catch(() => undefined), Math.max(access.expiresAt - MARGIN - Date.now(), 10_000));
-  return access;
 }
 
 /**

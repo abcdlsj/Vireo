@@ -30,10 +30,26 @@ export function eventRoutes(app: App): Hono {
             continue;
           }
         }
-        for (const e of queue.splice(0, queue.length)) await stream.writeSSE({ event: "message", data: JSON.stringify(e) });
+        // Text streams a token at a time; gather a moment's worth into one event (fewer relay frames, fewer redraws).
+        if (queue.some((e) => e.type === "message.delta")) await new Promise((r) => setTimeout(r, DELTA_GATHER_MS));
+        for (const e of mergeDeltas(queue.splice(0, queue.length))) await stream.writeSSE({ event: "message", data: JSON.stringify(e) });
       }
       unsubscribe();
     }),
   );
   return r;
+}
+
+const DELTA_GATHER_MS = 30;
+
+/** Joins runs of deltas of the same stream and kind into one, keeping every other event in order. */
+export function mergeDeltas(events: NodeEvent[]): NodeEvent[] {
+  const out: NodeEvent[] = [];
+  for (const e of events) {
+    const last = out.at(-1);
+    if (e.type === "message.delta" && last?.type === "message.delta" && last.streamId === e.streamId && last.kind === e.kind) {
+      out[out.length - 1] = { ...last, delta: last.delta + e.delta };
+    } else out.push(e);
+  }
+  return out;
 }

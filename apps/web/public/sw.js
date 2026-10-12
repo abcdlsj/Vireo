@@ -1,5 +1,5 @@
 /* Vireo service worker: offline app shell and push notifications. */
-const CACHE = "vireo-shell-v1";
+const CACHE = "vireo-shell-v2";
 const SHELL = ["/", "/manifest.webmanifest", "/icon.svg", "/icon-192.png"];
 
 self.addEventListener("install", (event) => {
@@ -18,6 +18,23 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
   if (event.request.method !== "GET" || url.origin !== self.location.origin || /^\/(api|n|auth|\.well-known)\//.test(url.pathname)) return;
+  // Built files carry their content hash in the name, so a cached copy is always right.
+  if (url.pathname.startsWith("/assets/")) {
+    event.respondWith(
+      caches.match(event.request).then(
+        (hit) =>
+          hit ||
+          fetch(event.request).then((res) => {
+            if (res.ok) {
+              const copy = res.clone();
+              caches.open(CACHE).then((c) => c.put(event.request, copy));
+            }
+            return res;
+          }),
+      ),
+    );
+    return;
+  }
   // Network first so updates show immediately; fall back to the cached shell offline.
   event.respondWith(
     fetch(event.request)

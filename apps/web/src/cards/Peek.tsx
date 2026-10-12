@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { cachedThread, rememberThread } from "../thread-cache";
 import { api, onEvent, type ThreadDetail } from "../api";
 import { relTime } from "../format";
 import { ArrowUpIcon, ArrowUpRightIcon, CheckIcon, CloseIcon } from "../icons";
@@ -13,14 +14,16 @@ import type { Card } from "@vireo/protocol";
  * is one tap away for the whole conversation.
  */
 export function Peek({ card, onClose, refresh }: { card: Card; onClose: () => void; refresh: () => void }) {
-  const [detail, setDetail] = useState<ThreadDetail | null>(null);
+  const [detail, setDetail] = useState<ThreadDetail | null>(() => cachedThread(card.threadId));
   const [closing, setClosing] = useState(false);
   const sheet = useRef<HTMLDivElement>(null);
   const threadId = card.threadId;
 
   const load = useCallback(async () => {
     try {
-      setDetail(await api.get<ThreadDetail>(`/api/threads/${threadId}`));
+      const d = await api.get<ThreadDetail>(`/api/threads/${threadId}`);
+      setDetail(d);
+      rememberThread(d);
     } catch {
       setDetail(null);
     }
