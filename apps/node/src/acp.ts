@@ -64,11 +64,17 @@ export function globalArgs(o: RunOptions): string[] {
   return args;
 }
 
-export const execArgs = (agent: string, prompt: string, o: RunOptions): string[] => [...globalArgs(o), agent, "exec", prompt];
-export const sessionPromptArgs = (agent: string, session: string, prompt: string, o: RunOptions): string[] => [...globalArgs(o), agent, "-s", session, "prompt", prompt];
-export const sessionEnsureArgs = (agent: string, session: string, o: RunOptions): string[] => [...globalArgs(o), agent, "sessions", "ensure", "--name", session];
-export const sessionListArgs = (agent: string, o: RunOptions): string[] => [...globalArgs(o), agent, "sessions", "list", "--local"];
-export const sessionCloseArgs = (agent: string, session: string, o: RunOptions): string[] => [...globalArgs(o), agent, "sessions", "close", session];
+/**
+ * The agent's name, unless the setup runs a command of its own: acpx refuses a positional agent
+ * next to --agent, and reads the command's words as the subcommand instead.
+ */
+const agentPart = (agent: string, o: RunOptions): string[] => (o.agentCommand ? [] : [agent]);
+
+export const execArgs = (agent: string, prompt: string, o: RunOptions): string[] => [...globalArgs(o), ...agentPart(agent, o), "exec", prompt];
+export const sessionPromptArgs = (agent: string, session: string, prompt: string, o: RunOptions): string[] => [...globalArgs(o), ...agentPart(agent, o), "-s", session, "prompt", prompt];
+export const sessionEnsureArgs = (agent: string, session: string, o: RunOptions): string[] => [...globalArgs(o), ...agentPart(agent, o), "sessions", "ensure", "--name", session];
+export const sessionListArgs = (agent: string, o: RunOptions): string[] => [...globalArgs(o), ...agentPart(agent, o), "sessions", "list", "--local"];
+export const sessionCloseArgs = (agent: string, session: string, o: RunOptions): string[] => [...globalArgs(o), ...agentPart(agent, o), "sessions", "close", session];
 
 export interface RunResult {
   code: number;
@@ -80,46 +86,81 @@ export interface RunResult {
 
 const OUTPUT_CAP = 4 << 20;
 
-/** Runs acpx and collects its output. Never leaves the child behind. */
-export function runAcpx(args: string[], opts: { cwd: string; timeoutMs: number; env?: Record<string, string>; signal?: AbortSignal }): Promise<RunResult> {
+/**
+ * Vireo's own settings and credentials stay with Vireo; the agent gets the rest of the environment
+ * (PATH, HOME, its own provider keys) plus what its setup adds.
+ */
+export function agentEnv(base: NodeJS.ProcessEnv, extra: Record<string, string> = {}): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {};
+  for (const [k, v] of Object.entries(base)) if (!/^(VIREO_|GOOGLE_CLIENT_)/.test(k)) env[k] = v;
+  return { ...env, ...extra };
+}
+
+/**
+ * Runs acpx and collects its output. `onLine` sees every stdout line however long the run, while
+ * `stdout` keeps only the first few megabytes; stderr keeps its tail, where the failure is.
+ * Stopping a run kills acpx's whole process group, so the agent it started goes too.
+ */
+export function runAcpx(
+  args: string[],
+  opts: { cwd: string; timeoutMs: number; env?: Record<string, string>; signal?: AbortSignal; onLine?: (line: string) => void },
+): Promise<RunResult> {
   return new Promise((resolve) => {
     const child = spawn(process.execPath, [acpxEntry(), ...args], {
       cwd: opts.cwd,
-      env: { ...process.env, ...opts.env },
+      env: agentEnv(process.env, opts.env),
       stdio: ["ignore", "pipe", "pipe"],
+      detached: process.platform !== "win32",
     });
 
     let stdout = "";
     let stderr = "";
+    let pending = "";
     let timedOut = false;
     let aborted = false;
     let done = false;
+
+    const kill = (): void => {
+      try {
+        if (child.pid && process.platform !== "win32") process.kill(-child.pid, "SIGKILL");
+        else child.kill("SIGKILL");
+      } catch {
+        child.kill("SIGKILL");
+      }
+    };
 
     const finish = (code: number): void => {
       if (done) return;
       done = true;
       clearTimeout(timer);
       opts.signal?.removeEventListener("abort", onAbort);
+      if (pending) opts.onLine?.(pending);
       resolve({ code, stdout, stderr, timedOut, aborted });
     };
 
     const timer = setTimeout(() => {
       timedOut = true;
-      child.kill("SIGKILL");
+      kill();
     }, opts.timeoutMs);
 
     const onAbort = (): void => {
       aborted = true;
-      child.kill("SIGKILL");
+      kill();
     };
     if (opts.signal?.aborted) onAbort();
     else opts.signal?.addEventListener("abort", onAbort, { once: true });
 
     child.stdout.on("data", (chunk: Buffer) => {
-      if (stdout.length < OUTPUT_CAP) stdout += chunk.toString("utf8");
+      const text = chunk.toString("utf8");
+      if (stdout.length < OUTPUT_CAP) stdout += text;
+      if (!opts.onLine) return;
+      const lines = (pending + text).split("\n");
+      pending = lines.pop() ?? "";
+      for (const line of lines) opts.onLine(line);
     });
     child.stderr.on("data", (chunk: Buffer) => {
-      if (stderr.length < OUTPUT_CAP) stderr += chunk.toString("utf8");
+      stderr += chunk.toString("utf8");
+      if (stderr.length > OUTPUT_CAP) stderr = stderr.slice(-OUTPUT_CAP / 2);
     });
     child.on("error", (err) => {
       stderr += `${stderr ? "\n" : ""}${err.message}`;
@@ -151,6 +192,9 @@ export interface Turn {
   frames: number;
 }
 
+const MAX_TOOLS = 60;
+const MAX_TEXT = 200_000;
+
 const str = (v: unknown): string | undefined => (typeof v === "string" ? v : undefined);
 
 function toolSteps(update: Record<string, unknown>, turn: Turn): void {
@@ -158,6 +202,8 @@ function toolSteps(update: Record<string, unknown>, turn: Turn): void {
   if (!id) return;
   let step = turn.tools.find((t) => t.id === id);
   if (!step) {
+    // Past the cap new calls are left out, but the ones listed still get their updates.
+    if (turn.tools.length >= MAX_TOOLS) return;
     step = { title: str(update.title) ?? id, id };
     turn.tools.push(step);
   }
@@ -176,27 +222,29 @@ function toolSteps(update: Record<string, unknown>, turn: Turn): void {
   const content = update.content;
   if (Array.isArray(content)) {
     for (const c of content as Record<string, unknown>[]) {
-      if (c.type === "diff" && typeof c.path === "string") turn.files.push(c.path);
+      if (c.type === "diff" && typeof c.path === "string" && !turn.files.includes(c.path)) turn.files.push(c.path);
     }
   }
   if (Array.isArray(update.locations)) {
     for (const l of update.locations as Record<string, unknown>[]) {
-      if (typeof l.path === "string") turn.files.push(l.path);
+      if (typeof l.path === "string" && !turn.files.includes(l.path)) turn.files.push(l.path);
     }
   }
 }
 
-/** Reads acpx's JSON-RPC stream into what the owner (and the model) needs to see. */
-export function parseTurn(stdout: string): Turn {
-  const turn: Turn = { text: "", tools: [], files: [], plans: [], errors: [], refused: [], frames: 0 };
-  for (const line of stdout.split("\n")) {
+/** Reads acpx's JSON-RPC stream, line by line, into what the owner (and the model) needs to see. */
+export class TurnReader {
+  readonly turn: Turn = { text: "", tools: [], files: [], plans: [], errors: [], refused: [], frames: 0 };
+
+  push(line: string): void {
+    const turn = this.turn;
     const trimmed = line.trim();
-    if (!trimmed.startsWith("{")) continue;
+    if (!trimmed.startsWith("{")) return;
     let msg: Record<string, unknown>;
     try {
       msg = JSON.parse(trimmed) as Record<string, unknown>;
     } catch {
-      continue;
+      return;
     }
     turn.frames += 1;
 
@@ -213,20 +261,22 @@ export function parseTurn(stdout: string): Turn {
       if (escalation?.permissionEscalation) turn.refused.push("a permission request was escalated but could not be approved here");
     }
 
-    if (msg.method !== "session/update") continue;
+    if (msg.method !== "session/update") return;
     const params = msg.params as Record<string, unknown> | undefined;
     const update = params?.update as Record<string, unknown> | undefined;
     const tag = str(update?.sessionUpdate);
-    if (!update || !tag) continue;
+    if (!update || !tag) return;
 
     if (tag === "agent_message_chunk") {
       const content = update.content as Record<string, unknown> | undefined;
-      if (content?.type === "text" && typeof content.text === "string") turn.text += content.text;
+      if (content?.type === "text" && typeof content.text === "string" && turn.text.length < MAX_TEXT) turn.text += content.text;
     } else if (tag === "tool_call" || tag === "tool_call_update") {
-      if (turn.tools.length < 60) toolSteps(update, turn);
+      toolSteps(update, turn);
     } else if (tag === "plan") {
+      // Each plan update is the whole plan, not an addition to it.
       const entries = update.entries;
       if (Array.isArray(entries)) {
+        turn.plans = [];
         for (const e of entries as Record<string, unknown>[]) {
           const content = str(e.content);
           if (content) turn.plans.push(`${str(e.status) ?? "pending"}: ${content}`);
@@ -234,7 +284,16 @@ export function parseTurn(stdout: string): Turn {
       }
     }
   }
-  turn.text = turn.text.trim();
-  turn.files = [...new Set(turn.files)];
-  return turn;
+
+  finish(): Turn {
+    this.turn.text = this.turn.text.trim();
+    this.turn.files = [...new Set(this.turn.files)];
+    return this.turn;
+  }
+}
+
+export function parseTurn(stdout: string): Turn {
+  const reader = new TurnReader();
+  for (const line of stdout.split("\n")) reader.push(line);
+  return reader.finish();
 }
