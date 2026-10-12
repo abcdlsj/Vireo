@@ -952,10 +952,14 @@ button.link.danger {
   --font-display: "CJK Quotes", "Manrope Variable", var(--font);
   --font: "CJK Quotes", "Inter Variable", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", "Source Han Sans SC", Helvetica, Arial, sans-serif;
   font-family: var(--font);
+}
+
+/* The extra air is for reading a conversation; cards keep their own tighter lines. */
+.msg :is(.md, .bubble):lang(zh) {
   line-height: 1.75;
 }
 
-.md:lang(zh) p {
+.msg .md:lang(zh) p {
   margin-bottom: 0.75em;
 }
 
