@@ -1,6 +1,6 @@
 // Builds askvireo.com into dist/: one page per language from the same
-// template, the stylesheet, the fonts and the icons. `npm run build`.
-import { copyFileSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+// template, the stylesheet, the screenshots, the fonts and the icons. `npm run build`.
+import { copyFileSync, cpSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -24,8 +24,8 @@ writeFileSync(join(out, "404.html"), notFound(en, zh));
 copyFileSync(join(here, "src", "site.css"), join(out, "site.css"));
 copyFileSync(join(here, "src", "_headers"), join(out, "_headers"));
 copyFileSync(join(here, "src", "og.png"), join(out, "og.png"));
-copyFileSync(font("@fontsource-variable/fraunces", "fraunces-latin-full-normal.woff2"), join(out, "fonts", "fraunces.woff2"));
-copyFileSync(font("@fontsource-variable/fraunces", "fraunces-latin-full-italic.woff2"), join(out, "fonts", "fraunces-italic.woff2"));
+cpSync(join(here, "src", "img"), join(out, "img"), { recursive: true });
+copyFileSync(font("@fontsource-variable/manrope", "manrope-latin-wght-normal.woff2"), join(out, "fonts", "manrope.woff2"));
 copyFileSync(font("@fontsource-variable/inter", "inter-latin-wght-normal.woff2"), join(out, "fonts", "inter.woff2"));
 for (const f of ["icon.svg", "apple-touch-icon.png"]) copyFileSync(join(here, "..", "web", "public", f), join(out, f));
 

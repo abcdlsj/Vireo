@@ -1,5 +1,7 @@
 /fonts/*
   cache-control: public, max-age=31536000, immutable
+/img/*
+  cache-control: public, max-age=86400
 /*
   x-content-type-options: nosniff
   referrer-policy: strict-origin-when-cross-origin
