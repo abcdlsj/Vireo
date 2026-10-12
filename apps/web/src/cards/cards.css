@@ -456,6 +456,21 @@
   text-overflow: ellipsis;
 }
 
+.other-nodes .done-chip {
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+}
+
+.other-nodes .done-chip.needs b {
+  color: var(--c-accent);
+}
+
+.other-nodes .done-chip .muted {
+  font-size: 12px;
+}
+
 .done-chip svg {
   color: var(--c-accent);
   flex-shrink: 0;

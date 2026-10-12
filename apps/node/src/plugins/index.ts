@@ -1,5 +1,6 @@
 import type { Capability, PluginRow, PluginView } from "@vireo/protocol";
 import { mkdirSync } from "node:fs";
+import { arch, platform } from "node:os";
 import { join } from "node:path";
 import type { Hono } from "hono";
 import type { AgentDef } from "../agents.js";
@@ -7,12 +8,14 @@ import type { App } from "../app.js";
 import type { Notification } from "../push.js";
 import type { ToolDef } from "../tools/types.js";
 import { errorMessage, now } from "../util.js";
+import { VERSION } from "../version.js";
 import type { SearchResult } from "../tools/research.js";
 import { agentsPlugin } from "./agents/index.js";
 import { endpointPlugin } from "./endpoint/index.js";
 import { feishuPlugin } from "./feishu/index.js";
 import { googlePlugin } from "./google/index.js";
 import { mcpPlugin } from "./mcp/index.js";
+import { nodesPlugin } from "./nodes/index.js";
 import { searchPlugin } from "./search/index.js";
 import { tailscalePlugin } from "./tailscale/index.js";
 import { telegramPlugin } from "./telegram/index.js";
@@ -21,7 +24,7 @@ import type { ActionResult, ConfigField, PluginDef, PluginHost, PluginRuntime, P
 export * from "./types.js";
 
 /** The community catalog: every plugin that ships with Vireo. */
-export const CATALOG: PluginDef[] = [googlePlugin, tailscalePlugin, telegramPlugin, feishuPlugin, mcpPlugin, endpointPlugin, agentsPlugin, searchPlugin];
+export const CATALOG: PluginDef[] = [googlePlugin, tailscalePlugin, telegramPlugin, feishuPlugin, mcpPlugin, endpointPlugin, nodesPlugin, agentsPlugin, searchPlugin];
 
 interface Stored {
   enabled: boolean;
@@ -71,6 +74,7 @@ export class Plugins {
 
   constructor(private readonly app: App) {
     const host: PluginHost = {
+      name: app.config.name,
       publicUrl: (req) => app.address.publicUrl(req),
       localUrl: () => app.address.localUrl(),
       setDirectUrl: (url) => app.address.setDirectUrl(url),
@@ -85,6 +89,7 @@ export class Plugins {
         return app.memory;
       },
       notify: (n) => void app.push.notify(n),
+      describe: () => this.describe(),
       onRunFinished: (fn) => app.bus.subscribe((e) => e.type === "run.finished" && fn(e.threadId, e.text, e.startedAt)),
       redact: (text) => app.vault.redact(text),
     };
@@ -145,12 +150,44 @@ export class Plugins {
         out[f.key] = typeof enc === "string" ? this.app.vault.decrypt(enc) : "";
       } else if (f.type === "list") {
         const rows = stored[f.key] ?? f.default;
-        out[f.key] = Array.isArray(rows) ? rows : [];
+        out[f.key] = Array.isArray(rows) ? rows.map((r: PluginRow) => this.openRow(f, r)) : [];
       } else {
         out[f.key] = stored[f.key] ?? f.default ?? (f.type === "boolean" ? false : "");
       }
     }
     return out;
+  }
+
+  /** A stored list row with its secret values decrypted. */
+  private openRow(f: ConfigField, row: PluginRow): PluginRow {
+    const out = { ...row };
+    for (const item of f.items ?? []) {
+      if (item.type !== "secret") continue;
+      const v = row[item.key] as { enc?: string } | string | undefined;
+      out[item.key] = typeof v === "object" && v?.enc ? this.app.vault.decrypt(v.enc) : "";
+    }
+    return out;
+  }
+
+  /**
+   * List rows as stored: secret values encrypted. A row sent back without one
+   * (the browser never sees it) keeps the value of the row it was, matched by
+   * name, else by position.
+   */
+  private sealRows(f: ConfigField, next: PluginRow[], prev: PluginRow[]): PluginRow[] {
+    const secrets = (f.items ?? []).filter((i) => i.type === "secret");
+    if (!secrets.length) return next;
+    return next.map((row, i) => {
+      const before = (row.name ? prev.find((p) => p.name === row.name) : undefined) ?? prev[i];
+      const out = { ...row };
+      for (const item of secrets) {
+        const v = row[item.key];
+        if (typeof v === "string" && v) out[item.key] = { enc: this.app.vault.encrypt(v) };
+        else if (before?.[item.key] && typeof before[item.key] === "object") out[item.key] = before[item.key];
+        else delete out[item.key];
+      }
+      return out;
+    });
   }
 
   /** Merges a patch. Secret fields: omitted keeps the stored value, "" clears it. */
@@ -168,7 +205,7 @@ export class Plugins {
       } else if (f.type === "boolean") {
         config[f.key] = Boolean(v);
       } else if (f.type === "list") {
-        config[f.key] = rows(f.items ?? [], v);
+        config[f.key] = this.sealRows(f, rows(f.items ?? [], v), Array.isArray(cur.config[f.key]) ? (cur.config[f.key] as PluginRow[]) : []);
       } else {
         config[f.key] = typeof v === "string" ? v.trim() : v;
       }
@@ -262,7 +299,17 @@ export class Plugins {
       installed,
       fields: def.fields.map((f) => (f.type === "secret" ? { ...f, set: Boolean(config[f.key]) } : f)),
       // Secrets never leave the server.
-      config: Object.fromEntries(Object.entries(config).filter(([k]) => def.fields.find((f) => f.key === k)?.type !== "secret")),
+      config: Object.fromEntries(
+        Object.entries(config)
+          .filter(([k]) => def.fields.find((f) => f.key === k)?.type !== "secret")
+          .map(([k, v]) => {
+            const f = def.fields.find((x) => x.key === k);
+            const hidden = f?.type === "list" ? (f.items ?? []).filter((i) => i.type === "secret") : [];
+            if (!hidden.length || !Array.isArray(v)) return [k, v];
+            // A list row's secrets stay here too; the row only says one is saved.
+            return [k, (v as PluginRow[]).map((row) => ({ ...row, ...Object.fromEntries(hidden.flatMap((i) => [[i.key, ""], [`${i.key}_set`, Boolean(row[i.key])]])) }))];
+          }),
+      ),
       status,
       actions: installed ? (runtime.actions?.() ?? []) : [],
       browserSetup: Boolean(def.browserSetup?.length),
@@ -324,6 +371,19 @@ export class Plugins {
       if (!st || st.state === "ready") return { ...base, state: "ready" as const };
       return { ...base, state: "needs_setup" as const, message: st.message };
     });
+  }
+
+  /** This node in a few lines, for the owner's other nodes and agents: what it is and what its plugins can do now. */
+  async describe(): Promise<string> {
+    const lines = [`${this.app.config.name} · Vireo ${VERSION} on ${platform()} ${arch()}`];
+    for (const def of CATALOG) {
+      if (!this.installed(def.id)) continue;
+      const st = await this.statusOf(def.id);
+      if (!st) continue;
+      lines.push(`- ${def.name}: ${st.state === "ready" ? "ready" : `not ready (${st.message})`}`);
+      for (const d of st.details ?? []) if (!/URI|key/i.test(d.label)) lines.push(`  - ${d.label}: ${d.value}`);
+    }
+    return lines.join("\n");
   }
 
   /** The plugin's definition, for setup steps and fields. */

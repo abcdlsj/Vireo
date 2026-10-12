@@ -6,6 +6,7 @@ import { Peek } from "../cards/Peek";
 import type { Card } from "@vireo/protocol";
 import { ArrowUpIcon, CheckIcon, ChevronRight, ListIcon, SearchIcon } from "../icons";
 import { clearShared, sharedText } from "../route";
+import { currentNode, nodes, peekNode, switchNode } from "../nodes";
 import { NodeSwitcher } from "./Nodes";
 
 const NUMBERS = ["No", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine"];
@@ -128,6 +129,8 @@ export function Home({ me, onSearch }: { me: Me | null; onSearch: () => void }) 
           </div>
         </BoardContext.Provider>
 
+        <OtherNodes />
+
         {done.length ? (
           <div className="done-strip" data-testid="done-strip">
             <span className="label">Done lately</span>
@@ -151,6 +154,52 @@ export function Home({ me, onSearch }: { me: Me | null; onSearch: () => void }) 
         ) : null}
       </div>
       {peekCard ? <Peek key={peekCard.threadId} card={peekCard} onClose={() => setPeekThread(null)} refresh={load} /> : null}
+    </div>
+  );
+}
+
+/** Checking the other nodes this often while the board is open. */
+const OTHERS_EVERY = 60_000;
+
+/**
+ * What waits on the owner, or is being worked on, on their other nodes, so
+ * this board is the one place to look. Opening one switches to that node.
+ */
+function OtherNodes() {
+  const [items, setItems] = useState<{ node: string; nodeId: string; thread: Thread }[]>([]);
+  useEffect(() => {
+    let live = true;
+    const check = async () => {
+      const others = nodes().filter((n) => n.id !== currentNode()?.id && (n.online || n.mode === "tailscale"));
+      const found = await Promise.all(
+        others.map(async (n) => {
+          const r = await peekNode<{ threads: Thread[] }>(n, "/api/threads");
+          return (r?.threads ?? []).filter((t) => t.state === "active" && (t.needsYou || t.pendingActions > 0 || t.running)).map((thread) => ({ node: n.name, nodeId: n.id, thread }));
+        }),
+      );
+      if (live) setItems(found.flat().sort((a, b) => Number(b.thread.needsYou || b.thread.pendingActions > 0) - Number(a.thread.needsYou || a.thread.pendingActions > 0)));
+    };
+    void check();
+    const every = window.setInterval(() => void check(), OTHERS_EVERY);
+    return () => {
+      live = false;
+      window.clearInterval(every);
+    };
+  }, []);
+  if (!items.length) return null;
+  return (
+    <div className="done-strip other-nodes" data-testid="other-nodes">
+      <span className="label">On your other nodes</span>
+      {items.slice(0, 12).map(({ node, nodeId, thread: t }) => {
+        const needs = t.needsYou || t.pendingActions > 0;
+        return (
+          <button key={`${nodeId}:${t.id}`} className={`done-chip${needs ? " needs" : ""}`} title={`${node}: ${t.title}`} onClick={() => switchNode(nodeId, `thread/${t.id}`)}>
+            <b>{node}</b>
+            {t.title}
+            <span className="muted">{needs ? "needs you" : "working"}</span>
+          </button>
+        );
+      })}
     </div>
   );
 }

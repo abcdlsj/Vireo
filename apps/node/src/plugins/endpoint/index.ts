@@ -36,6 +36,8 @@ interface Key {
   hint: string;
   createdAt: number;
   usedAt: number | null;
+  /** A key for one of the owner's own Vireo nodes: it may also confirm or decline this node's pending confirmations, after the owner did so there. */
+  node?: boolean;
 }
 
 const text = (t: string, isError = false): CallToolResult => ({ content: [{ type: "text", text: t }], ...(isError ? { isError: true } : {}) });
@@ -46,7 +48,7 @@ const seconds = (v: unknown, fallback: number, max: number): number => {
 const when = (ms: number): string => new Date(ms).toISOString().replace("T", " ").slice(0, 16);
 
 /** The MCP tools other agents see. Schemas are plain JSON Schema (typebox). */
-function toolList(memory: boolean) {
+function toolList(memory: boolean, node: boolean) {
   const from = Type.Optional(Type.String({ description: "Who is asking, e.g. “Claude Code on my laptop”. Shown to the owner." }));
   const wait = (d: number, max: number) => Type.Optional(Type.Number({ minimum: 0, maximum: max, description: `Seconds to wait for the outcome before returning (default ${d}). Check again later if it is not ready.` }));
   const tools: { name: string; description: string; inputSchema: TSchema }[] = [
@@ -61,6 +63,11 @@ function toolList(memory: boolean) {
         temporary: Type.Optional(Type.Boolean({ description: "A one-off: Vireo does not remember anything from it." })),
         wait_seconds: wait(60, 600),
       }),
+    },
+    {
+      name: "node_info",
+      description: "What this Vireo node is and what it can do now: its machine, and each plugin it has with what it is set up for (coding agents and their repositories, MCP servers, tailnet, chats).",
+      inputSchema: Type.Object({}),
     },
     {
       name: "read_thread",
@@ -94,6 +101,19 @@ function toolList(memory: boolean) {
       inputSchema: Type.Object({ title: Type.String(), body: Type.Optional(Type.String()), from }),
     },
   ];
+  if (node)
+    tools.push({
+      name: "decide_action",
+      description:
+        "Confirm or decline a confirmation waiting on this node (its id is in brackets in ask_vireo and read_thread). Only call it with the owner's own decision, which they made on a confirmation card of yours. Confirming runs the action and lets Vireo continue; the reply comes back.",
+      inputSchema: Type.Object({
+        action_id: Type.String(),
+        decision: Type.Union([Type.Literal("confirm"), Type.Literal("decline")]),
+        reason: Type.Optional(Type.String({ description: "Why the owner declined, for Vireo." })),
+        expected_summary: Type.Optional(Type.String({ description: "The summary the owner saw; the call is refused if it is not this confirmation's." })),
+        wait_seconds: wait(60, 600),
+      }),
+    });
   if (memory)
     tools.push({
       name: "search_memory",
@@ -135,6 +155,10 @@ function serve(ctx: PluginContext, key: Key, keys: { touch(id: string): void }):
     });
 
   const pendingIn = (threadId: string) => host.actions.forThread(threadId).filter((a) => a.status === "pending");
+  const waitingLine = (threadId: string) => {
+    const waiting = pendingIn(threadId);
+    return waiting.length ? `Waiting on the owner to confirm: ${waiting.map((w) => `[${w.id}] ${w.summary}`).join("; ")}.` : "";
+  };
 
   const approval = async (id: string, ms: number, signal: AbortSignal): Promise<CallToolResult> => {
     let a = host.actions.get(id);
@@ -162,8 +186,8 @@ function serve(ctx: PluginContext, key: Key, keys: { touch(id: string): void }):
         const since = now();
         host.send(threadId, `[From ${sender(args.from)}, an agent the owner connected over MCP]\n${ask}`);
         const said = await runEnd(threadId, since, seconds(args.wait_seconds, 60, 600), signal);
-        const waiting = pendingIn(threadId);
-        const tail = waiting.length ? `\n\nWaiting on the owner to confirm: ${waiting.map((w) => w.summary).join("; ")}.` : "";
+        const waiting = waitingLine(threadId);
+        const tail = waiting ? `\n\n${waiting}` : "";
         if (said === undefined) return text(`Vireo is still working on it in thread ${threadId}. Read it later with read_thread.${tail}`);
         return text(`${said || "(Vireo finished without a reply.)"}${tail}\n\nthread_id: ${threadId}`);
       }
@@ -171,8 +195,7 @@ function serve(ctx: PluginContext, key: Key, keys: { touch(id: string): void }):
         const id = String(args.thread_id ?? "");
         const t = host.threads.get(id);
         if (!t) return text(`No thread ${id}.`, true);
-        const waiting = pendingIn(id);
-        const head = [`${t.title} · ${t.state === "done" ? "done" : t.running ? "Vireo is working" : "open"}`, waiting.length ? `Waiting on the owner to confirm: ${waiting.map((w) => w.summary).join("; ")}` : ""].filter(Boolean);
+        const head = [`${t.title} · ${t.state === "done" ? "done" : t.running ? "Vireo is working" : "open"}`, waitingLine(id)].filter(Boolean);
         return text(`${head.join("\n")}\n\n${host.threads.transcript(id, { maxChars: Number(args.max_chars) || 6000 }) || "(no messages yet)"}`);
       }
       case "list_threads": {
@@ -196,6 +219,34 @@ function serve(ctx: PluginContext, key: Key, keys: { touch(id: string): void }):
         const action = host.actions.create(thread.id, APPROVAL_TOOL, fields, truncate(summary, 200));
         return approval(action.id, seconds(args.wait_seconds, 90, 600), signal);
       }
+      case "node_info":
+        return text(await host.describe());
+      case "decide_action": {
+        if (!key.node) return text("This key cannot decide confirmations.", true);
+        const id = String(args.action_id ?? "");
+        const a = host.actions.get(id);
+        if (!a) return text(`No confirmation ${id}.`, true);
+        if (a.status !== "pending") return text(`Already ${a.status}${a.result ? `: ${a.result}` : ""}.`);
+        const norm = (v: string) => v.replace(/\s+/g, " ").trim().toLowerCase();
+        if (typeof args.expected_summary === "string" && norm(args.expected_summary) !== norm(a.summary))
+          return text(`Not decided: ${id} is “${a.summary}”, not what the owner saw. Ask the owner about this one.`, true);
+        if (args.decision === "decline") {
+          host.actions.cancel(id, typeof args.reason === "string" && args.reason.trim() ? args.reason.trim() : undefined);
+          return text(`Declined: ${a.summary}.`);
+        }
+        const since = now();
+        const done = await host.actions.confirm(id);
+        // An agent's approval settles there; anything else lets Vireo carry on, so wait for what it says.
+        const settles = a.tool === APPROVAL_TOOL;
+        const said = done.status === "pending" || settles ? undefined : await runEnd(a.threadId, since, seconds(args.wait_seconds, 60, 600), signal);
+        const lines = [`${done.status === "done" ? "Done" : done.status === "failed" ? "Failed" : `Now ${done.status}`}: ${a.summary}.`];
+        if (done.result) lines.push(done.result);
+        if (said) lines.push(`\nVireo: ${said}`);
+        else if (!settles) lines.push(`\nVireo is carrying on in thread ${a.threadId}; read it with read_thread.`);
+        const waiting = waitingLine(a.threadId);
+        if (waiting) lines.push(waiting);
+        return text(lines.join("\n"));
+      }
       case "approval_status":
         return approval(String(args.approval_id ?? ""), seconds(args.wait_seconds, 0, 600), signal);
       case "notify_owner": {
@@ -214,7 +265,7 @@ function serve(ctx: PluginContext, key: Key, keys: { touch(id: string): void }):
     }
   };
 
-  server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: toolList(cfg().memory) as never }));
+  server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: toolList(cfg().memory, Boolean(key.node)) as never }));
   server.setRequestHandler(CallToolRequestSchema, async (req, extra) => {
     keys.touch(key.id);
     try {
@@ -272,20 +323,31 @@ export const endpointPlugin: PluginDef = {
         const all = list();
         const details = [
           { label: "Server URI", value: url() },
-          ...all.map((k) => ({ label: k.name, value: `…${k.hint}, made ${when(k.createdAt)}, ${k.usedAt ? `last used ${when(k.usedAt)}` : "not used yet"}` })),
+          ...all.map((k) => ({ label: k.name, value: `${k.node ? "node key, " : ""}…${k.hint}, made ${when(k.createdAt)}, ${k.usedAt ? `last used ${when(k.usedAt)}` : "not used yet"}` })),
         ];
         if (!all.length) return { state: "setup", message: "Press New key, then add Vireo to your agent with the command it shows.", details };
         return { state: "ready", message: `Agents with one of your ${all.length === 1 ? "key" : `${all.length} keys`} can reach Vireo at this address.`, details };
       },
       actions() {
-        return [{ id: "new", label: "New key", primary: list().length === 0 }, ...(list().length ? [{ id: "revoke", label: "Revoke all keys" }] : [])];
+        return [{ id: "new", label: "New key", primary: list().length === 0 }, { id: "new_node", label: "New key for a Vireo node" }, ...(list().length ? [{ id: "revoke", label: "Revoke all keys" }] : [])];
       },
       async runAction(id) {
-        if (id === "new") {
+        if (id === "new" || id === "new_node") {
+          const node = id === "new_node";
           const all = list();
           const secret = `vireo_${randomBytes(24).toString("base64url")}`;
           const name = `Key ${all.reduce((n, k) => Math.max(n, Number(k.name.replace(/\D/g, "")) || 0), 0) + 1}`;
-          save([...all, { id: newId("key"), name, hash: sha256(secret), hint: secret.slice(-4), createdAt: now(), usedAt: null }]);
+          save([...all, { id: newId("key"), name, hash: sha256(secret), hint: secret.slice(-4), createdAt: now(), usedAt: null, ...(node ? { node: true } : {}) }]);
+          if (node)
+            return {
+              message: [
+                `${name}, for another of your Vireo nodes, shown only this once. It can also confirm what you confirm there.`,
+                "",
+                "On that node, in Settings → Plugins → Other nodes, add a row with:",
+                `Address: ${url()}`,
+                `Key: ${secret}`,
+              ].join("\n"),
+            };
           return {
             message: [
               `${name}, shown only this once: ${secret}`,

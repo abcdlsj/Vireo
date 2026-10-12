@@ -251,7 +251,7 @@ function Field({ field: f, value, onChange, hideLabel }: { field: PluginField; v
               {items.map((item) => (
                 <label key={item.key} className={item.multiline ? "wide" : undefined}>
                   <span>{item.label}</span>
-                  <Control field={item} id={`${id}-${i}-${item.key}`} value={row[item.key] ?? item.default ?? ""} onChange={(v) => change(i, item.key, v)} />
+                  <Control field={item.type === "secret" ? { ...item, set: Boolean(row[`${item.key}_set`]) } : item} id={`${id}-${i}-${item.key}`} value={row[item.key] ?? item.default ?? ""} onChange={(v) => change(i, item.key, v)} />
                   {/* The same help under every row is noise; the first row carries it. */}
                   {item.help && i === 0 ? <span className="muted small">{item.help}</span> : null}
                 </label>

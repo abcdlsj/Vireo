@@ -52,6 +52,8 @@ export interface PluginState {
  * internals, so they stay replaceable and can later ship on their own.
  */
 export interface PluginHost {
+  /** This node's name (the machine's, unless the owner chose one). */
+  name: string;
   /** Where browsers reach this node, for OAuth redirect URIs and webhooks. */
   publicUrl(req?: RequestInfo): string;
   /** This node's HTTP server on the loopback interface (e.g. for `tailscale serve`). */
@@ -65,6 +67,8 @@ export interface PluginHost {
   send(threadId: string, text: string): void;
   actions: Pick<Actions, "get" | "pending" | "confirm" | "cancel" | "create" | "forThread">;
   memory: Pick<MemoryStore, "list">;
+  /** What this node is and what it can do now: its name, platform, and each added plugin with its status. */
+  describe(): Promise<string>;
   /** Tells the owner: push notifications and linked chats. */
   notify(n: Notification): void;
   /** Called with what Vireo said whenever a run in any thread ends, and when that run started. */

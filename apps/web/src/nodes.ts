@@ -41,15 +41,26 @@ export function currentNode(): NodeSummary | undefined {
   return current;
 }
 
-/** Switches to another node; the app reloads so nothing from the old one lingers. */
-export function switchNode(id: string): void {
+/** Switches to another node, optionally opening a page there; the app reloads so nothing from the old one lingers. */
+export function switchNode(id: string, hash = ""): void {
   try {
     localStorage.setItem(CURRENT, id);
   } catch {
     // Storage blocked: the switch lasts until reload.
   }
-  location.hash = "";
+  location.hash = hash;
   location.reload();
+}
+
+/** One GET on a node other than the current one, with a token of its own; undefined when it can't be reached. */
+export async function peekNode<T>(node: NodeSummary, path: string): Promise<T | undefined> {
+  try {
+    const a = await cloud.access(node.id);
+    const res = await fetch(`${a.baseUrl}${path}`, { headers: { authorization: `Bearer ${a.token}` }, signal: AbortSignal.timeout(15_000) });
+    return res.ok ? ((await res.json()) as T) : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /** A valid token for the current node, fetched or refreshed as needed. */

@@ -92,3 +92,59 @@ describe("Vireo over MCP", () => {
     await client.close();
   });
 });
+
+describe("Other nodes", () => {
+  it("hands work to another node and brings its confirmations here", async () => {
+    const { serve } = await import("@hono/node-server");
+    const laptop = await setup();
+    const made = await laptop.app.plugins.action("endpoint", "new_node", REQ);
+    const nodeKey = /^Key: (\S+)$/m.exec(made.message ?? "")![1]!;
+    const server = serve({ fetch: laptop.http.fetch, port: 0, hostname: "127.0.0.1" });
+    if (!server.listening) await new Promise((r) => server.once("listening", r));
+    const url = `http://127.0.0.1:${(server.address() as { port: number }).port}${PATH}`;
+    try {
+      const hub = testApp();
+      apps.push(hub);
+      await hub.plugins.install("nodes", { nodes: [{ name: "laptop", url, key: nodeKey, about: "the vireo repository" }] });
+      // The key is encrypted at rest, never shown again, and kept when the row is saved without it.
+      expect(JSON.stringify(hub.db.getKv("plugins"))).not.toContain(nodeKey);
+      const view = (await hub.plugins.list(REQ)).find((p) => p.id === "nodes")!;
+      expect(view.config.nodes).toEqual([expect.objectContaining({ name: "laptop", key: "", key_set: true })]);
+      await hub.plugins.configure("nodes", { nodes: [{ name: "laptop", url, key: "", about: "the vireo repository" }] });
+      expect((hub.plugins.config("nodes").nodes as { key: string }[])[0]!.key).toBe(nodeKey);
+      expect(view.status).toMatchObject({ state: "ready" });
+
+      const thread = hub.threads.create({});
+      const run = (tool: string, args: Record<string, unknown>) => hub.tools.get(tool)!.run(args as never, { app: hub, thread, agent: "remote", confirmed: true });
+      const listed = await run("node_list", {});
+      expect(listed.text).toContain("the vireo repository");
+      expect(listed.text).toContain("Vireo over MCP: ready");
+
+      // Something on the laptop waits on the owner; the hub confirms it, but only the one the owner saw.
+      const there = laptop.app.threads.create({ temporary: true });
+      const action = laptop.app.actions.create(there.id, "agent_approval", { from: "test" }, "Deploy api to production");
+      expect((await run("node_confirm", { node: "laptop", action_id: action.id, summary: "Delete everything" })).failed).toBe(true);
+      expect(laptop.app.actions.get(action.id)!.status).toBe("pending");
+      expect((await run("node_confirm", { node: "laptop", action_id: action.id, summary: "Deploy api to production" })).text).toContain("Done");
+      expect(laptop.app.actions.get(action.id)!.status).toBe("done");
+
+      const other = laptop.app.actions.create(there.id, "agent_approval", { from: "test" }, "Drop the table");
+      await run("node_decline", { node: "laptop", action_id: other.id });
+      expect(laptop.app.actions.get(other.id)!.status).toBe("cancelled");
+      expect(hub.tools.get("node_confirm")!.confirm!({} as never, {} as never)).toBe(true);
+    } finally {
+      server.close();
+    }
+  });
+
+  it("does not let an ordinary key decide confirmations", async () => {
+    const { app, connect, call } = await setup();
+    const client = await connect();
+    expect((await client.listTools()).tools.map((t) => t.name)).not.toContain("decide_action");
+    const t = app.threads.create({ temporary: true });
+    const a = app.actions.create(t.id, "agent_approval", { from: "x" }, "Deploy");
+    expect(await call(client, "decide_action", { action_id: a.id, decision: "confirm" })).toContain("cannot decide");
+    expect(app.actions.get(a.id)!.status).toBe("pending");
+    await client.close();
+  });
+});
