@@ -20,9 +20,9 @@ export interface Board {
 
 export const BoardContext = createContext<Board | null>(null);
 
-/** Derived cards (a confirmation, a reminder) have no matter of their own to close. */
+/** Derived cards (a confirmation, a reminder, a browser ask) have no matter of their own to close. */
 function closable(card: Card): boolean {
-  return card.threadId !== "overview" && card.kind !== "proposal" && card.kind !== "reminder" && card.status !== "done";
+  return card.threadId !== "overview" && !["proposal", "reminder", "browser_request"].includes(card.kind) && card.status !== "done";
 }
 
 /** On the board, marks long text that its box cuts off, so only that text fades out. */

@@ -147,6 +147,27 @@ export class Cards {
       withCards.add(a.threadId);
     }
 
+    // Vireo waiting for the owner to do something in its browser (sign in, a captcha).
+    for (const r of this.app.browser.requests()) {
+      const thread = threads.get(r.threadId);
+      if (!thread) continue;
+      out.push({
+        id: `browser:${r.threadId}`,
+        threadId: r.threadId,
+        threadTitle: thread.title,
+        kind: "browser_request",
+        title: r.request,
+        status: "needs_you",
+        data: { request: r.request, since: r.since },
+        buttons: [],
+        running: false,
+        changes: [],
+        createdAt: r.since,
+        updatedAt: r.since,
+      });
+      withCards.add(r.threadId);
+    }
+
     for (const thread of threads.values()) {
       if (thread.id === OVERVIEW_ID || thread.temporary || withCards.has(thread.id)) continue;
       out.push(this.threadCard(thread));

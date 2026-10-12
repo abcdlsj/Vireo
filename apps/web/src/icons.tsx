@@ -184,6 +184,15 @@ export const XCircleIcon = () => (
 );
 
 /** Icon for the kind of outward action a tool performs. */
+/** A browser window with a pointer: the owner's turn to use Vireo's browser. */
+export const PointerIcon = () => (
+  <Icon>
+    <path d="M13.5 7.4V3.6a1 1 0 0 0-1-1h-9a1 1 0 0 0-1 1v7.2a1 1 0 0 0 1 1h3.7" />
+    <path d="M2.5 5.3h11" />
+    <path d="m9 7.8 4.8 1.9-2.1.8-.8 2.1z" />
+  </Icon>
+);
+
 export function ToolIcon({ tool }: { tool: string }) {
   if (tool.includes("event") || tool.includes("invite")) return <CalendarIcon />;
   if (tool.includes("email")) return <MailIcon />;
