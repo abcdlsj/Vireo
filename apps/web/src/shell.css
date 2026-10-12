@@ -597,6 +597,31 @@
   content: "· ";
 }
 
+/*
+ * The folded line never runs past the conversation; while working it wraps,
+ * since what Vireo is waiting on (a code to type, a page to open) has to be read in full.
+ */
+.steps-toggle {
+  max-width: 100%;
+}
+
+.shell .steps.now .steps-toggle {
+  align-items: flex-start;
+}
+
+.steps.now .steps-label {
+  white-space: normal;
+}
+
+.steps.now .now-dot {
+  margin-top: 7px;
+}
+
+.steps-toggle .count {
+  flex: none;
+  white-space: nowrap;
+}
+
 .now-dot {
   width: 7px;
   height: 7px;

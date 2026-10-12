@@ -315,9 +315,13 @@ test.describe("Milestone 1 — Threads that think", () => {
       const long = "averyverylongwordwithoutanyspacesthatkeepsgoingandgoingandgoingforever";
       d.messages.push({ ...last, id: last.id + 1000, text: [...table, "", `A long word ${long} and \`${long}\``, "", "```", `curl https://example.com/${long}/${long}`, "```"].join("\n") });
       d.messages.push({ id: last.id + 1001, role: "notice", kind: "error", text: `Error ${long}`, createdAt: last.createdAt + 1 });
+      // Still working, on a long "what I'm doing now" line.
+      d.thread.running = true;
+      d.thread.statusLine = "Waiting for you in the browser: 这一步只能你来：6 位验证码只存在你的手机短信里，请在浏览器里输入后点继续";
       await route.fulfill({ response: res, json: d });
     });
     await page.reload();
+    await expect(page.getByTestId("live")).toContainText("6 位验证码");
     const table = page.locator("[data-testid=msg-assistant] table");
     await expect(table).toBeVisible();
     expect(await table.evaluate((t) => t.scrollWidth > t.clientWidth)).toBe(true);
