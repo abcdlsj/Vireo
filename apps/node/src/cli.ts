@@ -1,13 +1,16 @@
 #!/usr/bin/env node
 import type { NodeMode } from "@vireo/protocol";
 import { execFileSync, spawn } from "node:child_process";
-import { homedir } from "node:os";
-import { join } from "node:path";
+import { existsSync, mkdirSync, readdirSync, renameSync, rmSync } from "node:fs";
+import { homedir, platform } from "node:os";
+import { dirname, join } from "node:path";
 import { parseArgs } from "node:util";
 import { createInterface } from "node:readline/promises";
 import { loadConfig } from "./config.js";
 import { Identity } from "./identity.js";
+import { linkNode } from "./link.js";
 import { runNode } from "./server.js";
+import * as service from "./service.js";
 import { VERSION } from "./version.js";
 
 const HELP = `Vireo node ${VERSION}: your own Vireo agent, on this machine.
@@ -19,12 +22,18 @@ Commands:
   link      Link this node again, e.g. to another account or another way of connecting.
   unlink    Forget the link to the account.
   status    Show which account and cloud this node is linked to.
+  service   Run in the background, started at login and restarted if it stops
+            (launchd on macOS, systemd on Linux):
+              service install     link if needed, then install and start it
+              service upgrade     update to the latest version and restart
+              service uninstall   stop and remove it (your data stays)
+              service status      whether it is running, and where it logs
 
 Options:
   --mode <relay|tailscale>  How the app reaches this node (asked when linking)
   --name <name>             Name shown in the app (default: this machine's name)
   --cloud <url>             Vireo cloud to use
-  --data <dir>              Where threads, memory and settings live (default ~/.vireo)
+  --data <dir>              Where threads, memory, settings and logs live (default ~/.config/vireo)
   --port <port>             Local port (default 8787)
   --yes                     Ask nothing; use the defaults and options given
   --help                    Show this help
@@ -44,12 +53,36 @@ const { values, positionals } = parseArgs({
 });
 
 const command = positionals[0] ?? "start";
-if (values.help || !["start", "link", "unlink", "status"].includes(command)) {
+if (values.help || !["start", "link", "unlink", "status", "service"].includes(command)) {
   console.log(HELP);
   process.exit(values.help ? 0 : 1);
 }
 
-process.env.VIREO_DATA_DIR = values.data ?? process.env.VIREO_DATA_DIR ?? join(homedir(), ".vireo");
+/**
+ * Everything Vireo keeps on this machine (link, database, files, browser
+ * profile, logs, the service's copy of the node) lives in one directory:
+ * $XDG_CONFIG_HOME/vireo, usually ~/.config/vireo. Data from before, in
+ * ~/.vireo, moves there once.
+ */
+function defaultDataDir(): string {
+  const dir = join(process.env.XDG_CONFIG_HOME || join(homedir(), ".config"), "vireo");
+  const old = join(homedir(), ".vireo");
+  const empty = !existsSync(dir) || readdirSync(dir).length === 0;
+  if (empty && existsSync(old)) {
+    try {
+      mkdirSync(dirname(dir), { recursive: true });
+      rmSync(dir, { recursive: true, force: true });
+      renameSync(old, dir);
+      console.log(`  Moved Vireo's data from ${old} to ${dir}.`);
+    } catch (err) {
+      console.warn(`  Could not move ${old} to ${dir} (${err instanceof Error ? err.message : err}); using ${old}.`);
+      return old;
+    }
+  }
+  return dir;
+}
+
+process.env.VIREO_DATA_DIR = values.data ?? process.env.VIREO_DATA_DIR ?? defaultDataDir();
 if (values.cloud) process.env.VIREO_CLOUD_URL = values.cloud;
 if (values.name) process.env.VIREO_NAME = values.name;
 if (values.port) process.env.VIREO_PORT = values.port;
@@ -96,7 +129,61 @@ async function chooseMode(): Promise<NodeMode> {
   return answer === "2" ? "tailscale" : "relay";
 }
 
-const mode = identity.get()?.mode ?? (await chooseMode());
+// Only starting or installing the node may need to link it, and so to ask.
+const linking = command !== "service" || positionals[1] === "install";
+const mode = identity.get()?.mode ?? (linking ? await chooseMode() : config.mode);
+
+function showLinkCode(start: { verifyUrl: string; userCode: string }): void {
+  console.log(`
+  Link this node to your Vireo account:
+
+      ${start.verifyUrl}
+
+  Sign in with GitHub there and check the code shows ${start.userCode}.
+`);
+  if (interactive) openBrowser(start.verifyUrl);
+}
+
+if (command === "service") {
+  const action = positionals[1] ?? "status";
+  const paths = service.servicePaths(config.dataDir);
+  try {
+    if (action === "status") {
+      console.log(`  Service: ${service.status()}\n  Data: ${config.dataDir}\n  Log: ${paths.logFile}`);
+    } else if (action === "install" || action === "upgrade") {
+      if (action === "upgrade" && !service.installed()) throw new Error("The service is not installed yet. Run: npx @abcdlsj/vireo-node service install");
+      // A node running in a terminal holds the port; the service would fail to start next to it.
+      const running = await fetch(`http://127.0.0.1:${config.port}/api/health`, { signal: AbortSignal.timeout(2000) }).then(
+        (r) => r.ok,
+        () => false,
+      );
+      if (running && !service.installed()) throw new Error(`A Vireo node is already running on port ${config.port}. Stop it (Ctrl+C in its terminal), then run this again.`);
+      if (!identity.get()) {
+        console.log("  First, link this node to your account.");
+        identity.save(await linkNode({ cloudUrl: config.cloudUrl, request: { name: config.name, platform: platform(), version: VERSION, mode }, onCode: showLinkCode }));
+        console.log("  Linked.");
+      }
+      service.install(paths, action === "upgrade" ? "latest" : VERSION);
+      console.log(`
+  Vireo runs in the background now, and starts again at login.
+  Data: ${config.dataDir}
+  Log:  ${paths.logFile}
+  Update later with: npx @abcdlsj/vireo-node service upgrade`);
+      const hint = service.lingerHint();
+      if (hint) console.log(`  ${hint}`);
+    } else if (action === "uninstall") {
+      service.uninstall(paths);
+      console.log(`  Stopped and removed the service. Your data stays in ${config.dataDir}.`);
+    } else {
+      console.log(HELP);
+      process.exit(1);
+    }
+    process.exit(0);
+  } catch (err) {
+    console.error(`  ${err instanceof Error ? err.message : err}`);
+    process.exit(1);
+  }
+}
 config.mode = mode;
 // On a machine that already runs Tailscale, use it; otherwise Vireo runs its own tailscaled.
 const tailscale = mode === "tailscale" ? { mode: has("tailscale") ? "system" : "managed" } : undefined;
@@ -115,16 +202,7 @@ function openBrowser(url: string): void {
 console.log("");
 const node = await runNode(config, {
   tailscale,
-  onLinkCode: (start) => {
-    console.log(`
-  Link this node to your Vireo account:
-
-      ${start.verifyUrl}
-
-  Sign in with GitHub there and check the code shows ${start.userCode}.
-`);
-    if (interactive) openBrowser(start.verifyUrl);
-  },
+  onLinkCode: showLinkCode,
 });
 
 const shutdown = () => void node.stop().then(() => process.exit(0));

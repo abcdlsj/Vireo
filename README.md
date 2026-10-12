@@ -30,7 +30,18 @@ Everyone signs in to the same app with GitHub and runs their own node. Each acco
    - **Over Tailscale**: the app talks to the node straight over your tailnet at its `https://<machine>.<tailnet>.ts.net` address, from your own devices only. Uses the `tailscale` CLI if it is installed, else Vireo runs its own and shows a sign-in link.
 4. It prints a code and opens the app; check the code matches and approve. The node is now in the app.
 
-Data lives in `~/.vireo` (`--data` to change). `npx @abcdlsj/vireo-node status`, `link` and `unlink` manage the link; `npx @abcdlsj/vireo-node --help` lists the options. Run several nodes (laptop, home server) and switch between them from the menu at the top of the sidebar; **Settings → Nodes** renames and removes them.
+Everything the node keeps (its link, database, files, browser profile and logs) lives in `~/.config/vireo` (`$XDG_CONFIG_HOME/vireo`; `--data` to change); a `~/.vireo` from an older version moves there by itself.
+
+To keep it running in the background, started at login and restarted if it stops (launchd on macOS, a systemd user service on Linux):
+
+```bash
+npx @abcdlsj/vireo-node service install    # links first if needed
+npx @abcdlsj/vireo-node service upgrade    # later: the latest version, restarted
+npx @abcdlsj/vireo-node service status     # running? where it logs (~/.config/vireo/logs/node.log)
+npx @abcdlsj/vireo-node service uninstall  # your data stays
+```
+
+ `npx @abcdlsj/vireo-node status`, `link` and `unlink` manage the link; `npx @abcdlsj/vireo-node --help` lists the options. Run several nodes (laptop, home server) and switch between them from the menu at the top of the sidebar; **Settings → Nodes** renames and removes them.
 
 Then set a model in **Settings → Model**, or start the node with `OPENAI_API_KEY=sk-... npx @abcdlsj/vireo-node`.
 
@@ -77,7 +88,7 @@ Node (`npx @abcdlsj/vireo-node` options override these):
 | `VIREO_NAME` | the machine's hostname | Name suggested for the node in the app |
 | `VIREO_PORT` | `8787` | Local port of the node's API |
 | `VIREO_HOST` | `127.0.0.1` | Bind address |
-| `VIREO_DATA_DIR` | `~/.vireo` (`./data` without the CLI) | Its link, database, files, browser profile, keys |
+| `VIREO_DATA_DIR` | `~/.config/vireo` (`./data` without the CLI) | Its link, database, files, browser profile, keys |
 | `VIREO_PUBLIC_URL` | the relay or tailnet address | Public base URL for OAuth redirects and webhooks |
 | `VIREO_SEARXNG_URL` | – | Use a SearXNG instance for web search |
 | `BRAVE_API_KEY` | – | Use the Brave Search API for web search |

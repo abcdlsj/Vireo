@@ -1,6 +1,6 @@
 {
   "name": "@vireo/protocol",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Types shared by Vireo's cloud, nodes and app: the node API, live events, the cloud API and the relay.",
   "private": true,
   "type": "module",
