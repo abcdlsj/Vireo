@@ -130,7 +130,7 @@ export class Actions {
       { llm: true, data: { actionId: id } },
     );
     this.app.threads.update(action.threadId, { needs_you: 0 });
-    this.app.runner.schedule(action.threadId);
+    if (!tool.settles) this.app.runner.schedule(action.threadId);
     return this.get(id)!;
   }
 
@@ -147,7 +147,7 @@ export class Actions {
       { llm: true, data: { actionId: id } },
     );
     this.app.threads.update(action.threadId, { needs_you: 0 });
-    this.app.runner.schedule(action.threadId);
+    if (!this.app.tools.get(action.tool)?.settles) this.app.runner.schedule(action.threadId);
     return action;
   }
 }

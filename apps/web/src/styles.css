@@ -2469,6 +2469,13 @@ table.usage th {
   color: var(--blue-text);
 }
 
+/* A plugin action's note can carry a key and a command to copy. */
+.plugin-note {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
 .plugin-details {
   display: grid;
   gap: 4px;

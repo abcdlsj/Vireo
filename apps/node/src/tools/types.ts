@@ -47,6 +47,8 @@ export interface ToolDef<P extends TSchema = TSchema> {
   summarize?: (args: Static<P>) => string;
   /** Not available in temporary threads. */
   writesMemory?: boolean;
+  /** The owner's decision on its confirmation card settles the matter: the thread is not resumed afterwards. */
+  settles?: boolean;
   run(args: Static<P>, ctx: ToolContext): Promise<ToolOutput>;
 }
 

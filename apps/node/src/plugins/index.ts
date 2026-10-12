@@ -9,6 +9,7 @@ import type { ToolDef } from "../tools/types.js";
 import { errorMessage, now } from "../util.js";
 import type { SearchResult } from "../tools/research.js";
 import { agentsPlugin } from "./agents/index.js";
+import { endpointPlugin } from "./endpoint/index.js";
 import { feishuPlugin } from "./feishu/index.js";
 import { googlePlugin } from "./google/index.js";
 import { mcpPlugin } from "./mcp/index.js";
@@ -20,7 +21,7 @@ import type { ActionResult, ConfigField, PluginDef, PluginHost, PluginRuntime, P
 export * from "./types.js";
 
 /** The community catalog: every plugin that ships with Vireo. */
-export const CATALOG: PluginDef[] = [googlePlugin, tailscalePlugin, telegramPlugin, feishuPlugin, mcpPlugin, agentsPlugin, searchPlugin];
+export const CATALOG: PluginDef[] = [googlePlugin, tailscalePlugin, telegramPlugin, feishuPlugin, mcpPlugin, endpointPlugin, agentsPlugin, searchPlugin];
 
 interface Stored {
   enabled: boolean;
@@ -80,7 +81,11 @@ export class Plugins {
       get actions() {
         return app.actions;
       },
-      onRunFinished: (fn) => app.bus.subscribe((e) => e.type === "run.finished" && fn(e.threadId, e.text)),
+      get memory() {
+        return app.memory;
+      },
+      notify: (n) => void app.push.notify(n),
+      onRunFinished: (fn) => app.bus.subscribe((e) => e.type === "run.finished" && fn(e.threadId, e.text, e.startedAt)),
       redact: (text) => app.vault.redact(text),
     };
     for (const def of CATALOG) {

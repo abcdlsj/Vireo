@@ -170,7 +170,7 @@ function Plugin({ plugin: p, run, focused, autoOpen }: { plugin: PluginView; run
           {st.message}
         </p>
       ) : null}
-      {note ? <p className="muted small">{note}</p> : null}
+      {note ? <p className="muted small plugin-note">{note}</p> : null}
       {st?.link ? (
         <p>
           <a className="btn small primary" href={st.link.href} target="_blank" rel="noreferrer">

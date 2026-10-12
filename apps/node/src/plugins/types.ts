@@ -3,6 +3,7 @@ import type { Hono } from "hono";
 import type { AgentDef } from "../agents.js";
 import type { Actions } from "../actions.js";
 import type { CalendarProvider, DriveProvider, MailProvider } from "../integrations/types.js";
+import type { MemoryStore } from "../memory.js";
 import type { Notification } from "../push.js";
 import type { SearchResult } from "../tools/research.js";
 import type { ThreadStore } from "../threads.js";
@@ -59,12 +60,15 @@ export interface PluginHost {
   setDirectUrl(url: string | undefined): void;
   /** Demo mode: in-memory calendar, mailbox and Drive instead of real accounts. */
   demo: boolean;
-  threads: Pick<ThreadStore, "get" | "list" | "create">;
+  threads: Pick<ThreadStore, "get" | "list" | "create" | "transcript" | "search">;
   /** Posts a message in a thread as the owner and gets Vireo working on it. */
   send(threadId: string, text: string): void;
-  actions: Pick<Actions, "get" | "pending" | "confirm" | "cancel">;
-  /** Called with what Vireo said whenever a run in any thread ends. */
-  onRunFinished(fn: (threadId: string, text: string) => void): () => void;
+  actions: Pick<Actions, "get" | "pending" | "confirm" | "cancel" | "create" | "forThread">;
+  memory: Pick<MemoryStore, "list">;
+  /** Tells the owner: push notifications and linked chats. */
+  notify(n: Notification): void;
+  /** Called with what Vireo said whenever a run in any thread ends, and when that run started. */
+  onRunFinished(fn: (threadId: string, text: string, startedAt: number) => void): () => void;
   /** Scrubs every known secret from text leaving the node. */
   redact(text: string): string;
 }
