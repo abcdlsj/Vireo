@@ -1,0 +1,137 @@
+name: Deploy
+
+# Deploys the three Cloudflare pieces on every push to main and every v* tag
+# (and on demand): the cloud (vireo-cloud), the app (app.askvireo.com) and the
+# website (askvireo.com). Only the pieces a change touches are deployed; a tag
+# or a manual run deploys all three.
+#
+# Needs two repository secrets:
+#   CLOUDFLARE_API_TOKEN   API token with Workers Scripts: Edit, D1: Edit and
+#                          Workers Routes: Edit (Cloudflare's "Edit Cloudflare
+#                          Workers" template)
+#   CLOUDFLARE_ACCOUNT_ID  the account id below
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One deploy at a time per ref; a newer push waits instead of interrupting a
+# deploy halfway through.
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  VITE_VIREO_CLOUD: https://cloud.askvireo.com
+
+jobs:
+  changed:
+    runs-on: ubuntu-latest
+    outputs:
+      cloud: ${{ steps.changed.outputs.cloud }}
+      web: ${{ steps.changed.outputs.web }}
+      site: ${{ steps.changed.outputs.site }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: changed
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          # A tag or a manual run has no base commit to diff against.
+          if [[ "$GITHUB_REF_TYPE" != "branch" || -z "$BEFORE" || "$BEFORE" =~ ^0+$ ]]; then
+            files="$(printf '%s\n' apps/cloud/ apps/web/ apps/site/ packages/ package.json package-lock.json)"
+          else
+            files="$(git diff --name-only "$BEFORE" "$GITHUB_SHA")"
+          fi
+          echo "$files"
+
+          set_output() {
+            if grep -qE "^($2)" <<<"$files"; then echo "$1=true" >>"$GITHUB_OUTPUT"; else echo "$1=false" >>"$GITHUB_OUTPUT"; fi
+          }
+          # The app and the cloud bundle the protocol package; the website does
+          # not, but it copies the app's icons and manifest.
+          set_output cloud 'apps/cloud/|packages/|package\.json|package-lock\.json'
+          set_output web 'apps/web/|packages/|package\.json|package-lock\.json'
+          set_output site 'apps/site/|apps/web/public/|package\.json|package-lock\.json'
+
+  cloud:
+    needs: changed
+    if: needs.changed.outputs.cloud == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+      - uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          packageManager: npm
+          wranglerVersion: "4.149.0"
+          workingDirectory: apps/cloud
+      - name: Wait for the cloud
+        run: |
+          for _ in $(seq 1 10); do
+            curl -fsS -m 5 https://cloud.askvireo.com/api/health && exit 0
+            sleep 3
+          done
+          echo "The cloud is not answering; deployed anyway:" >&2
+          exit 1
+
+  web:
+    needs: changed
+    if: needs.changed.outputs.web == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+      - run: npm run build -w @vireo/web
+      - uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          packageManager: npm
+          wranglerVersion: "4.149.0"
+          workingDirectory: apps/web
+
+  site:
+    needs: changed
+    if: needs.changed.outputs.site == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+      - run: npm run build -w @vireo/site
+      - uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          packageManager: npm
+          wranglerVersion: "4.149.0"
+          workingDirectory: apps/site
