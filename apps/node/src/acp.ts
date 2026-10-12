@@ -50,6 +50,8 @@ export interface RunOptions {
   ttlSeconds: number;
   /** A raw ACP agent command, instead of one of acpx's built-ins. */
   agentCommand?: string;
+  /** Extra environment for the agent, for a wrapper or a provider of its own (e.g. CLAUDE_CODE_EXECUTABLE). */
+  env?: Record<string, string>;
   model?: string;
   signal?: AbortSignal;
 }
@@ -79,11 +81,11 @@ export interface RunResult {
 const OUTPUT_CAP = 4 << 20;
 
 /** Runs acpx and collects its output. Never leaves the child behind. */
-export function runAcpx(args: string[], opts: { cwd: string; timeoutMs: number; signal?: AbortSignal }): Promise<RunResult> {
+export function runAcpx(args: string[], opts: { cwd: string; timeoutMs: number; env?: Record<string, string>; signal?: AbortSignal }): Promise<RunResult> {
   return new Promise((resolve) => {
     const child = spawn(process.execPath, [acpxEntry(), ...args], {
       cwd: opts.cwd,
-      env: process.env,
+      env: { ...process.env, ...opts.env },
       stdio: ["ignore", "pipe", "pipe"],
     });
 

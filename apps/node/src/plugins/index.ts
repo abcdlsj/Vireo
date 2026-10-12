@@ -1,4 +1,4 @@
-import type { Capability, PluginView } from "@vireo/protocol";
+import type { Capability, PluginRow, PluginView } from "@vireo/protocol";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import type { Hono } from "hono";
@@ -15,7 +15,7 @@ import { mcpPlugin } from "./mcp/index.js";
 import { searchPlugin } from "./search/index.js";
 import { tailscalePlugin } from "./tailscale/index.js";
 import { telegramPlugin } from "./telegram/index.js";
-import type { ActionResult, PluginDef, PluginHost, PluginRuntime, PluginState, PluginStatus, Providers, RequestInfo } from "./types.js";
+import type { ActionResult, ConfigField, PluginDef, PluginHost, PluginRuntime, PluginState, PluginStatus, Providers, RequestInfo } from "./types.js";
 
 export * from "./types.js";
 
@@ -39,6 +39,23 @@ const KEY = "plugins";
 const WAITS = "plugins.setup_waits";
 /** Statuses older than this are refreshed in the background when read. */
 const STATUS_TTL = 30_000;
+
+/** The rows of a list field: known fields only, trimmed, and rows the owner left empty dropped. */
+function rows(items: ConfigField[], value: unknown): PluginRow[] {
+  if (!Array.isArray(value)) return [];
+  const out: PluginRow[] = [];
+  for (const raw of value) {
+    if (!raw || typeof raw !== "object") continue;
+    const row = raw as Record<string, unknown>;
+    const clean: PluginRow = {};
+    for (const item of items) {
+      const v = row[item.key] ?? item.default ?? (item.type === "boolean" ? false : "");
+      clean[item.key] = item.type === "boolean" ? Boolean(v) : typeof v === "string" ? v.trim() : v;
+    }
+    if (Object.values(clean).some((v) => v !== "" && v !== false && v != null)) out.push(clean);
+  }
+  return out;
+}
 /** A thread stops waiting on a setup after a week. */
 const WAIT_TTL = 7 * 864e5;
 
@@ -121,6 +138,9 @@ export class Plugins {
       if (f.type === "secret") {
         const enc = stored[`enc:${f.key}`];
         out[f.key] = typeof enc === "string" ? this.app.vault.decrypt(enc) : "";
+      } else if (f.type === "list") {
+        const rows = stored[f.key] ?? f.default;
+        out[f.key] = Array.isArray(rows) ? rows : [];
       } else {
         out[f.key] = stored[f.key] ?? f.default ?? (f.type === "boolean" ? false : "");
       }
@@ -142,6 +162,8 @@ export class Plugins {
         else config[`enc:${f.key}`] = this.app.vault.encrypt(String(v).trim());
       } else if (f.type === "boolean") {
         config[f.key] = Boolean(v);
+      } else if (f.type === "list") {
+        config[f.key] = rows(f.items ?? [], v);
       } else {
         config[f.key] = typeof v === "string" ? v.trim() : v;
       }
