@@ -85,6 +85,9 @@ test.describe("Milestone 6 — Accounts and nodes", () => {
     const ask = page.getByTestId("other-ask");
     await expect(ask).toContainText("NAS asks");
     await expect(ask).toContainText("Delete old backups");
+    // Each node in a faint colour of its own, the current one washing the sidebar.
+    await expect(ask).toHaveClass(/node-tint/);
+    await expect(page.locator("html")).toHaveClass(/many-nodes/);
     await ask.getByTestId("other-ask-confirm").click();
     await expect(ask).toContainText("Confirmed");
     expect(decided).toBe("confirm");

@@ -1,13 +1,23 @@
 import type { NodeSummary, User } from "@vireo/protocol";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { cloud, signOut } from "../cloud";
 import { ChevronDown } from "../icons";
-import { currentNode, loadNodes, nodes, switchNode } from "../nodes";
+import { currentNode, loadNodes, nodes, nodeTint, switchNode } from "../nodes";
 
 /** Where a node is reached, for a menu or a row. */
 function reach(n: NodeSummary): string {
   if (n.mode === "tailscale") return n.directUrl ? new URL(n.directUrl).host : "Tailscale";
   return n.online ? "Online" : "Offline";
+}
+
+/** A node's name in its own faint colour, so it reads as that node wherever it appears. */
+export function NodeName({ node, children }: { node: NodeSummary; children?: ReactNode }) {
+  const tint = nodeTint(node.id);
+  return (
+    <span className={tint ? "node-chip" : undefined} style={tint}>
+      {children ?? node.name}
+    </span>
+  );
 }
 
 export function NodeDot({ node }: { node: NodeSummary }) {
@@ -30,7 +40,13 @@ export function NodeSwitcher() {
   return (
     <div className="node-switch" ref={ref}>
       <button className="node-switch-btn" onClick={() => setOpen(!open)} aria-expanded={open} aria-haspopup="menu" data-testid="node-switch" title="Switch node">
-        <span className="node-name">{cur?.name ?? "No node"}</span>
+        {cur ? (
+          <span className="node-name">
+            <NodeName node={cur} />
+          </span>
+        ) : (
+          <span className="node-name">No node</span>
+        )}
         <ChevronDown />
       </button>
       {open ? (
@@ -38,7 +54,7 @@ export function NodeSwitcher() {
           {nodes().map((n) => (
             <button key={n.id} role="menuitemradio" aria-checked={n.id === cur?.id} className={`menu-item ${n.id === cur?.id ? "active" : ""}`} onClick={() => (n.id === cur?.id ? setOpen(false) : switchNode(n.id))}>
               <span className="with-icon">
-                <NodeDot node={n} /> {n.name}
+                <NodeDot node={n} /> <NodeName node={n} />
               </span>
               <span className="muted small">{reach(n)}</span>
             </button>
@@ -112,7 +128,7 @@ export function NodesSettings() {
                   />
                 ) : (
                   <span className="row-title">
-                    <NodeDot node={n} /> {n.name} {n.id === cur?.id ? <span className="tag">current</span> : null}
+                    <NodeDot node={n} /> <NodeName node={n} /> {n.id === cur?.id ? <span className="tag">current</span> : null}
                   </span>
                 )}
                 <span className="muted small">

@@ -7,8 +7,8 @@ import { Peek } from "../cards/Peek";
 import type { Card } from "@vireo/protocol";
 import { ArrowUpIcon, CheckIcon, ChevronRight, ListIcon, SearchIcon } from "../icons";
 import { clearShared, sharedText } from "../route";
-import { currentNode, nodes, peekNode, postNode, switchNode } from "../nodes";
-import { NodeSwitcher } from "./Nodes";
+import { currentNode, nodes, nodeTint, peekNode, postNode, switchNode } from "../nodes";
+import { NodeName, NodeSwitcher } from "./Nodes";
 
 const NUMBERS = ["No", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine"];
 
@@ -203,7 +203,7 @@ function OtherNodes() {
           {items.slice(0, 12).map(({ node, thread: t }) => {
             const needs = t.needsYou || t.pendingActions > 0;
             return (
-              <button key={`${node.id}:${t.id}`} className={`done-chip${needs ? " needs" : ""}`} title={`${node.name}: ${t.title}`} onClick={() => switchNode(node.id, `thread/${t.id}`)}>
+              <button key={`${node.id}:${t.id}`} className={`done-chip${needs ? " needs" : ""}${nodeTint(node.id) ? " node-tint" : ""}`} style={nodeTint(node.id)} title={`${node.name}: ${t.title}`} onClick={() => switchNode(node.id, `thread/${t.id}`)}>
                 <b>{node.name}</b>
                 {t.title}
                 <span className="muted">{needs ? "needs you" : "working"}</span>
@@ -232,9 +232,11 @@ function OtherAsk({ node, action, onDone }: { node: NodeSummary; action: Action;
     }
   };
   return (
-    <div className="other-ask" data-testid="other-ask">
+    <div className={`other-ask${nodeTint(node.id) ? " node-tint" : ""}`} style={nodeTint(node.id)} data-testid="other-ask">
       <div className="other-ask-text">
-        <span className="label">{node.name} asks</span>
+        <span className="label">
+          <NodeName node={node} /> asks
+        </span>
         <b>{action.summary}</b>
       </div>
       {result ? (

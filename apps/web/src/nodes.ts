@@ -5,6 +5,7 @@
  * straight over the owner's tailnet.
  */
 
+import type { CSSProperties } from "react";
 import type { NodeAccess, NodeSummary } from "@vireo/protocol";
 import { cloud } from "./cloud";
 
@@ -30,7 +31,45 @@ export async function loadNodes(): Promise<NodeSummary[]> {
   const next = list.find((n) => n.id === saved) ?? list[0];
   if (next?.id !== current?.id) access = undefined;
   current = next;
+  paint();
   return list;
+}
+
+/** Hues closer than this are hard to tell apart in a faint tint. */
+const APART = 40;
+const GOLDEN = 137.508;
+let hues = new Map<string, number>();
+
+/**
+ * Each node's own hue, so the owner tells nodes apart at a glance. It comes
+ * from the node's id, so it stays the same everywhere and over time; a node
+ * whose hue is too close to an older node's moves on until it stands apart.
+ */
+function assignHues(): void {
+  hues = new Map();
+  for (const n of [...list].sort((a, b) => a.createdAt - b.createdAt)) {
+    let h = 2166136261;
+    for (const c of n.id) h = Math.imul(h ^ c.charCodeAt(0), 16777619) >>> 0;
+    let hue = (h % 3600) / 10;
+    for (let i = 0; i < 8 && [...hues.values()].some((o) => Math.min(Math.abs(o - hue), 360 - Math.abs(o - hue)) < APART); i++) hue = (hue + GOLDEN) % 360;
+    hues.set(n.id, Math.round(hue));
+  }
+}
+
+/** The style that gives an element its node's tint (see .node-chip and .node-tint); nothing with a single node. */
+export function nodeTint(id: string): CSSProperties | undefined {
+  const hue = list.length > 1 ? hues.get(id) : undefined;
+  return hue === undefined ? undefined : ({ "--hue": hue } as CSSProperties);
+}
+
+/** Washes the app in the current node's tint, once the owner has more than one. */
+function paint(): void {
+  assignHues();
+  const root = document.documentElement;
+  const hue = current && list.length > 1 ? hues.get(current.id) : undefined;
+  root.classList.toggle("many-nodes", hue !== undefined);
+  if (hue === undefined) root.style.removeProperty("--node-hue");
+  else root.style.setProperty("--node-hue", String(hue));
 }
 
 export function nodes(): NodeSummary[] {

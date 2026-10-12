@@ -3070,3 +3070,38 @@ p.account {
 p.account img {
   border-radius: 50%;
 }
+
+/* ---------- node colours (nodes.ts): each node a faint hue of its own, only once there are several ---------- */
+:root {
+  --node-chip-a: 0.13;
+  --node-tint-a: 0.07;
+  --node-wash-a: 0.045;
+}
+
+:root[data-theme="dark"] {
+  --node-chip-a: 0.2;
+  --node-tint-a: 0.1;
+  --node-wash-a: 0.06;
+}
+
+.node-chip {
+  display: inline-block;
+  max-width: 100%;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: hsl(var(--hue) 65% 50% / var(--node-chip-a));
+  line-height: 1.6;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+/* Layered over the element's own background, so it keeps its look, only tinted. */
+.node-tint.node-tint {
+  background-image: linear-gradient(hsl(var(--hue) 65% 50% / var(--node-tint-a)), hsl(var(--hue) 65% 50% / var(--node-tint-a)));
+}
+
+:root.many-nodes .sidebar {
+  background-image: linear-gradient(hsl(var(--node-hue) 65% 50% / var(--node-wash-a)), hsl(var(--node-hue) 65% 50% / var(--node-wash-a)));
+}
