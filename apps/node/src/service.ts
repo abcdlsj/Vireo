@@ -136,13 +136,20 @@ export function installed(): boolean {
   return process.platform === "darwin" ? existsSync(plistPath()) : process.platform === "linux" ? existsSync(unitPath()) : false;
 }
 
-/** Installs (or reinstalls) the service with this version of the node, and starts it. */
-export function install(p: ServicePaths, version: string): void {
+/** The service's own copy of the node's CLI, once installed. */
+export function installedCli(p: ServicePaths): string | undefined {
+  const cli = join(p.appDir, "node_modules", ...PACKAGE.split("/"), "dist", "cli.js");
+  return existsSync(cli) ? cli : undefined;
+}
+
+/** Installs (or reinstalls) the service with this version of the node, and starts it; returns the CLI it runs. */
+export function install(p: ServicePaths, version: string): string {
   supported();
   mkdirSync(dirname(p.logFile), { recursive: true });
   const cli = installCopy(p, version);
   if (process.platform === "darwin") writeLaunchd(p, cli);
   else writeSystemd(p, cli);
+  return cli;
 }
 
 export function restart(): void {

@@ -8,6 +8,7 @@ import { parseArgs } from "node:util";
 import { createInterface } from "node:readline/promises";
 import { loadConfig } from "./config.js";
 import { Identity } from "./identity.js";
+import { connectAgents } from "./connect.js";
 import { linkNode } from "./link.js";
 import { runNode } from "./server.js";
 import * as service from "./service.js";
@@ -22,6 +23,9 @@ Commands:
   link      Link this node again, e.g. to another account or another way of connecting.
   unlink    Forget the link to the account.
   status    Show which account and cloud this node is linked to.
+  connect   Connect Claude Code and Codex on this machine to Vireo: MCP, plus
+            hooks that tell you when a long task finishes or it waits on you,
+            and ask your approval before a risky shell command.
   service   Run in the background, started at login and restarted if it stops
             (launchd on macOS, systemd on Linux):
               service install     link if needed, then install and start it
@@ -53,7 +57,7 @@ const { values, positionals } = parseArgs({
 });
 
 const command = positionals[0] ?? "start";
-if (values.help || !["start", "link", "unlink", "status", "service"].includes(command)) {
+if (values.help || !["start", "link", "unlink", "status", "service", "connect", "hook"].includes(command)) {
   console.log(HELP);
   process.exit(values.help ? 0 : 1);
 }
@@ -73,7 +77,7 @@ function defaultDataDir(): string {
       mkdirSync(dirname(dir), { recursive: true });
       rmSync(dir, { recursive: true, force: true });
       renameSync(old, dir);
-      console.log(`  Moved Vireo's data from ${old} to ${dir}.`);
+      console.error(`  Moved Vireo's data from ${old} to ${dir}.`);
     } catch (err) {
       console.warn(`  Could not move ${old} to ${dir} (${err instanceof Error ? err.message : err}); using ${old}.`);
       return old;
@@ -88,6 +92,30 @@ if (values.name) process.env.VIREO_NAME = values.name;
 if (values.port) process.env.VIREO_PORT = values.port;
 const config = loadConfig();
 const identity = new Identity(config.dataDir);
+
+if (command === "hook") {
+  // Run by a coding agent's hook: quick, quiet, and never in the agent's way.
+  const { runHook } = await import("./hook.js");
+  await runHook(positionals[1] ?? "", config.dataDir, positionals.slice(2)).catch(() => undefined);
+  process.exit(0);
+}
+
+/** Connects the coding agents here to this node; the hooks run the service's copy of the node when there is one. */
+function connect(cli = service.installedCli(service.servicePaths(config.dataDir)) ?? process.argv[1]!): string[] {
+  return connectAgents({ dataDir: config.dataDir, port: config.port, cli });
+}
+
+if (command === "connect") {
+  try {
+    const lines = connect();
+    console.log(lines.length ? lines.map((l) => `  ${l}`).join("\n") : "  No Claude Code or Codex found on this machine.");
+    if (!service.installedCli(service.servicePaths(config.dataDir))) console.log("  Tip: npx @abcdlsj/vireo-node service install keeps Vireo running for them.");
+    process.exit(0);
+  } catch (err) {
+    console.error(`  ${err instanceof Error ? err.message : err}`);
+    process.exit(1);
+  }
+}
 
 if (command === "status") {
   const id = identity.get();
@@ -163,12 +191,20 @@ if (command === "service") {
         identity.save(await linkNode({ cloudUrl: config.cloudUrl, request: { name: config.name, platform: platform(), version: VERSION, mode }, onCode: showLinkCode }));
         console.log("  Linked.");
       }
-      service.install(paths, action === "upgrade" ? "latest" : VERSION);
+      const cli = service.install(paths, action === "upgrade" ? "latest" : VERSION);
+      // The coding agents here talk to the node the service runs; their hooks point at its copy.
+      let agents: string[] = [];
+      try {
+        agents = connect(cli);
+      } catch (err) {
+        agents = [`Could not connect the coding agents here: ${err instanceof Error ? err.message : err}`];
+      }
       console.log(`
   Vireo runs in the background now, and starts again at login.
   Data: ${config.dataDir}
   Log:  ${paths.logFile}
   Update later with: npx @abcdlsj/vireo-node service upgrade`);
+      for (const line of agents) console.log(`  ${line}`);
       const hint = service.lingerHint();
       if (hint) console.log(`  ${hint}`);
     } else if (action === "uninstall") {

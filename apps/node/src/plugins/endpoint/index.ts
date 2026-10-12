@@ -28,7 +28,7 @@ interface EndpointConfig {
   memory: boolean;
 }
 
-interface Key {
+export interface Key {
   id: string;
   name: string;
   hash: string;
@@ -41,6 +41,21 @@ interface Key {
 /** Who a request comes from: an agent with a key, or the owner's own node (signed for by the cloud). */
 interface Caller extends McpCaller {
   keyId?: string;
+}
+
+/** Where the keys live: the plugin's state, the same rows the node reads (the CLI writes them too). */
+export const KEYS_KV = "plugin.endpoint.keys";
+
+/**
+ * Makes a key and stores only its hash. A key with the same name is replaced,
+ * so connecting an agent again leaves one key for it. Returns the secret.
+ */
+export function addKey(store: { get(): Key[]; set(keys: Key[]): void }, name?: string): { name: string; secret: string } {
+  const all = store.get();
+  const secret = `vireo_${randomBytes(24).toString("base64url")}`;
+  const label = name ?? `Key ${all.reduce((n, k) => Math.max(n, Number(k.name.replace(/\D/g, "")) || 0), 0) + 1}`;
+  store.set([...all.filter((k) => k.name !== label), { id: newId("key"), name: label, hash: sha256(secret), hint: secret.slice(-4), createdAt: now(), usedAt: null }]);
+  return { name: label, secret };
 }
 
 const text = (t: string, isError = false): CallToolResult => ({ content: [{ type: "text", text: t }], ...(isError ? { isError: true } : {}) });
@@ -336,10 +351,7 @@ export const endpointPlugin: PluginDef = {
       },
       async runAction(id) {
         if (id === "new") {
-          const all = list();
-          const secret = `vireo_${randomBytes(24).toString("base64url")}`;
-          const name = `Key ${all.reduce((n, k) => Math.max(n, Number(k.name.replace(/\D/g, "")) || 0), 0) + 1}`;
-          save([...all, { id: newId("key"), name, hash: sha256(secret), hint: secret.slice(-4), createdAt: now(), usedAt: null }]);
+          const { name, secret } = addKey({ get: list, set: save });
           return {
             message: [
               `${name}, shown only this once: ${secret}`,
