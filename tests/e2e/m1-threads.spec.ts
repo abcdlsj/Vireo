@@ -275,7 +275,7 @@ test.describe("Milestone 1 — Threads that think", () => {
     await context.close();
   });
 
-  test("[Thread] on a slow phone connection the answer never blinks out, and nothing is wider than the screen", async ({ browser, baseURL, request }) => {
+  test("[Thread] on a slow phone connection the answer never blinks out, and long lines wrap to the screen", async ({ browser, baseURL, request }) => {
     const { defaultBrowserType: _, ...phone } = devices["iPhone 13"];
     const context = await browser.newContext({ ...phone, baseURL, storageState: ".vireo-test/owner.json" });
     const page = await context.newPage();
@@ -312,7 +312,9 @@ test.describe("Milestone 1 — Threads that think", () => {
       const d = await res.json();
       const last = d.messages.findLast((m: { role: string }) => m.role === "assistant");
       const table = ["| Option | Price | Duration | Notes | Link |", "|---|---|---|---|---|", "| Shinkansen Nozomi | ¥14,720 | 2h 15m | Fastest, every 10 minutes | https://smart-ex.jp/en/reservation/long/path |"];
-      d.messages.push({ ...last, id: last.id + 1000, text: table.join("\n") });
+      const long = "averyverylongwordwithoutanyspacesthatkeepsgoingandgoingandgoingforever";
+      d.messages.push({ ...last, id: last.id + 1000, text: [...table, "", `A long word ${long} and \`${long}\``, "", "```", `curl https://example.com/${long}/${long}`, "```"].join("\n") });
+      d.messages.push({ id: last.id + 1001, role: "notice", kind: "error", text: `Error ${long}`, createdAt: last.createdAt + 1 });
       await route.fulfill({ response: res, json: d });
     });
     await page.reload();
@@ -320,6 +322,12 @@ test.describe("Milestone 1 — Threads that think", () => {
     await expect(table).toBeVisible();
     expect(await table.evaluate((t) => t.scrollWidth > t.clientWidth)).toBe(true);
     expect(await page.evaluate(() => [document.documentElement.scrollWidth, document.querySelector(".conversation")!.scrollWidth])).toEqual([390, 390]);
+    // Every other line wraps inside the conversation instead of running past its edge.
+    const past = await page.evaluate(() => {
+      const edge = document.querySelector(".conversation")!.getBoundingClientRect().right;
+      return [...document.querySelectorAll<HTMLElement>(".conversation *")].filter((e) => !e.closest("table") && e.getBoundingClientRect().right > edge + 1).map((e) => e.textContent);
+    });
+    expect(past).toEqual([]);
     await context.close();
   });
 

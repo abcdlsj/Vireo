@@ -758,6 +758,8 @@ button.link.danger {
   display: flex;
   flex-direction: column;
   gap: 14px;
+  /* A word or link longer than the line breaks wherever it has to, in every kind of row. */
+  overflow-wrap: anywhere;
 }
 
 .empty {
@@ -1025,6 +1027,10 @@ button.link.danger {
   color: var(--red-text);
   border-radius: var(--radius);
   padding: 9px 14px;
+}
+
+.notice svg {
+  flex: none;
 }
 
 .notice.error .btn {
@@ -2977,6 +2983,11 @@ ul.rows {
   .new-thread-body {
     padding-left: 16px;
     padding-right: 16px;
+  }
+
+  /* On a phone a long command wraps instead of hiding past the edge. */
+  .md pre {
+    white-space: pre-wrap;
   }
 
   .composer {
