@@ -18,6 +18,15 @@ interface McpConfig {
   servers: string;
   secrets: string;
   confirm: "writes" | "all" | "none";
+  /** Seconds one tool call may run; unset means an hour. */
+  timeout?: string;
+}
+
+/** A tool call may take a while: coding agents routinely run for many minutes. */
+function toolTimeoutMs(cfg: McpConfig): number {
+  const seconds = Number(cfg.timeout);
+  const wanted = Number.isFinite(seconds) && seconds > 0 ? seconds : 3600;
+  return Math.min(wanted, 86_400) * 1000;
 }
 
 interface ServerSpec {
@@ -108,6 +117,14 @@ export const mcpPlugin: PluginDef = {
         { value: "none", label: "Never" },
       ],
     },
+    {
+      key: "timeout",
+      label: "Tool call timeout (seconds)",
+      type: "text",
+      default: "3600",
+      pattern: "^[0-9]{1,5}$",
+      help: "How long one tool call may run before it is stopped, up to 24 hours. Coding agents (an MCP ACP server, say) need minutes, not seconds.",
+    },
   ],
   create(ctx) {
     const cfg = () => ctx.config<McpConfig>();
@@ -163,7 +180,7 @@ export const mcpPlugin: PluginDef = {
           confirm: () => (mode === "all" ? true : mode === "none" ? false : t.annotations?.readOnlyHint !== true),
           summarize: (args) => `${name} → ${t.name}${Object.keys(args ?? {}).length ? ` ${truncate(JSON.stringify(args), 160)}` : ""}`,
           async run(args, tctx) {
-            const res = await client.callTool({ name: t.name, arguments: args as Record<string, unknown> }, undefined, { signal: tctx.signal, timeout: 120_000 });
+            const res = await client.callTool({ name: t.name, arguments: args as Record<string, unknown> }, undefined, { signal: tctx.signal, timeout: toolTimeoutMs(cfg()) });
             const content = (res.content ?? []) as { type: string; text?: string; resource?: { uri: string; text?: string }; mimeType?: string }[];
             const text = content
               .map((c) => (c.type === "text" ? c.text : c.type === "resource" ? `[${c.resource?.uri}]\n${c.resource?.text ?? ""}` : `[${c.type}${c.mimeType ? ` ${c.mimeType}` : ""} omitted]`))

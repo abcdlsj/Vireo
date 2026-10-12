@@ -9,7 +9,7 @@ test.describe("Milestone 5 — Plugins", () => {
     await page.goto("/#settings/plugins");
     const card = page.getByTestId("plugins-card");
     await card.getByTestId("community-plugins").click();
-    for (const name of ["Tailscale", "Telegram", "Feishu / Lark", "MCP servers", "Search providers"]) await expect(page.getByTestId("plugin-catalog")).toContainText(name);
+    for (const name of ["Tailscale", "Telegram", "Feishu / Lark", "MCP servers", "Coding agents", "Search providers"]) await expect(page.getByTestId("plugin-catalog")).toContainText(name);
     await page.getByTestId("add-plugin-tailscale").click();
     const ts = page.getByTestId("plugin-tailscale");
     await expect(ts).toBeVisible();
@@ -47,5 +47,37 @@ test.describe("Milestone 5 — Plugins", () => {
     await expect(page.getByTestId("plugin-google-status")).toContainText("Demo mode");
     await startThread(page, "In my drive, find the Lisbon trip plan");
     expect(await finalReply(page, request)).toContain("LX-4821");
+  });
+
+  test("[M5.4] coding agents hold several setups, each with its own command and repository", async ({ page }) => {
+    const repo = resolve("tests/fixtures");
+    await page.goto("/#settings/plugins");
+    await page.getByTestId("community-plugins").click();
+    await page.getByTestId("add-plugin-agents").click();
+    const card = page.getByTestId("plugin-agents");
+    await expect(page.getByTestId("plugin-agents-status")).toBeVisible();
+    const first = card.getByTestId("pf-agents-0-directory");
+    if (!(await first.isVisible())) await card.getByTestId("plugin-agents-settings").click();
+
+    // One setup is there to begin with, pointed at Claude.
+    await first.fill(repo);
+    await expect(page.getByTestId("plugin-agents-status")).toContainText("claude");
+
+    // A second setup, on another agent and another command of the owner's.
+    await card.getByTestId("pf-agents-add").click();
+    await card.getByTestId("pf-agents-1-name").fill("relay");
+    await card.getByTestId("pf-agents-1-command").fill("codex");
+    await card.getByTestId("pf-agents-1-directory").fill(repo);
+    await card.getByTestId("pf-agents-1-env").fill("CODEX_PATH=ak-bilicodex");
+    await card.getByRole("button", { name: "Save" }).click();
+    await expect(page.getByTestId("plugin-agents-status")).toContainText("relay (codex)");
+
+    // Both survive a reload, environment included.
+    await page.reload();
+    await expect(page.getByTestId("plugin-agents-status")).toContainText("relay (codex)");
+    const again = page.getByTestId("plugin-agents");
+    if (!(await again.getByTestId("pf-agents-1-name").isVisible())) await again.getByTestId("plugin-agents-settings").click();
+    await expect(again.getByTestId("pf-agents-1-name")).toHaveValue("relay");
+    await expect(again.getByTestId("pf-agents-1-env")).toHaveValue("CODEX_PATH=ak-bilicodex");
   });
 });

@@ -23,7 +23,7 @@
     "build": "npm run build:web && npm run build:cloud && npm run build:node",
     "build:web": "npm run build -w @vireo/web",
     "build:cloud": "npm run build -w @vireo/cloud",
-    "build:node": "npm run build -w vireo-node",
+    "build:node": "npm run build -w @abcdlsj/vireo-node",
     "start": "node scripts/start.mjs",
     "cloud": "node --env-file-if-exists=.env --disable-warning=ExperimentalWarning apps/cloud/dist/node/index.js",
     "node": "node --env-file-if-exists=.env --disable-warning=ExperimentalWarning apps/node/dist/cli.js",

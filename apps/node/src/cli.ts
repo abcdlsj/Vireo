@@ -12,7 +12,7 @@ import { VERSION } from "./version.js";
 
 const HELP = `Vireo node ${VERSION}: your own Vireo agent, on this machine.
 
-Usage: npx vireo-node [command] [options]
+Usage: npx @abcdlsj/vireo-node [command] [options]
 
 Commands:
   start     Start the node (default). Links it to your account first if needed.

@@ -6,7 +6,7 @@ Vireo is three pieces that deploy separately, plus the website:
 |---|---|---|---|
 | **cloud** | `apps/cloud` | GitHub sign-in, which nodes belong to whom, short-lived node tokens, and the relay between the app and nodes. Holds no conversations. | Cloudflare Workers (or a server, in Docker) |
 | **app** | `apps/web` | The UI, a static React PWA. Holds no data. | Vercel, Cloudflare, or the cloud itself |
-| **node** | `apps/node` | Each person's agent and data. | Each person's own machine: `npx vireo-node` |
+| **node** | `apps/node` | Each person's agent and data. | Each person's own machine: `npx @abcdlsj/vireo-node` |
 | **site** | `apps/site` | The website, in English and Chinese. Static pages. | Cloudflare Workers, on askvireo.com |
 
 You deploy the cloud and the app once; everyone who signs in runs their own node.
@@ -31,7 +31,7 @@ npx wrangler secret put GITHUB_CLIENT_SECRET    # the OAuth app's client secret
 npx wrangler deploy
 ```
 
-Before deploying, check `wrangler.jsonc`: `routes` (the cloud's domain, `cloud.askvireo.com`, which must be a zone in your Cloudflare account; Cloudflare makes the DNS record and certificate), and under `vars` the cloud's and the app's addresses and `GITHUB_CLIENT_ID`. Tables are made on first use, and the key that signs node tokens is made once and kept in D1. Deploy again after pulling changes. `npx wrangler tail` shows its log.
+Before deploying, check `wrangler.jsonc`: `routes` (the cloud's domain, `cloud.askvireo.com`, which must be a zone in your Cloudflare account; Cloudflare makes the DNS record and certificate), and under `vars` the cloud's and the app's addresses and `GITHUB_CLIENT_ID`. Tables are made on first use, and the key that signs node tokens is made once and kept in D1. Deploy again after pulling changes (or push to `main`: see **Automatically, from GitHub** below). `npx wrangler tail` shows its log.
 
 To try it locally: `npm run dev:worker -w @vireo/cloud` (a local D1 and Durable Objects, on :8700; add `--var VIREO_DEV_LOGIN:1` to sign in by name).
 
@@ -78,9 +78,18 @@ npm run deploy   # build, then deploy to askvireo.com and www.askvireo.com
 
 ## 5. Nodes
 
-Each person signs in to the app and runs `npx vireo-node` on their machine (see the README). A node uses the official cloud unless told otherwise: `npx vireo-node --cloud https://cloud.example.com`, or `VIREO_CLOUD_URL`.
+Each person signs in to the app and runs `npx @abcdlsj/vireo-node` on their machine (see the README). A node uses the official cloud unless told otherwise: `npx @abcdlsj/vireo-node --cloud https://cloud.example.com`, or `VIREO_CLOUD_URL`.
 
-To publish `vireo-node` to npm, add an `NPM_TOKEN` repository secret and push a `v*` tag; `.github/workflows/npm.yml` builds and publishes it.
+To publish `@abcdlsj/vireo-node` to npm, add an `NPM_TOKEN` repository secret and push a `v*` tag; `.github/workflows/npm.yml` builds and publishes it.
+
+## Automatically, from GitHub
+
+`.github/workflows/deploy.yml` deploys on every push to `main` and every `v*` tag, and from the Actions tab on demand. It deploys the cloud, the app and the website; each one only when the push touched it (a tag or a manual run deploys all three). Two repository secrets are needed:
+
+- `CLOUDFLARE_ACCOUNT_ID`: the Cloudflare account id.
+- `CLOUDFLARE_API_TOKEN`: an API token with **Workers Scripts: Edit**, **D1: Edit** and **Workers Routes: Edit** (the *Edit Cloudflare Workers* template covers them).
+
+With those set, a push to `main` replaces the manual `npx wrangler deploy` steps above; the cloud job checks `https://cloud.askvireo.com/api/health` after deploying. Deploys are serialized per ref, so a deploy is never interrupted halfway. The app is built with `VITE_VIREO_CLOUD=https://cloud.askvireo.com`, set in the workflow's `env`.
 
 ## Everything on one machine
 

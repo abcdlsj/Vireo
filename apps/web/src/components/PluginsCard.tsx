@@ -109,6 +109,11 @@ function Plugin({ plugin: p, run, focused }: { plugin: PluginView; run: (fn: () 
   const [open, setOpen] = useState(needsAttention || (focused && st?.state !== "ready"));
   const [form, setForm] = useState<Record<string, unknown>>({});
   const [note, setNote] = useState("");
+  // The status arrives after the card does (and after a plugin is added), so a
+  // plugin that needs attention opens then, not only on first render.
+  useEffect(() => {
+    if (needsAttention) setOpen(true);
+  }, [needsAttention]);
   const value = (f: PluginField) => (f.key in form ? form[f.key] : f.type === "secret" ? "" : (p.config[f.key] ?? f.default ?? ""));
   const set = (k: string, v: unknown) => setForm((s) => ({ ...s, [k]: v }));
 
@@ -206,6 +211,39 @@ function Plugin({ plugin: p, run, focused }: { plugin: PluginView; run: (fn: () 
 function Field({ field: f, value, onChange }: { field: PluginField; value: unknown; onChange: (v: unknown) => void }) {
   const id = `pf-${f.key}`;
   const help = f.help ? <span className="muted small">{f.help}</span> : null;
+  if (f.type === "list") {
+    const rows = (Array.isArray(value) ? value : []) as Record<string, unknown>[];
+    const items = f.items ?? [];
+    const change = (i: number, key: string, v: unknown) => onChange(rows.map((r, j) => (j === i ? { ...r, [key]: v } : r)));
+    return (
+      <div className="pf-list" data-testid={id}>
+        <span>{f.label}</span>
+        {help}
+        {rows.map((row, i) => (
+          <div className="pf-row" key={i} data-testid={`${id}-${i}`}>
+            {items.map((item) => (
+              <label key={item.key}>
+                <span className="muted small">{item.label}</span>
+                <Control field={item} id={`${id}-${i}-${item.key}`} value={row[item.key]} onChange={(v) => change(i, item.key, v)} />
+                {item.help ? <span className="muted small">{item.help}</span> : null}
+              </label>
+            ))}
+            <button
+              type="button"
+              className="btn small ghost"
+              data-testid={`${id}-${i}-remove`}
+              onClick={() => onChange(rows.filter((_, j) => j !== i))}
+            >
+              Remove
+            </button>
+          </div>
+        ))}
+        <button type="button" className="btn small" data-testid={`${id}-add`} onClick={() => onChange([...rows, {}])}>
+          Add {f.label.toLowerCase()}
+        </button>
+      </div>
+    );
+  }
   if (f.type === "boolean") {
     return (
       <label className="check">
@@ -214,31 +252,44 @@ function Field({ field: f, value, onChange }: { field: PluginField; value: unkno
       </label>
     );
   }
-  const placeholder = f.type === "secret" && f.set ? "•••••• saved — type to replace" : f.placeholder;
   return (
     <label htmlFor={id}>
       <span>{f.label}</span>
-      {f.type === "select" ? (
-        <select id={id} value={String(value)} onChange={(e) => onChange(e.target.value)}>
-          {f.options?.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
-        </select>
-      ) : f.multiline ? (
-        <textarea id={id} rows={4} spellCheck={false} placeholder={placeholder} value={String(value)} onChange={(e) => onChange(e.target.value)} />
-      ) : (
-        <input
-          id={id}
-          type={f.type === "secret" ? "password" : "text"}
-          autoComplete="off"
-          placeholder={placeholder}
-          value={String(value)}
-          onChange={(e) => onChange(e.target.value)}
-        />
-      )}
+      <Control field={f} id={id} value={value} onChange={onChange} />
       {help}
     </label>
+  );
+}
+
+/** One input of a settings form: a plugin field, or one field of a list row. */
+function Control({ field: f, id, value, onChange }: { field: PluginField; id: string; value: unknown; onChange: (v: unknown) => void }) {
+  if (f.type === "boolean") {
+    return <input id={id} data-testid={id} type="checkbox" checked={Boolean(value)} onChange={(e) => onChange(e.target.checked)} />;
+  }
+  const placeholder = f.type === "secret" && f.set ? "•••••• saved — type to replace" : f.placeholder;
+  if (f.type === "select") {
+    return (
+      <select id={id} data-testid={id} value={String(value)} onChange={(e) => onChange(e.target.value)}>
+        {f.options?.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+    );
+  }
+  if (f.multiline) {
+    return <textarea id={id} data-testid={id} rows={3} spellCheck={false} placeholder={placeholder} value={String(value)} onChange={(e) => onChange(e.target.value)} />;
+  }
+  return (
+    <input
+      id={id}
+      data-testid={id}
+      type={f.type === "secret" ? "password" : "text"}
+      autoComplete="off"
+      placeholder={placeholder}
+      value={String(value)}
+      onChange={(e) => onChange(e.target.value)}
+    />
   );
 }

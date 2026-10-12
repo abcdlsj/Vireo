@@ -10,7 +10,7 @@ Vireo is three pieces:
 
 | Piece | Code | What it is | Where it runs |
 |---|---|---|---|
-| **node** | `apps/node` (npm: `vireo-node`) | Your agent: threads, memory, plugins, model settings and the browser it drives. Everything you tell Vireo stays here. | Your own machine: a laptop, a home server, a VPS |
+| **node** | `apps/node` (npm: `@abcdlsj/vireo-node`) | Your agent: threads, memory, plugins, model settings and the browser it drives. Everything you tell Vireo stays here. | Your own machine: a laptop, a home server, a VPS |
 | **app** | `apps/web` | The UI, a static React PWA. Holds no data. | app.askvireo.com, on Cloudflare or Vercel (or the cloud serves it) |
 | **cloud** | `apps/cloud` | Signs people in with GitHub, keeps which nodes belong to whom, issues short-lived tokens for them, and relays the app's requests to nodes. Stores none of your conversations. | Cloudflare Workers, with D1 and Durable Objects (or a server, in Docker) |
 
@@ -23,21 +23,21 @@ Everyone signs in to the same app with GitHub and runs their own node. Each acco
 1. Open the Vireo app at https://app.askvireo.com and sign in with GitHub.
 2. On the machine Vireo should run on (Node 22.13 or newer):
    ```bash
-   npx vireo-node
+   npx @abcdlsj/vireo-node
    ```
 3. It asks how the app should reach it:
    - **Through the Vireo cloud** (recommended): the node keeps a connection to the cloud open, so nothing needs to be opened on your network.
    - **Over Tailscale**: the app talks to the node straight over your tailnet at its `https://<machine>.<tailnet>.ts.net` address, from your own devices only. Uses the `tailscale` CLI if it is installed, else Vireo runs its own and shows a sign-in link.
 4. It prints a code and opens the app; check the code matches and approve. The node is now in the app.
 
-Data lives in `~/.vireo` (`--data` to change). `npx vireo-node status`, `link` and `unlink` manage the link; `npx vireo-node --help` lists the options. Run several nodes (laptop, home server) and switch between them from the menu at the top of the sidebar; **Settings → Nodes** renames and removes them.
+Data lives in `~/.vireo` (`--data` to change). `npx @abcdlsj/vireo-node status`, `link` and `unlink` manage the link; `npx @abcdlsj/vireo-node --help` lists the options. Run several nodes (laptop, home server) and switch between them from the menu at the top of the sidebar; **Settings → Nodes** renames and removes them.
 
-Then set a model in **Settings → Model**, or start the node with `OPENAI_API_KEY=sk-... npx vireo-node`.
+Then set a model in **Settings → Model**, or start the node with `OPENAI_API_KEY=sk-... npx @abcdlsj/vireo-node`.
 
 - **Model:** with only an OpenAI key, Vireo lists the endpoint's models and picks a strong one for conversations and a cheaper one for routine work such as titles and memory upkeep. You can change both in **Settings → Model**.
 - **Another provider or endpoint?** Enter a base URL, API key and model in **Settings → Model** (no restart needed), or set `VIREO_LLM_BASE_URL`, `VIREO_LLM_API_KEY` and `VIREO_MODEL`. **Test connection** checks it. The Docker setup below includes LiteLLM for providers that don't speak the OpenAI API.
 - **Calendar and email:** these work immediately with a built-in local calendar. For Google Calendar, Gmail and Drive, add the **Google** plugin in **Settings → Plugins → Community plugins**.
-- **Plugins:** **Settings → Plugins → Community plugins** lists the plugins that ship with Vireo. **Tailscale** joins your tailnet so Vireo can list, ping, call services on and run SSH commands on your other machines; with an API token it can also authorise, remove and tag them. **Telegram** and **Feishu / Lark** let you talk to Vireo from a bot of your own, with confirmations as buttons; link a chat with the one-time code from **Link a chat**. **MCP servers** connects Model Context Protocol servers (GitHub, Notion, Linear and others) in Claude Desktop's `mcpServers` format. **Search providers** switches web search to Tavily, Exa, Serper, Jina or Bocha, and reads hard pages and PDFs through Jina Reader. Outward or changing actions wait for your confirmation. Vireo knows which plugins are missing or unfinished: ask for something that needs one and it links you to that plugin's settings, then picks the request up again by itself once the plugin is ready.
+- **Plugins:** **Settings → Plugins → Community plugins** lists the plugins that ship with Vireo. **Tailscale** joins your tailnet so Vireo can list, ping, call services on and run SSH commands on your other machines; with an API token it can also authorise, remove and tag them. **Telegram** and **Feishu / Lark** let you talk to Vireo from a bot of your own, with confirmations as buttons; link a chat with the one-time code from **Link a chat**. **MCP servers** connects Model Context Protocol servers (GitHub, Notion, Linear and others) in Claude Desktop's `mcpServers` format. **Coding agents** hands work in a repository on this machine to Claude Code, Codex, opencode, pi or any other agent the ACP client knows: add one row per agent, project or provider, with its own directory, permission mode and environment (point claude at your own wrapper with `CLAUDE_CODE_EXECUTABLE`, codex with `CODEX_PATH`). Every run waits for your confirmation and reports what the agent did. **Search providers** switches web search to Tavily, Exa, Serper, Jina or Bocha, and reads hard pages and PDFs through Jina Reader. Outward or changing actions wait for your confirmation. Vireo knows which plugins are missing or unfinished: ask for something that needs one and it links you to that plugin's settings, then picks the request up again by itself once the plugin is ready.
 - **Web search** works without a key. Vireo uses DuckDuckGo's HTML endpoint by default; set `VIREO_SEARXNG_URL` or `BRAVE_API_KEY` to use something else.
 - **Browser actions** use Playwright's Chromium. If it is missing, run `npx playwright install chromium`. The Docker image already includes it.
 
@@ -63,7 +63,7 @@ Installing the PWA, push notifications, and Google sign-in need the app on HTTPS
 
 Only model access needs setting up, either here or in **Settings → Model**, where saved values take precedence. Everything else has a working default.
 
-Node (`npx vireo-node` options override these):
+Node (`npx @abcdlsj/vireo-node` options override these):
 
 | Variable | Default | Purpose |
 |---|---|---|
@@ -124,7 +124,7 @@ Preferences such as time zone, working hours and which proactive checks run are 
 
 ```
 packages/protocol      @vireo/protocol: types shared by the node, the cloud and the app
-apps/node              vireo-node: the CLI, Hono HTTP + SSE, runner, agents, memory, scheduler, tools
+apps/node              @abcdlsj/vireo-node: the CLI, Hono HTTP + SSE, runner, agents, memory, scheduler, tools
 apps/node/src/plugins  Community plugins (Google, Tailscale, ...): tools, agents, settings
 apps/cloud             @vireo/cloud: GitHub sign-in, nodes, linking, access tokens, the relay
                        src/core shared; src/worker for Cloudflare; src/node for a Node server

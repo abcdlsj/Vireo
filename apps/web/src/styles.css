@@ -2419,6 +2419,38 @@ table.usage th {
   word-break: break-all;
 }
 
+/* A list field: one card per row, each with its own inputs. */
+.pf-list {
+  display: grid;
+  gap: 8px;
+}
+
+.pf-list > span:first-child {
+  font-weight: 600;
+}
+
+.pf-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: flex-end;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--block);
+}
+
+.pf-row label {
+  display: grid;
+  gap: 3px;
+  flex: 1 1 160px;
+  min-width: 0;
+}
+
+.pf-row button {
+  margin-left: auto;
+}
+
 /* ---------- nodes ---------- */
 .brand {
   gap: 4px;

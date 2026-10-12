@@ -20,7 +20,7 @@ const phone = (name, t, alt) =>
   `<picture><source media="(prefers-color-scheme: dark)" srcset="/img/dark-${name}-${t.img}.webp"><img src="/img/${name}-${t.img}.webp" width="900" height="1948" alt="${esc(alt)}" loading="lazy" decoding="async"></picture>`;
 
 const copyCmd = (t) =>
-  `<button class="cmd" type="button" data-copy="npx vireo-node" data-done="${esc(t.copied)}"><code><span class="prompt">$</span> npx vireo-node</code><span class="cmd-act">${esc(t.copy)}</span></button>`;
+  `<button class="cmd" type="button" data-copy="npx @abcdlsj/vireo-node" data-done="${esc(t.copied)}"><code><span class="prompt">$</span> npx @abcdlsj/vireo-node</code><span class="cmd-act">${esc(t.copy)}</span></button>`;
 
 export function page(t, other) {
   const alt = (l) => `${SITE}${l.path}`;

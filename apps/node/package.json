@@ -1,7 +1,12 @@
 {
-  "name": "vireo-node",
+  "name": "@abcdlsj/vireo-node",
   "version": "0.1.0",
-  "description": "Your own Vireo node: the agent, its threads and memory, on your machine. Sign in at the Vireo app and run `npx vireo-node`.",
+  "description": "Your own Vireo node: the agent, its threads and memory, on your machine. Sign in at the Vireo app and run `npx @abcdlsj/vireo-node`.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/abcdlsj/Vireo.git",
+    "directory": "apps/node"
+  },
   "type": "module",
   "license": "MIT",
   "engines": {
@@ -24,6 +29,7 @@
     "@modelcontextprotocol/sdk": "1.32.1",
     "@mozilla/readability": "^0.6.0",
     "@openai/agents": "^0.19.0",
+    "acpx": "^0.19.5",
     "hono": "^4.13.13",
     "linkedom": "^0.18.13",
     "openai": "^7.30.1",

@@ -304,9 +304,9 @@ export interface PluginField {
   key: string;
   label: string;
   /** Secret values are encrypted at rest and never sent back to the browser or a model. */
-  type: "text" | "secret" | "boolean" | "select";
+  type: "text" | "secret" | "boolean" | "select" | "list";
   options?: { value: string; label: string }[];
-  default?: string | boolean;
+  default?: string | boolean | PluginRow[];
   placeholder?: string;
   help?: string;
   /** Multi-line input (keys, certificates). */
@@ -315,7 +315,12 @@ export interface PluginField {
   pattern?: string;
   /** Secret fields: a value is stored. */
   set?: boolean;
+  /** A list's rows: their fields, in order. */
+  items?: PluginField[];
 }
+
+/** One row of a list field. */
+export type PluginRow = Record<string, unknown>;
 
 export interface PluginStatus {
   state: "ready" | "setup" | "login" | "starting" | "error";

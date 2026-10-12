@@ -53,7 +53,7 @@ Vireo's milestones are done when every acceptance criterion holds in real use, n
 
 ## Milestone 6 — Accounts and nodes
 
-- [ ] **M6.1** Sign in to the app with GitHub. On another machine, run `npx vireo-node`, pick the cloud, and open the link it prints. The app shows the same code the terminal does; approve it. The node appears in the sidebar menu and in **Settings → Nodes**, with its own threads. Run it again with `--mode tailscale` on a tailnet machine: the app reaches it at its `ts.net` address.
+- [ ] **M6.1** Sign in to the app with GitHub. On another machine, run `npx @abcdlsj/vireo-node`, pick the cloud, and open the link it prints. The app shows the same code the terminal does; approve it. The node appears in the sidebar menu and in **Settings → Nodes**, with its own threads. Run it again with `--mode tailscale` on a tailnet machine: the app reaches it at its `ts.net` address.
 - [ ] **M6.2** Sign in with another GitHub account in a private window: it sees none of the first account's nodes. Remove a node in **Settings → Nodes**: the node says it was removed and stops answering.
 
 ## Capabilities spot checks
