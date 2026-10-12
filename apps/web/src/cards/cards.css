@@ -741,19 +741,29 @@
   flex-shrink: 0;
 }
 
+/* What moved is read in full: it wraps rather than trailing off past the card. */
+.vcard-pulse.working {
+  align-items: flex-start;
+}
+
+.vcard-pulse.working .pulse-dot {
+  margin-top: 4px;
+}
+
 .vcard-pulse-text {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .vcard-change {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 5px;
-  white-space: nowrap;
+  display: inline;
+  min-width: 0;
+  overflow-wrap: anywhere;
   color: var(--c-ink-2);
+}
+
+.vcard-change > * + * {
+  margin-left: 5px;
 }
 
 .vcard-change .what {
@@ -1388,19 +1398,28 @@
   border: 3px solid var(--c-accent);
 }
 
+/* Each step's name sits under its dot and wraps to as many lines as it needs. */
 .stage-labels {
   display: flex;
-  justify-content: space-between;
   gap: 6px;
   font-size: 12px;
+  line-height: 1.35;
   color: var(--c-ink-2);
 }
 
 .stage-labels span {
+  flex: 1 1 0;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.stage-labels span:first-child {
+  text-align: left;
+}
+
+.stage-labels span:last-child:not(:first-child) {
+  text-align: right;
 }
 
 .stage-labels .now {

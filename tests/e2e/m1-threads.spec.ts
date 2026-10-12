@@ -335,6 +335,37 @@ test.describe("Milestone 1 — Threads that think", () => {
     await context.close();
   });
 
+  test("[Home] a card's step names, live step and changes wrap instead of trailing off", async ({ browser, baseURL }) => {
+    const context = await browser.newContext({ baseURL, viewport: { width: 1280, height: 860 }, colorScheme: "dark", storageState: ".vireo-test/owner.json" });
+    const page = await context.newPage();
+    const now = Date.now();
+    const card = (id: string, running: boolean) => ({
+      id, threadId: "t_x" + id, threadTitle: "Tailscale", kind: "card", title: "Tailscale 插件设置", status: "needs_you", running,
+      statusLine: running ? "Waiting for you in the browser: 这一步只能你来：6 位验证码只存在你的手机短信里" : undefined,
+      data: { subtitle: "你修本地 Tailscale 后回来说一声", blocks: [
+        { type: "text", text: "按你的意思暂停了。已经做到的：插件已添加，用存好的 GitHub 账号密码登录 GitHub 成功。卡住的：GitHub 两步验证（必须你本人）＋本机 `tailscaled not found`。" },
+        { type: "steps", items: ["插件已添加", "GitHub 登录", "完成 2FA 验证", "接入密钥", "可以用了"], current: 1 },
+      ] },
+      buttons: [], changes: running ? [] : [{ label: "Subtitle", from: "就差 GitHub 两步验证", to: "你修本地 Tailscale 后回来说一声" }],
+      createdAt: now - 1000, updatedAt: now - 1000,
+    });
+    await page.route(/\/api\/cards$/, async (route) => {
+      const res = await route.fetch();
+      const d = await res.json();
+      d.cards = [card("c1", false), card("c2", true), ...d.cards];
+      await route.fulfill({ response: res, json: d });
+    });
+    await page.goto("/");
+    await expect(page.getByTestId("home")).toBeVisible();
+    await expect(page.locator(".vcard-change")).toBeVisible();
+    const bad = await page.evaluate(() => [...document.querySelectorAll<HTMLElement>(".vcard")].filter((c) => c.textContent?.includes("Tailscale 插件设置")).flatMap((c) => {
+      const r = c.getBoundingClientRect();
+      return [...c.querySelectorAll<HTMLElement>("*")].filter((e) => { const b = e.getBoundingClientRect(); return b.width && (b.right > r.right + 1 || e.scrollWidth > e.clientWidth + 1 && getComputedStyle(e).overflow === "hidden"); }).map((e) => e.className + ":" + e.textContent?.slice(0, 20));
+    }));
+    expect(bad).toEqual([]);
+    await context.close();
+  });
+
   test("[M1.5] model access is configurable", async ({ page, request }) => {
     // The endpoint's models are listed over the OpenAI API, and the owner can pick per tier.
     const models = await (await request.get("/api/models")).json();
