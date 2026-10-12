@@ -18,14 +18,14 @@ interface McpConfig {
   servers: string;
   secrets: string;
   confirm: "writes" | "all" | "none";
-  /** Seconds one tool call may run; unset means two minutes. */
+  /** Seconds one tool call may run; unset means ten minutes. */
   timeout?: string;
 }
 
-/** Two minutes by default, so a stuck server does not hold the conversation; slow servers can have more. */
+/** Ten minutes by default: long enough for slow tools, short enough that a stuck server lets the conversation go. */
 function toolTimeoutMs(cfg: McpConfig): number {
   const seconds = Number(cfg.timeout);
-  const wanted = Number.isFinite(seconds) && seconds > 0 ? seconds : 120;
+  const wanted = Number.isFinite(seconds) && seconds > 0 ? seconds : 600;
   return Math.min(wanted, 86_400) * 1000;
 }
 
@@ -121,7 +121,7 @@ export const mcpPlugin: PluginDef = {
       key: "timeout",
       label: "Tool call timeout (seconds)",
       type: "text",
-      default: "120",
+      default: "600",
       pattern: "^[0-9]{1,5}$",
       help: "How long one tool call may run before it is stopped, up to 24 hours. Raise it for servers whose tools run long.",
     },
