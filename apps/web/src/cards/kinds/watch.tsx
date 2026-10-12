@@ -20,7 +20,7 @@ export default defineCard({
           <h3 className="c-title">{card.title}</h3>
           <span className="watch-value">{value}</span>
         </div>
-        {detail ? <p className="c-sub">{detail}</p> : null}
+        {detail ? <p className="c-sub watch-detail">{detail}</p> : null}
         {trend.length > 1 ? (
           <div className="accent-ink">
             <Sparkline values={trend} height={40} />
