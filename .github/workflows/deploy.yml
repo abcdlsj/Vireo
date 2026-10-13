@@ -80,8 +80,8 @@ jobs:
       - name: Fill in this deployment's Cloudflare ids
         run: node scripts/cloud-config.mjs
         env:
-          VIREO_D1_DATABASE_ID: ${{ vars.VIREO_D1_DATABASE_ID }}
-          VIREO_GITHUB_CLIENT_ID: ${{ vars.VIREO_GITHUB_CLIENT_ID }}
+          VIREO_D1_DATABASE_ID: ${{ secrets.VIREO_D1_DATABASE_ID }}
+          VIREO_GITHUB_CLIENT_ID: ${{ secrets.VIREO_GITHUB_CLIENT_ID }}
       - name: Deploy to Cloudflare
         run: scripts/deploy-cf.sh apps/cloud --config wrangler.deploy.jsonc
         env:

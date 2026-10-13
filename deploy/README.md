@@ -89,11 +89,16 @@ To publish `askvireo` to npm, push a `v*` tag whose version is the one in `apps/
 - `CLOUDFLARE_ACCOUNT_ID`: the Cloudflare account id.
 - `CLOUDFLARE_API_TOKEN`: an API token with **Workers Scripts: Edit**, **D1: Edit** and **Workers Routes: Edit** (the *Edit Cloudflare Workers* template covers them).
 
-Plus two repository variables, for the two ids that belong to a deployment
-rather than to the code, and so are not in the repository:
+Plus two repository secrets, for the two ids that belong to a deployment rather
+than to the code, and so are not in the repository:
 
 - `VIREO_D1_DATABASE_ID`: the id of the cloud's D1 database.
 - `VIREO_GITHUB_CLIENT_ID`: the GitHub OAuth app's client id.
+
+Neither is a credential, and they would be easier to keep as repository
+*variables* — except that GitHub prints every step's environment in the log and
+masks secrets only, so a variable puts both ids in a public log. Kept as secrets
+they are masked everywhere they appear, including wrangler's own output.
 
 `scripts/cloud-config.mjs` writes them into `apps/cloud/wrangler.deploy.jsonc`
 (git-ignored) just before the cloud deploys, which is why the tracked
