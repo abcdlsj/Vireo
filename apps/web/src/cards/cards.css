@@ -1,8 +1,15 @@
 /*
  * Cards: the home board and the card materials. Every card shares one frame
  * (radius, padding, head, foot); kinds differ only in their material and
- * body. Sizes are fixed on the board so a matter changing stage never
- * changes its card's size.
+ * body.
+ *
+ * Sizes. On the board a card comes in one of two fixed sizes, like a widget:
+ * small, one column wide, and large, two columns wide; both are one row
+ * (--c-h) tall, so every row of the board lines up. Each kind lays out its
+ * slots inside that box and the model only fills them: prose is cut to a
+ * few lines, lists drop their last items and say how many more, and the
+ * buttons always sit on the card's bottom edge. The peek and the thread show
+ * the whole card at its natural height.
  */
 :root {
   --c-canvas: #f1f1ec;
@@ -37,7 +44,10 @@
   --c-shadow: 0 0 0 1px rgba(30, 30, 20, 0.055), 0 1px 2px rgba(30, 30, 20, 0.04), 0 6px 18px -8px rgba(30, 30, 20, 0.1);
   --c-shadow-hover: 0 0 0 1px rgba(30, 30, 20, 0.08), 0 2px 4px rgba(30, 30, 20, 0.05), 0 14px 32px -12px rgba(30, 30, 20, 0.18);
   --c-radius: 22px;
-  --c-height: 300px;
+  /* The height of every card on the board, small or large. */
+  --c-h: 272px;
+  /* A large card where the board is one column wide. */
+  --c-h-l: 360px;
 }
 
 :root[data-theme="dark"] {
@@ -379,15 +389,13 @@
   color: var(--c-ink-3);
 }
 
-/* A masonry: Home sizes each slot's row span to its card (4px rows, 20px gaps). */
+/* Rows of fixed height; a small card that comes later fills a hole a large one left. */
 .board {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  grid-auto-rows: 4px;
+  grid-auto-rows: var(--c-h);
   grid-auto-flow: row dense;
-  column-gap: 20px;
-  row-gap: 0;
-  align-items: start;
+  gap: 20px;
 }
 
 .board > .slot {
@@ -400,9 +408,10 @@
 
 .board > .slot > .vcard {
   flex: none;
+  height: var(--c-h);
 }
 
-.board > .slot.wide {
+.board > .slot.size-l {
   grid-column: span 2;
 }
 
@@ -611,17 +620,13 @@
 }
 
 /*
- * Without a head, the corner floats over the body: keep the title clear of
- * it. Only the first line sits beside the corner, so only it steps aside; a
- * long title (Chinese ones run long) uses the full width below. Touch
- * screens never show the corner's buttons, so they keep the whole line.
+ * Without a head, the corner floats over the body: keep the first thing in
+ * it (a title, or a title with its figure) clear of the corner's buttons.
+ * Touch screens never show them, so they keep the whole width.
  */
 @media (hover: hover) and (pointer: fine) {
-  .vcard:has(> .vcard-corner.floating .vcard-act) > .vcard-body > .c-title:first-child::before {
-    content: "";
-    float: right;
-    width: 60px;
-    height: 1lh;
+  .vcard:not(.flush):not(.pass):has(> .vcard-corner.floating .vcard-act) > .vcard-body > :first-child:not(.watch-head, .trip-head) {
+    padding-right: 60px;
   }
 }
 
@@ -1068,7 +1073,7 @@
 
 /* What the board left out of a list, said right under it. */
 .g-rows + .c-more {
-  margin-top: -2px;
+  margin-top: -6px;
 }
 
 .clamp {
@@ -1085,49 +1090,59 @@
   overflow: hidden;
 }
 
-/* Long text on the board stops at a height and fades out, only when it is actually cut. */
-.vcard:not(.expanded) .fade {
-  max-height: 210px;
-  overflow: hidden;
-}
-
-.vcard:not(.expanded) .fade.cut {
-  -webkit-mask-image: linear-gradient(to bottom, #000 70%, transparent);
-  mask-image: linear-gradient(to bottom, #000 70%, transparent);
-}
-
 /*
- * Attention. A matter in hand, watched or gone quiet is Vireo's to carry, so
- * its card says what it is and where it stands, not everything known about
- * it: the more of the work the board shows, the more it invites watching.
- * Every kind's prose (a latest answer, a note, a page, a letter, a review)
- * comes down to two quiet lines, and its figures, rows and stubs stay as
- * they are. What needs the owner keeps enough to decide on; the peek and the
- * thread have the rest.
+ * On the board prose says one thing: a matter's latest answer, a note, a
+ * page or a letter comes down to its first paragraph, cut to as many lines
+ * as the card has room for (Frame sets --lines), in a quieter ink.
  */
-.board-section:not(.needs) .vcard:not(.expanded) :is(.c-text, .g-text, .doc-text) {
-  max-height: none;
+.vcard:not(.expanded) .fit {
   color: var(--c-ink-2);
-  -webkit-mask-image: none;
-  mask-image: none;
 }
 
-/* The first paragraph carries it (a document's headings say less than its opening line); with no paragraph, the first thing. */
-.board-section:not(.needs) .vcard:not(.expanded) :is(.c-text, .g-text, .doc-text) .md:has(> p) > :not(p:first-of-type),
-.board-section:not(.needs) .vcard:not(.expanded) :is(.c-text, .g-text, .doc-text) .md:not(:has(> p)) > :not(:first-child) {
+.vcard:not(.expanded) .fit .md:has(> p) > :not(p:first-of-type),
+.vcard:not(.expanded) .fit .md:not(:has(> p)) > :not(:first-child) {
   display: none;
 }
 
-.board-section:not(.needs) .vcard:not(.expanded) :is(:is(.c-text, .g-text, .doc-text) :is(.md > p:first-of-type, .md:not(:has(> p)) > :first-child), p.c-text, .mail-body, .gh-review, .watch-detail) {
+.vcard:not(.expanded) :is(.fit :is(.md > p:first-of-type, .md:not(:has(> p)) > :first-child), p.fit, span.fit) {
   display: -webkit-box;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: var(--lines, 3);
   -webkit-box-orient: vertical;
   overflow: hidden;
   margin: 0;
 }
 
-.board-section:not(.needs) .vcard:not(.expanded) .answer-lead {
-  -webkit-line-clamp: 3;
+/* Nothing in a card squeezes to fit; Frame cuts it instead (a page preview or a document's text gives way on purpose). */
+.vcard:not(.expanded) .vcard-body > * {
+  flex-shrink: 0;
+}
+
+/* A list cut to fit, and what it left out. */
+.fit-list > [hidden],
+.c-more[hidden] {
+  display: none !important;
+}
+
+/* What still does not fit fades out rather than stopping at a hard edge. */
+.vcard:not(.expanded) .vcard-body.cut {
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent);
+}
+
+/* On the board a title is a name: two lines at most. */
+.vcard:not(.expanded) .c-title {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.vcard:not(.expanded) .c-sub {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 0;
 }
 
 .accent-ink {
@@ -1489,7 +1504,12 @@
 
 /* ---------- the general card: title, a line, and blocks ---------- */
 .vcard.gcard .vcard-body {
-  gap: 14px;
+  gap: 12px;
+}
+
+/* In a small card a row is its name and its number; what tells the rows apart waits in the peek. */
+.board > .slot.size-s .g-detail {
+  display: none;
 }
 
 .vcard.gcard.expanded .vcard-body {
@@ -1505,13 +1525,16 @@
 /* Key numbers: big, aligned on one baseline, labels quiet underneath. */
 .g-facts {
   margin: 0;
-  display: grid;
-  grid-template-columns: repeat(var(--n, 3), minmax(0, max-content));
-  column-gap: 28px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 28px;
+  min-width: 0;
 }
 
+/* A long value gives way with an ellipsis; it never runs into the next one. */
 .g-facts > div {
   min-width: 0;
+  flex: 0 1 auto;
   display: flex;
   flex-direction: column;
   gap: 1px;
@@ -1524,6 +1547,8 @@
   font-weight: 600;
   letter-spacing: -0.02em;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .g-facts dt {
@@ -2473,17 +2498,52 @@
   font-weight: 600;
 }
 
-.reminder-time {
-  font-size: 40px;
-  line-height: 48px;
-  font-weight: 600;
-  letter-spacing: -0.03em;
+.reminder-when {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  min-width: 0;
   color: var(--c-warm-ink);
-  margin-top: auto;
 }
 
-.vcard.tone-warm .c-title {
-  margin-bottom: auto;
+.reminder-time {
+  font-size: 40px;
+  line-height: 46px;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+}
+
+.reminder-day {
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 500;
+  opacity: 0.75;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.reminder-text {
+  margin: 0;
+  font-size: 15px;
+  line-height: 22px;
+  font-weight: 500;
+}
+
+/* The reminder is the point of the card, so it keeps its full ink. */
+.vcard.reminder:not(.expanded) .reminder-text {
+  color: var(--c-ink);
+}
+
+/* On warm paper a quiet button is tinted with the paper's ink, so it reads as a button. */
+.vcard.tone-warm .cbtn:not(.primary) {
+  background: color-mix(in srgb, var(--c-warm-ink) 10%, transparent);
+  border-color: transparent;
+  color: var(--c-warm-ink);
+}
+
+.vcard.tone-warm .cbtn:not(.primary):hover {
+  background: color-mix(in srgb, var(--c-warm-ink) 16%, transparent);
 }
 
 /* ---------- browser ask: Vireo is paused until the owner does something in its browser ---------- */
@@ -2555,8 +2615,26 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .board > .slot.wide {
+  /* One column: a large card can't be wider, so it is taller instead. */
+  .board {
+    grid-auto-rows: auto;
+  }
+
+  .board > .slot.size-l {
     grid-column: auto;
+  }
+
+  .board > .slot.size-l > .vcard {
+    height: var(--c-h-l);
+  }
+
+  .board .g-facts {
+    column-gap: 20px;
+  }
+
+  .board .g-facts dd {
+    font-size: 19px;
+    line-height: 26px;
   }
 
   .home-inner {
@@ -2606,6 +2684,11 @@
     border-top: 2px dashed var(--c-line);
     margin: 0 18px;
     padding: 14px 6px 70px;
+  }
+
+  /* Room for the buttons under the stub only when there are some. */
+  .vcard.pass:not(:has(> .vcard-foot)) .pass-stub {
+    padding-bottom: 18px;
   }
 
   .pass-stub::before,

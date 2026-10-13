@@ -14,7 +14,7 @@ interface Option {
 /** Options side by side; the picked one (with a badge) leads. */
 export default defineCard({
   kind: "compare",
-  wide: true,
+  size: "l",
   render: ({ card, expanded }) => {
     const options = field<Option[]>(card, "options", []);
     const subtitle = field(card, "subtitle", "");

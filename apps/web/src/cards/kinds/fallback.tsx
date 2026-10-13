@@ -11,7 +11,7 @@ export default defineCard({
       <Frame card={card} expanded={expanded}>
         <h3 className="c-title">{card.title}</h3>
         {text ? (
-          <div className="c-text fade">
+          <div className="c-text fit">
             <Markdown text={text} />
           </div>
         ) : null}

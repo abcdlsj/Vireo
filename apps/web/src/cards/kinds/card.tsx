@@ -19,7 +19,7 @@ type Block =
 
 const MARK_LABEL: Record<Mark, string> = { picked: "Picked", best: "Best", attention: "Needs you", done: "Done" };
 
-/** How much room a card's blocks want; heavy cards span two columns on the board. */
+/** How much room a card's blocks want. */
 function weight(blocks: Block[]): number {
   let w = 0;
   for (const b of blocks) {
@@ -33,6 +33,21 @@ function weight(blocks: Block[]): number {
 }
 
 /**
+ * A card takes the large size when its blocks would be cramped in one column:
+ * three key numbers or long ones (a date range), a long bar chart, numbers
+ * and a list together, or simply a lot.
+ */
+function large(blocks: Block[]): boolean {
+  const facts = blocks.flatMap((b) => (b.type === "facts" ? (b.items ?? []).filter((f) => f.value) : []));
+  const chars = facts.map((f) => [...String(f.value)].length);
+  if (facts.length >= 3 && chars.reduce((a, b) => a + b, 0) > 14) return true;
+  if (chars.some((n) => n > 9)) return true;
+  if (blocks.some((b) => b.type === "chart" && b.style === "bars" && (b.values?.length ?? 0) > 10)) return true;
+  if (facts.length && blocks.some((b) => b.type === "rows")) return true;
+  return weight(blocks) > 6;
+}
+
+/**
  * The general card: a title, an optional line under it, and up to four
  * blocks drawn from one small vocabulary. It is how Vireo shows anything that
  * has no kind of its own, so each block is drawn with care once and every
@@ -40,7 +55,7 @@ function weight(blocks: Block[]): number {
  */
 export default defineCard({
   kind: "card",
-  wide: (card) => weight(field<Block[]>(card, "blocks", [])) > 6,
+  size: (card) => (large(field<Block[]>(card, "blocks", [])) ? "l" : "s"),
   render: ({ card, expanded }) => {
     const subtitle = field(card, "subtitle", "");
     const blocks = field<Block[]>(card, "blocks", []).filter((b) => b && typeof b === "object");
@@ -73,7 +88,7 @@ function BlockView({ block, expanded, brief }: { block: Block; card: Card; expan
     case "text":
       // Beside rows or facts the note is commentary: two lines on the board, all of it in the peek.
       return block.text ? (
-        <div className={`g-text ${brief ? "clamp" : "fade"}`}>
+        <div className="g-text fit" data-lines={brief ? 2 : 4}>
           <Markdown text={block.text} />
         </div>
       ) : null;
@@ -124,20 +139,17 @@ function Rows({ items, expanded }: { items: Row[]; expanded: boolean }) {
   const hidden = all.length - shown.length;
   return (
     <>
-      <RowList shown={shown} />
-      {hidden ? (
-        <p className="c-more" data-testid="card-more">
-          {hidden} more
-        </p>
-      ) : null}
+      <RowList shown={shown} more={hidden} />
+      {/* Its count is set when the board fits the card (Frame): rows it had no room for are left out too. */}
+      {expanded ? null : <p className="c-more" data-testid="card-more" hidden={!hidden} />}
     </>
   );
 }
 
-function RowList({ shown }: { shown: Row[] }) {
+function RowList({ shown, more }: { shown: Row[]; more: number }) {
   const leads = shown.some((r) => r.lead);
   return (
-    <ul className={`g-rows c-rows ${leads ? "with-lead" : ""}`}>
+    <ul className={`g-rows c-rows fit-list ${leads ? "with-lead" : ""}`} data-more={more}>
       {shown.map((r, i) => {
         const title = isHttp(r.url) ? (
           <a href={r.url} target="_blank" rel="noreferrer">

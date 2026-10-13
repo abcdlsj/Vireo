@@ -56,7 +56,7 @@ export function EventBody({
 
 export default defineCard({
   kind: "event",
-  wide: true,
+  size: "l",
   render: ({ card, expanded }) => (
     <Frame card={card} expanded={expanded} flush>
       <EventBody

@@ -52,7 +52,6 @@ export function Home({ me, onSearch }: { me: Me | null; onSearch: () => void }) 
     });
   }, [load]);
 
-  const board_ = useMasonry();
   const phone = usePhone();
   const board = useMemo<Board>(() => ({ peek: (c) => setPeekThread(c.threadId), refresh: () => void load(), grouped: true }), [load]);
   const peekCard = peekThread ? (cards ?? []).find((c) => c.threadId === peekThread && !c.id.startsWith("reminder:")) : undefined;
@@ -106,7 +105,7 @@ export function Home({ me, onSearch }: { me: Me | null; onSearch: () => void }) 
         {me ? <Setup me={me} /> : null}
 
         <BoardContext.Provider value={board}>
-          <div className="boards" data-testid="board" ref={board_}>
+          <div className="boards" data-testid="board">
             {cards && active.length === 0 ? (
               <div className="board-empty">
                 <b>All clear</b>
@@ -291,48 +290,6 @@ function usePhone(): boolean {
     return () => mq.removeEventListener("change", on);
   }, []);
   return phone;
-}
-
-const ROW = 4;
-const GAP = 20;
-
-/**
- * Lays the board out as a masonry: every card keeps its natural height, so
- * nothing is cut off and nothing leaves a hole, while the reading order stays
- * left to right. Each slot spans as many 4px rows as its card is tall.
- */
-function useMasonry() {
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const grid = ref.current;
-    if (!grid) return;
-    const size = (slot: HTMLElement) => {
-      const card = slot.firstElementChild as HTMLElement | null;
-      if (!card) return;
-      slot.style.gridRowEnd = `span ${Math.ceil((card.getBoundingClientRect().height + GAP) / ROW)}`;
-    };
-    const ro = new ResizeObserver((entries) => {
-      for (const e of entries) size((e.target as HTMLElement).parentElement!);
-    });
-    const watch = () => {
-      ro.disconnect();
-      for (const slot of grid.querySelectorAll<HTMLElement>(".board > .slot")) {
-        if (slot.firstElementChild) ro.observe(slot.firstElementChild);
-        size(slot);
-      }
-    };
-    watch();
-    // Only slots coming and going matter; a card's own content is the ResizeObserver's job.
-    const mo = new MutationObserver((records) => {
-      if (records.some((r) => (r.target as HTMLElement).matches?.(".boards, .board-section, .board"))) watch();
-    });
-    mo.observe(grid, { childList: true, subtree: true });
-    return () => {
-      ro.disconnect();
-      mo.disconnect();
-    };
-  }, []);
-  return ref;
 }
 
 const SETUP_HIDDEN = "vireo.setup.hidden";

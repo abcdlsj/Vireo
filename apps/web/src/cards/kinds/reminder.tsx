@@ -3,7 +3,7 @@ import { Frame } from "../Frame";
 import { defineCard } from "../registry";
 import { clock, parseDate, until } from "../util";
 
-/** A scheduled reminder: warm paper, the time large. */
+/** A scheduled reminder: warm paper, the time large with its day beside it, then what it is about. */
 export default defineCard({
   kind: "reminder",
   render: ({ card, expanded, refresh }) => {
@@ -14,18 +14,23 @@ export default defineCard({
         card={card}
         expanded={expanded}
         tone="warm"
+        className="reminder"
         label={<span className="bell">Reminder</span>}
         buttons={
           <div className="vcard-buttons">
-            <button className="cbtn ghost" onClick={() => void api.post(`/api/reminders/${String(card.data.reminderId)}/cancel`).then(refresh)}>
+            <button className="cbtn" onClick={() => void api.post(`/api/reminders/${String(card.data.reminderId)}/cancel`).then(refresh)}>
               Cancel
             </button>
           </div>
         }
       >
-        <span className="reminder-time">{due ? clock(due) : ""}</span>
-        <span className="c-sub">{due ? (today ? `Today · ${until(due)}` : due.toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" })) : ""}</span>
-        <h3 className="c-title">{card.title}</h3>
+        <div className="reminder-when">
+          <span className="reminder-time">{due ? clock(due) : ""}</span>
+          <span className="reminder-day">{due ? (today ? `Today · ${until(due)}` : due.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })) : ""}</span>
+        </div>
+        <p className="reminder-text fit" data-lines={3}>
+          {card.title}
+        </p>
       </Frame>
     );
   },

@@ -23,7 +23,7 @@ export default defineCard({
         {detail ? <p className="c-sub watch-detail">{detail}</p> : null}
         {trend.length > 1 ? (
           <div className="accent-ink">
-            <Sparkline values={trend} height={40} />
+            <Sparkline values={trend} height={expanded ? 40 : 88} />
           </div>
         ) : null}
         {steps.length ? (

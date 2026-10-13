@@ -30,7 +30,7 @@ const amount = (price?: string) => Number(String(price ?? "").replace(/[^\d.]/g,
  */
 export default defineCard({
   kind: "trip",
-  wide: true,
+  size: "l",
   render: ({ card, expanded }) => {
     const outbound = field<Leg | null>(card, "outbound", null);
     const back = field<Leg | null>(card, "return", null);

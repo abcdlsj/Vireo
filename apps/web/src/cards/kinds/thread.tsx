@@ -29,7 +29,7 @@ export default defineCard({
         {card.running && !text ? null : !text && !statusLine ? (
           <p className="c-sub">Nothing here yet.</p>
         ) : (
-          <div className="c-text fade">
+          <div className="c-text fit">
             <Markdown text={text || statusLine} />
           </div>
         )}

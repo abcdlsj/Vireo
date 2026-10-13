@@ -3,6 +3,9 @@ import { OVERVIEW_ID } from "../threads.js";
 import { formatDate, now } from "../util.js";
 import { defineTool } from "./types.js";
 
+/** A reminder is a card on the board and a notification: a few words. */
+const REMINDER_MAX = 40;
+
 export const threadTools = [
   defineTool({
     name: "find_threads",
@@ -82,12 +85,18 @@ export const threadTools = [
       "Remind the owner at a time (kind 'reminder'), or come back to this thread at a time to follow up on something waiting on someone else (kind 'follow_up').",
     parameters: Type.Object({
       at: Type.String({ description: "ISO 8601 date-time with offset" }),
-      text: Type.String({ description: "What to remind about or check" }),
+      text: Type.String({
+        description: `For a reminder, what to do in a few words, at most ${REMINDER_MAX} characters, e.g. 'Use the Claude Full reset': it is the card and the notification, and the reasons stay in this thread. For a follow-up, what to check`,
+      }),
       kind: Type.Optional(Type.Union([Type.Literal("reminder"), Type.Literal("follow_up")])),
     }),
     async run(args, ctx) {
       const due = Date.parse(args.at);
       if (Number.isNaN(due)) throw new Error("Invalid date-time");
+      const length = [...args.text.trim()].length;
+      if ((args.kind ?? "reminder") === "reminder" && length > REMINDER_MAX) {
+        throw new Error(`The reminder is too long (${length} characters, at most ${REMINDER_MAX}). Say what to do in a few words; the reasons stay in this thread.`);
+      }
       const id = ctx.app.reminders.add({ threadId: ctx.thread.id, kind: args.kind ?? "reminder", text: args.text, dueAt: due });
       return { text: `Reminder ${id} set for ${formatDate(due, ctx.app.settings.get().timezone)}.` };
     },

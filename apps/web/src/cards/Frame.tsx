@@ -27,17 +27,54 @@ function closable(card: Card): boolean {
   return card.threadId !== "overview" && !["proposal", "reminder", "browser_request"].includes(card.kind) && card.status !== "done";
 }
 
-/** On the board, marks long text that its box cuts off, so only that text fades out. */
-function useFade(expanded: boolean) {
+/**
+ * On the board a card has a fixed size (see cards.css), and its content is
+ * cut to fit, in this order: prose (`.fit`, up to `data-lines` lines) comes
+ * down to two lines, lists (`.fit-list`) to two items, then prose to one line
+ * and lists to one item. A list says how many it left out in the `.c-more`
+ * right after it. Whatever still does not fit fades out at the bottom.
+ */
+function useFit(expanded: boolean) {
   const ref = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     const body = ref.current;
     if (expanded || !body) return;
-    const mark = () => {
-      for (const el of body.querySelectorAll<HTMLElement>(".fade")) el.classList.toggle("cut", el.scrollHeight > el.clientHeight + 1);
+    const fit = () => {
+      const texts = [...body.querySelectorAll<HTMLElement>(".fit")];
+      const lists = [...body.querySelectorAll<HTMLElement>(".fit-list")];
+      const lines = (t: HTMLElement) => Number(t.style.getPropertyValue("--lines"));
+      const shown = (l: HTMLElement) => [...l.children].filter((li) => !(li as HTMLElement).hidden) as HTMLElement[];
+      for (const t of texts) t.style.setProperty("--lines", t.dataset.lines ?? "3");
+      for (const l of lists) for (const li of l.children) (li as HTMLElement).hidden = false;
+      body.classList.remove("cut");
+      const over = () => body.scrollHeight > body.clientHeight + 1;
+      const text = (floor: number) => {
+        while (over()) {
+          const t = texts.filter((x) => lines(x) > floor).sort((a, b) => lines(b) - lines(a))[0];
+          if (!t) return false;
+          t.style.setProperty("--lines", String(lines(t) - 1));
+        }
+        return true;
+      };
+      const list = (floor: number) => {
+        while (over()) {
+          const l = lists.find((x) => shown(x).length > floor);
+          if (!l) return false;
+          shown(l).at(-1)!.hidden = true;
+        }
+        return true;
+      };
+      if (!(text(2) || list(2) || text(1) || list(1))) body.classList.add("cut");
+      for (const l of lists) {
+        const more = l.nextElementSibling as HTMLElement | null;
+        if (!more?.classList.contains("c-more")) continue;
+        const n = Number(l.dataset.more ?? 0) + l.children.length - shown(l).length;
+        more.textContent = `${n} more`;
+        more.hidden = n === 0;
+      }
     };
-    mark();
-    const ro = new ResizeObserver(mark);
+    fit();
+    const ro = new ResizeObserver(fit);
     ro.observe(body);
     return () => ro.disconnect();
   });
@@ -89,7 +126,7 @@ export function Frame({
 }) {
   const board = useContext(BoardContext);
   const flash = useJustUpdated(card);
-  const body = useFade(expanded);
+  const body = useFit(expanded);
   const [leaving, setLeaving] = useState(false);
   const interactive = !expanded;
   const open = () => (board ? board.peek(card) : go(`thread/${card.threadId}`));
@@ -117,8 +154,8 @@ export function Frame({
   const labelNode = label ?? (namesOwnMatter(card) ? null : <a href={`#thread/${card.threadId}`}>{card.threadTitle}</a>);
   // A ready card with nothing to label needs no head: an empty line with only a time in it is noise.
   const quiet = !card.running && (card.status === "ready" || (Boolean(board?.grouped) && (card.status === "needs_you" || card.status === "watching")));
-  // Nor does a head with nothing in it at all (in a thread, a card needing the owner): it would only push the title down.
-  const empty = labelNode === null && !interactive && !statusShown(card, board?.grouped);
+  // Nor does a head with nothing in it at all (a card needing the owner, or one being worked on): it would only push the title down.
+  const empty = labelNode === null && !statusShown(card, board?.grouped);
   const head = label !== null && !(labelNode === null && quiet) && !empty;
   const own = buttons ?? (card.buttons.length ? <Buttons card={card} buttons={card.buttons} /> : null);
   const actions = interactive ? (

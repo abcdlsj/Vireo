@@ -49,7 +49,7 @@ export function EmailBody({
 
 export default defineCard({
   kind: "email",
-  wide: true,
+  size: "l",
   render: ({ card, expanded }) => (
     <Frame card={card} expanded={expanded}>
       <EmailBody

@@ -17,7 +17,8 @@ import { EventBody } from "./event";
  */
 export default defineCard({
   kind: "proposal",
-  wide: true,
+  // An invite and an email have a page of their own; any other action is a line.
+  size: (card) => (["create_event", "send_email"].includes(String(card.data.tool)) ? "l" : "s"),
   render: ({ card, expanded, refresh }) => (
     <Frame card={card} expanded={expanded} flush={card.data.tool === "create_event"} buttons={<Decide card={card} refresh={refresh} />}>
       <ProposalBody card={card} />

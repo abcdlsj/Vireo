@@ -6,7 +6,7 @@ import { dayLabel } from "../util";
 /** A boarding pass: the route large, a perforation, and a stub with the price or the seat. */
 export default defineCard({
   kind: "flight",
-  wide: true,
+  size: "l",
   render: ({ card, expanded }) => {
     const booked = field<{ seat?: string; ref?: string } | null>(card, "booked", null);
     const price = field(card, "price", "");
