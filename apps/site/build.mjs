@@ -4,7 +4,8 @@ import { copyFileSync, cpSync, mkdirSync, rmSync, writeFileSync } from "node:fs"
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { notFound, page } from "./src/page.mjs";
+import { legal } from "./src/legal.mjs";
+import { doc, notFound, page } from "./src/page.mjs";
 import { strings } from "./src/strings.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -20,6 +21,10 @@ const { en, zh } = strings;
 writeFileSync(join(out, "index.html"), page(en, zh));
 writeFileSync(join(out, "zh", "index.html"), page(zh, en));
 writeFileSync(join(out, "404.html"), notFound(en, zh));
+for (const d of legal.docs) {
+  mkdirSync(join(out, d.path), { recursive: true });
+  writeFileSync(join(out, d.path, "index.html"), doc(d, legal.updated));
+}
 
 copyFileSync(join(here, "src", "site.css"), join(out, "site.css"));
 copyFileSync(join(here, "src", "_headers"), join(out, "_headers"));

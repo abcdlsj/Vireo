@@ -98,6 +98,8 @@ export function page(t, other) {
   <nav>
     <a href="${REPO}">GitHub</a>
     <a href="${REPO}/blob/main/deploy/README.md">${esc(t.docs)}</a>
+    <a href="/privacy/">${esc(t.privacy)}</a>
+    <a href="/terms/">${esc(t.terms)}</a>
     <a href="${other.path}" hreflang="${other.lang}" lang="${other.lang}">${esc(t.other)}</a>
   </nav>
 </footer>
@@ -115,6 +117,42 @@ export function page(t, other) {
     });
   }
 </script>
+</body>
+</html>
+`;
+}
+
+/** A plain document page (privacy policy, terms), in English; `d.body` is trusted HTML. */
+export function doc(d, updated) {
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>${esc(d.title)} · Vireo</title>
+<link rel="canonical" href="${SITE}${d.path}">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/site.css">
+</head>
+<body class="doc">
+<header class="top">
+  <a class="brand" href="/">${MARK}<span>Vireo</span></a>
+</header>
+<main>
+<article>
+  <h1>${esc(d.title)}</h1>
+  ${d.body}
+  <p class="updated">Last updated ${esc(updated)}</p>
+</article>
+</main>
+<footer class="foot">
+  <a class="brand" href="/">${MARK}<span>Vireo</span></a>
+  <nav>
+    <a href="/privacy/">Privacy</a>
+    <a href="/terms/">Terms</a>
+    <a href="${REPO}">GitHub</a>
+  </nav>
+</footer>
 </body>
 </html>
 `;
