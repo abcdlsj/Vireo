@@ -115,7 +115,7 @@ export class Runner {
       this.app.threads.addNotice(
         threadId,
         "error",
-        "No model is configured. Open Settings → Model and set a base URL, API key and model (or set OPENAI_API_KEY), then send the message again.",
+        "No model is configured. Open Settings → Model and pick a CLI on this machine (Claude Code, Codex or pi) or set a base URL, API key and model (or set OPENAI_API_KEY), then send the message again.",
       );
       this.app.threads.update(threadId, { status_line: "No model configured" });
       return;

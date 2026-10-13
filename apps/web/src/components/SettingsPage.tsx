@@ -3,8 +3,9 @@ import { useGlide } from "../glide";
 import { ChevronLeft } from "../icons";
 import type { Credential, UsageByPurpose, User } from "@vireo/protocol";
 import { AccountSettings, NodesSettings } from "./Nodes";
+import { Models } from "./ModelSettings";
 import { PluginsCard } from "./PluginsCard";
-import { api, type Me, type ModelStatus, type OwnerSettings } from "../api";
+import { api, type Me, type OwnerSettings } from "../api";
 import { setThemeChoice, themeChoice, type ThemeChoice } from "../theme";
 
 const SECTIONS = [
@@ -92,120 +93,6 @@ function Install() {
         On iPhone: open Vireo in Safari, tap Share, then <b>Add to Home Screen</b>. On Mac: in Safari choose File → <b>Add to Dock</b>, or use the install
         button in Chrome's address bar. Notifications on iPhone work once Vireo is installed to the home screen and served over HTTPS.
       </p>
-    </section>
-  );
-}
-
-function Models({ reload }: { reload: () => Promise<void> }) {
-  const [st, setSt] = useState<ModelStatus | null>(null);
-  const [form, setForm] = useState({ baseUrl: "", apiKey: "", model: "", fastModel: "", api: "chat" as "chat" | "responses" });
-  const [busy, setBusy] = useState(false);
-  const [test, setTest] = useState<{ ok: boolean; message: string } | null>(null);
-  const load = () =>
-    api.get<ModelStatus>("/api/models").then((r) => {
-      setSt(r);
-      setForm({ baseUrl: r.source.baseUrl === "settings" ? r.baseUrl : "", apiKey: "", model: r.choice.main ?? "", fastModel: r.choice.fast ?? "", api: r.api });
-    });
-  useEffect(() => {
-    void load();
-  }, []);
-  if (!st) return null;
-  const save = async () => {
-    setBusy(true);
-    setTest(null);
-    try {
-      await api.put("/api/models", { ...form, apiKey: form.apiKey || undefined });
-      await load();
-      await reload();
-    } finally {
-      setBusy(false);
-    }
-  };
-  const runTest = async () => {
-    setBusy(true);
-    try {
-      setTest(await api.post<{ ok: boolean; message: string }>("/api/models/test"));
-    } finally {
-      setBusy(false);
-    }
-  };
-  return (
-    <section className="card" data-testid="models-card">
-      {st.fake ? <p className="tag">Demo mode: a scripted model is answering.</p> : null}
-      {st.ready ? (
-        <p>
-          Using <b>{st.main}</b>; routine work on <b>{st.fast}</b>. <span className="muted small">{st.baseUrl}</span>
-        </p>
-      ) : (
-        <p className="error">No model yet. Enter an OpenAI-compatible endpoint and API key below.</p>
-      )}
-      {st.error ? <p className="error small">{st.error}</p> : null}
-      <p className="muted small">
-        Any OpenAI-compatible endpoint works: OpenAI, a LiteLLM proxy (for Anthropic, Gemini, Bedrock and more), OpenRouter, or a local server such as Ollama.
-      </p>
-      <form
-        className="stack"
-        onSubmit={(e) => {
-          e.preventDefault();
-          void save();
-        }}
-      >
-        <label>
-          Base URL
-          <input
-            value={form.baseUrl}
-            placeholder={st.source.baseUrl === "settings" ? "" : `${st.baseUrl}${st.source.baseUrl === "env" ? " (from environment)" : " (default)"}`}
-            onChange={(e) => setForm({ ...form, baseUrl: e.target.value })}
-            data-testid="llm-base-url"
-          />
-        </label>
-        <label>
-          API key
-          <input
-            type="password"
-            value={form.apiKey}
-            placeholder={st.hasKey ? `Saved${st.source.apiKey === "env" ? " (from environment)" : ""}; type to replace` : "sk-…"}
-            onChange={(e) => setForm({ ...form, apiKey: e.target.value })}
-            data-testid="llm-api-key"
-          />
-        </label>
-        <div className="grid2">
-          <label>
-            Main model
-            <input list="llm-models" value={form.model} placeholder={st.main ? `${st.main} (automatic)` : "e.g. gpt-5"} onChange={(e) => setForm({ ...form, model: e.target.value })} data-testid="llm-model" />
-          </label>
-          <label>
-            Routine work
-            <input list="llm-models" value={form.fastModel} placeholder={st.fast ? `${st.fast} (automatic)` : "a cheaper model"} onChange={(e) => setForm({ ...form, fastModel: e.target.value })} />
-          </label>
-        </div>
-        <datalist id="llm-models">
-          {st.available.map((m) => (
-            <option key={m} value={m} />
-          ))}
-        </datalist>
-        <label>
-          API
-          <select value={form.api} onChange={(e) => setForm({ ...form, api: e.target.value as "chat" | "responses" })}>
-            <option value="chat">Chat Completions (works with every compatible endpoint)</option>
-            <option value="responses">Responses (OpenAI only)</option>
-          </select>
-        </label>
-        <div className="row-buttons">
-          <button className="btn small" disabled={busy}>
-            Save
-          </button>
-          <button type="button" className="btn small ghost" disabled={busy} onClick={() => void runTest()} data-testid="llm-test">
-            Test connection
-          </button>
-          {st.hasKey && st.source.apiKey === "settings" ? (
-            <button type="button" className="btn small ghost" disabled={busy} onClick={() => void api.put("/api/models", { apiKey: "" }).then(load).then(reload)}>
-              Remove saved key
-            </button>
-          ) : null}
-        </div>
-        {test ? <p className={test.ok ? "ok small" : "error small"} data-testid="llm-test-result">{test.message}</p> : null}
-      </form>
     </section>
   );
 }

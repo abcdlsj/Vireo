@@ -23,13 +23,18 @@ export function settingsRoutes(app: App): Hono {
   r.get("/settings", (c) => c.json(app.settings.get()));
   r.patch("/settings", async (c) => c.json(app.settings.update(await c.req.json())));
 
-  // Any OpenAI-compatible endpoint.
+  // Any OpenAI-compatible endpoint, or a CLI on this machine.
   r.get("/models", async (c) => {
     await app.models.refresh();
     return c.json(app.models.status());
   });
   r.put("/models", async (c) => c.json(await app.models.save(await c.req.json())));
   r.post("/models/test", async (c) => c.json(await app.models.test()));
+  // Looks for Claude Code, Codex and pi on this machine again.
+  r.post("/models/detect", async (c) => {
+    await app.models.refresh(true);
+    return c.json(app.models.status());
+  });
 
   const requestInfo = (c: Context): RequestInfo => {
     const referer = c.req.header("referer");

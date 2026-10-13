@@ -107,6 +107,8 @@ interface ClaudeHook {
 }
 
 export async function runHook(kind: string, dataDir: string, argv: string[]): Promise<void> {
+  // The CLI is serving as Vireo's own model (see cli-model.ts): nothing to tell the owner.
+  if (process.env.VIREO_AS_MODEL) return;
   if (kind === "codex") {
     // Codex passes one JSON argument when a turn completes.
     let e: { type?: string; "last-assistant-message"?: string; cwd?: string } = {};

@@ -3114,3 +3114,180 @@ p.account img {
 :root.many-nodes .sidebar {
   background-image: linear-gradient(hsl(var(--node-hue) 65% 50% / var(--node-wash-a)), hsl(var(--node-hue) 65% 50% / var(--node-wash-a)));
 }
+
+/* ---------- Settings → Model: source choice and the CLI guide ---------- */
+.source-list,
+.cli-list {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.source-option,
+.cli-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  background: var(--bg);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  cursor: pointer;
+  transition:
+    background 0.12s,
+    border-color 0.12s;
+}
+
+.cli-option {
+  align-items: center;
+  padding: 8px 12px;
+  flex-wrap: wrap;
+}
+
+.source-option:hover,
+.cli-option:hover {
+  background: var(--hover);
+}
+
+.source-option.on,
+.cli-option.on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.source-option:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.radio-mark {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  border-radius: 50%;
+  border: 1.5px solid var(--line-strong);
+  background: var(--field);
+}
+
+.cli-option .radio-mark {
+  margin-top: 0;
+}
+
+.on > .radio-mark {
+  border: 5px solid var(--accent);
+}
+
+.source-text {
+  display: grid;
+  gap: 2px;
+}
+
+.source-label {
+  font-weight: 500;
+}
+
+.cli-name {
+  font-weight: 500;
+  margin-right: auto;
+}
+
+.cli-option .tag {
+  margin-left: 0;
+}
+
+/* Numbered steps, each a small heading and what to do. */
+ol.guide {
+  list-style: none;
+  margin: 14px 0 16px;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.guide-step {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: 12px;
+  position: relative;
+  padding-bottom: 12px;
+}
+
+/* The line that joins one step to the next. */
+.guide-step:not(:last-child)::before {
+  content: "";
+  position: absolute;
+  left: 11.5px;
+  top: 28px;
+  bottom: 2px;
+  width: 1px;
+  background: var(--line-strong);
+}
+
+.guide-num {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--block);
+  color: var(--text-2);
+}
+
+.guide-step.done .guide-num {
+  background: var(--accent-tag);
+  color: var(--accent-tag-text);
+}
+
+.guide-step.todo .guide-num {
+  background: var(--orange-tag);
+  color: var(--orange-text);
+}
+
+.settings .guide-body h4 {
+  margin: 2px 0 4px;
+}
+
+.guide-body .grid2 {
+  margin: 6px 0 0;
+}
+
+.guide-body label {
+  display: grid;
+  gap: 4px;
+}
+
+.guide-body pre.command {
+  margin: 6px 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.mono-line {
+  font-family: var(--mono);
+  word-break: break-all;
+}
+
+.cli-path {
+  margin-top: 6px;
+}
+
+.cli-path .inline-form {
+  margin-top: 0;
+}
+
+.model-now .dot {
+  display: inline-block;
+  vertical-align: middle;
+  margin-right: 4px;
+}
+
+.guide-body button.link {
+  font-size: 13px;
+}

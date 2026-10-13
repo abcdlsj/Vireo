@@ -3,17 +3,20 @@ import { OpenAIProvider } from "@openai/agents-openai";
 import OpenAI from "openai";
 import type { Config } from "./config.js";
 import type { Db } from "./db.js";
+import { CLI_ORDER, CLIS, detectClis, startCliBridge } from "./cli-model.js";
 import { startFakeLlmServer } from "./fake-llm-server.js";
 import { errorMessage, now } from "./util.js";
 import type { LlmCall, UsageLog } from "./usage.js";
 import type { Vault } from "./vault.js";
-import type { LlmApi, ModelStatus } from "@vireo/protocol";
+import type { CliId, LlmApi, LocalCli, ModelProviderChoice, ModelStatus } from "@vireo/protocol";
 
 /**
  * Model access goes through the OpenAI Agents SDK, pointed at any
  * OpenAI-compatible endpoint: OpenAI itself, a LiteLLM proxy (which fronts
  * Anthropic, Gemini, Bedrock, Ollama and more), OpenRouter, a local server…
- * A base URL and an API key are all it needs.
+ * A base URL and an API key are all it needs. Or no key at all: a CLI on
+ * this machine (Claude Code, Codex, pi) can be the model, through its own
+ * sign-in (see cli-model.ts).
  */
 
 
@@ -26,7 +29,27 @@ export interface LlmSettings {
   fastModel?: string;
   /** "chat" (Chat Completions, works everywhere) or "responses" (OpenAI's Responses API). */
   api?: LlmApi;
+  /** Endpoint, a CLI on this machine, or automatic (the endpoint when set up, else a CLI found here). */
+  provider?: ModelProviderChoice;
+  /** The CLI to use; automatic picks the first one found. */
+  cli?: CliId;
+  /** Where a CLI is, when it is not where Vireo looks. */
+  cliPaths?: Partial<Record<CliId, string>>;
+  /** Models chosen per CLI; empty means the CLI's default. */
+  cliModels?: Partial<Record<CliId, { main?: string; fast?: string }>>;
 }
+
+/** What the settings page saves: endpoint fields, and the CLI fields for one CLI. */
+export interface LlmSettingsInput extends Omit<LlmSettings, "cliPaths" | "cliModels"> {
+  cliPath?: string;
+  cliMain?: string;
+  cliFast?: string;
+}
+
+type Target = { kind: "endpoint" } | { kind: "cli"; id: CliId };
+
+/** How long a CLI detection stays fresh. */
+const DETECT_TTL_MS = 60_000;
 
 
 const OPENAI_URL = "https://api.openai.com/v1";
@@ -42,6 +65,10 @@ export class ModelService {
   private listError?: string;
   private listedFor = "";
   private cached?: { key: string; provider: ModelProvider; client: OpenAI };
+  private bridgeUrl?: Promise<string>;
+  private clis: LocalCli[] = [];
+  private detectedAt = 0;
+  private detecting?: Promise<void>;
 
   constructor(
     private readonly config: Config,
@@ -65,24 +92,84 @@ export class ModelService {
         apiKey = undefined;
       }
     }
-    return { baseUrl: s.baseUrl, model: s.model, fastModel: s.fastModel, api: s.api, apiKey };
+    return { baseUrl: s.baseUrl, model: s.model, fastModel: s.fastModel, api: s.api, apiKey, provider: s.provider, cli: s.cli, cliPaths: s.cliPaths, cliModels: s.cliModels };
   }
 
   /** Saves owner settings. Empty strings clear a value; an omitted apiKey keeps the stored one. */
-  async save(input: LlmSettings): Promise<ModelStatus> {
+  async save(input: LlmSettingsInput): Promise<ModelStatus> {
     const cur = this.db.getKv<LlmSettings & { apiKeyEnc?: string }>("llm.settings") ?? {};
     const clean = (v: string | undefined, old: string | undefined) => (v === undefined ? old : v.trim() || undefined);
+    const cli = input.cli ?? cur.cli;
+    const cliPaths = { ...cur.cliPaths };
+    const cliModels = { ...cur.cliModels };
+    if (cli && input.cliPath !== undefined) cliPaths[cli] = clean(input.cliPath, undefined);
+    if (cli && (input.cliMain !== undefined || input.cliFast !== undefined)) {
+      const was = cliModels[cli] ?? {};
+      cliModels[cli] = { main: clean(input.cliMain, was.main), fast: clean(input.cliFast, was.fast) };
+    }
     const next = {
       baseUrl: clean(input.baseUrl, cur.baseUrl),
       model: clean(input.model, cur.model),
       fastModel: clean(input.fastModel, cur.fastModel),
       api: input.api ?? cur.api,
       apiKeyEnc: input.apiKey === undefined ? cur.apiKeyEnc : input.apiKey.trim() ? this.vault.encrypt(input.apiKey.trim()) : undefined,
+      provider: input.provider ?? cur.provider,
+      cli,
+      cliPaths,
+      cliModels,
     };
     this.db.setKv("llm.settings", next);
     this.cached = undefined;
     await this.refresh(true);
     return this.status();
+  }
+
+  // ---- CLIs on this machine ----
+
+  /** Looks for the CLIs again (at most once a minute unless forced). */
+  async detect(force = false): Promise<LocalCli[]> {
+    if (this.config.fakeModel && !force) return this.clis;
+    if (!force && this.detectedAt && Date.now() - this.detectedAt < DETECT_TTL_MS) return this.clis;
+    this.detecting ??= detectClis(this.saved().cliPaths)
+      .then((list) => {
+        this.clis = list;
+        this.detectedAt = Date.now();
+      })
+      .finally(() => {
+        this.detecting = undefined;
+      });
+    await this.detecting;
+    return this.clis;
+  }
+
+  private found(id: CliId | undefined): LocalCli | undefined {
+    return this.clis.find((c) => c.id === id && c.found);
+  }
+
+  /** An endpoint has been set up: a key, or a base URL of the owner's own. */
+  private endpointSet(): boolean {
+    const e = this.effective();
+    return Boolean(e.apiKey) || e.source.baseUrl !== "default";
+  }
+
+  /** What serves the model right now. */
+  private target(): Target {
+    if (this.config.fakeModel) return { kind: "endpoint" };
+    const s = this.saved();
+    const first = CLI_ORDER.find((id) => this.found(id));
+    if (s.provider === "endpoint") return { kind: "endpoint" };
+    if (s.provider === "cli") return { kind: "cli", id: s.cli ?? first ?? "claude" };
+    if (this.endpointSet()) return { kind: "endpoint" };
+    const id = this.found(s.cli) ? s.cli : first;
+    return id ? { kind: "cli", id } : { kind: "endpoint" };
+  }
+
+  private bridge(): Promise<string> {
+    this.bridgeUrl ??= startCliBridge((id) => {
+      const c = this.clis.find((x) => x.id === id);
+      return { path: c?.found ? c.path : undefined, models: c?.models ?? [] };
+    }).then((b) => b.url);
+    return this.bridgeUrl;
   }
 
   /** Effective settings: what the owner saved in the app wins over environment variables. */
@@ -108,12 +195,15 @@ export class ModelService {
   /** The endpoint is usable: an API key, or a self-hosted endpoint that may not need one. */
   private reachable(): boolean {
     if (this.config.fakeModel) return true;
-    const e = this.effective();
-    return Boolean(e.apiKey) || e.source.baseUrl !== "default";
+    const t = this.target();
+    if (t.kind === "cli") return Boolean(this.found(t.id));
+    return this.endpointSet();
   }
 
   private async connection(): Promise<{ baseUrl: string; apiKey: string; api: LlmApi }> {
     if (this.fakeUrl) return { baseUrl: await this.fakeUrl, apiKey: "vireo-fake", api: "chat" };
+    const t = this.target();
+    if (t.kind === "cli") return { baseUrl: `${await this.bridge()}/${t.id}/v1`, apiKey: "local-cli", api: "chat" };
     const e = this.effective();
     // Local endpoints such as Ollama accept any key, but the client requires one.
     return { baseUrl: e.baseUrl, apiKey: e.apiKey || "not-needed", api: e.api };
@@ -123,7 +213,9 @@ export class ModelService {
     const c = await this.connection();
     const key = `${c.baseUrl}|${c.apiKey}|${c.api}`;
     if (this.cached?.key !== key) {
-      const client = new OpenAI({ apiKey: c.apiKey, baseURL: c.baseUrl, timeout: 180_000, maxRetries: 2 });
+      // A CLI turn is a process of its own: slower to start, and not worth repeating on failure.
+      const cli = this.target().kind === "cli";
+      const client = new OpenAI({ apiKey: c.apiKey, baseURL: c.baseUrl, timeout: cli ? 600_000 : 180_000, maxRetries: cli ? 0 : 2 });
       this.cached = { key, client, provider: new OpenAIProvider({ openAIClient: client, useResponses: c.api === "responses" }) };
     }
     return this.cached;
@@ -131,6 +223,14 @@ export class ModelService {
 
   /** Lists the endpoint's models so the owner can pick, and so a model can be chosen automatically. */
   async refresh(force = false): Promise<void> {
+    await this.detect(force);
+    const t = this.target();
+    if (t.kind === "cli") {
+      const c = this.clis.find((x) => x.id === t.id);
+      this.available = c?.models ?? [];
+      this.listError = c?.found ? undefined : c?.error ? `${CLIS[t.id].name} did not answer: ${c.error}` : `${CLIS[t.id].name} was not found on this machine.`;
+      return;
+    }
     if (!this.reachable()) {
       this.available = [];
       this.listError = undefined;
@@ -156,6 +256,8 @@ export class ModelService {
   mainModel(): string | undefined {
     if (!this.reachable()) return undefined;
     if (this.config.fakeModel) return this.saved().model || "fake-main";
+    const t = this.target();
+    if (t.kind === "cli") return this.saved().cliModels?.[t.id]?.main || CLIS[t.id].defaults.main;
     const e = this.effective();
     if (e.model) return e.model;
     for (const p of MAIN_PATTERNS) {
@@ -170,6 +272,8 @@ export class ModelService {
     const main = this.mainModel();
     if (!main) return undefined;
     if (this.config.fakeModel) return this.saved().fastModel || "fake-fast";
+    const t = this.target();
+    if (t.kind === "cli") return this.saved().cliModels?.[t.id]?.fast || CLIS[t.id].defaults.fast;
     const e = this.effective();
     if (e.fastModel) return e.fastModel;
     // A cheaper sibling from the same family/provider, e.g. claude-*-haiku next to claude-*-sonnet.
@@ -182,18 +286,26 @@ export class ModelService {
     const e = this.effective();
     const s = this.saved();
     const main = this.mainModel();
+    const t = this.target();
+    const cli = t.kind === "cli" ? t.id : s.cli;
     return {
       ready: Boolean(main),
       fake: this.config.fakeModel,
+      provider: s.provider ?? "auto",
+      using: t.kind,
+      cli,
+      clis: this.clis,
       baseUrl: this.config.fakeModel ? "(scripted model)" : e.baseUrl,
       hasKey: Boolean(e.apiKey),
       source: e.source,
       api: e.api,
       main,
       fast: this.fastModel(),
-      choice: { main: s.model, fast: s.fastModel },
+      choice: t.kind === "cli" ? { main: s.cliModels?.[t.id]?.main, fast: s.cliModels?.[t.id]?.fast } : { main: s.model, fast: s.fastModel },
       available: this.available,
       error: this.listError ?? (this.reachable() && !main ? "No model selected. Choose one below, or set VIREO_MODEL." : undefined),
+      cliModels: Object.fromEntries(CLI_ORDER.map((id) => [id, s.cliModels?.[id] ?? {}])),
+      cliPaths: s.cliPaths ?? {},
     };
   }
 
@@ -206,6 +318,8 @@ export class ModelService {
   /** Short name of the endpoint for usage records ("api.openai.com", "litellm", "scripted"). */
   providerLabel(): string {
     if (this.config.fakeModel) return "scripted";
+    const t = this.target();
+    if (t.kind === "cli") return `${t.id} cli`;
     try {
       return new URL(this.effective().baseUrl).hostname;
     } catch {
@@ -218,7 +332,9 @@ export class ModelService {
     await this.refresh(true);
     try {
       const out = await this.complete({ task: "connection_test", system: "Reply with the single word: ok", prompt: "ping", maxTokens: 20, tier: "main" });
-      return { ok: true, message: `Connected. ${this.mainModel()} replied: ${out.slice(0, 40)}` };
+      const t = this.target();
+      const via = t.kind === "cli" ? ` through ${CLIS[t.id].name}` : "";
+      return { ok: true, message: `Connected${via}. ${this.mainModel()} replied: ${out.slice(0, 40)}` };
     } catch (err) {
       return { ok: false, message: errorMessage(err) };
     }
@@ -238,7 +354,7 @@ export class ModelService {
     maxTokens?: number;
   }): Promise<string> {
     const model = opts.tier === "main" ? this.mainModel() : this.fastModel();
-    if (!model) throw new Error("No model is configured. Set a base URL, API key and model in Settings.");
+    if (!model) throw new Error("No model is configured. In Settings → Model, use a CLI on this machine (Claude Code, Codex or pi) or set a base URL, API key and model.");
     const started = now();
     const agent = new Agent({
       name: opts.task,

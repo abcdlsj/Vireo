@@ -380,8 +380,9 @@ test.describe("Milestone 1 — Threads that think", () => {
     await page.goto("/#settings/model");
     const card = page.getByTestId("models-card");
     await expect(card).toContainText("fake-main");
-    await card.getByTestId("llm-test").click();
-    await expect(card.getByTestId("llm-test-result")).toContainText("Connected");
+    const endpoint = page.getByTestId("endpoint-form");
+    await endpoint.getByTestId("llm-test").click();
+    await expect(endpoint.getByTestId("llm-test-result")).toContainText("Connected");
   });
 
   test("[C1] Overview answers quick things and opens a thread for multi-step matters", async ({ page, request }) => {

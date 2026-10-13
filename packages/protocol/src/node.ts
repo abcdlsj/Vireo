@@ -280,9 +280,45 @@ export interface OwnerSettings {
 
 export type LlmApi = "chat" | "responses";
 
+/** A coding-agent CLI on the node's machine that can serve as Vireo's model. */
+export type CliId = "claude" | "codex" | "pi";
+
+/**
+ * Where Vireo's model comes from: an OpenAI-compatible endpoint, or a CLI on
+ * the node's machine (and its sign-in). "auto" uses the endpoint when one is
+ * set up, else the first CLI found.
+ */
+export type ModelProviderChoice = "auto" | "endpoint" | "cli";
+
+export interface LocalCli {
+  id: CliId;
+  name: string;
+  found: boolean;
+  /** The executable Vireo runs. */
+  path?: string;
+  version?: string;
+  /** Why it was not usable, when it was there but did not answer. */
+  error?: string;
+  /** The command that installs it. */
+  install: string;
+  /** What the owner runs once so the CLI is signed in. */
+  signIn: string;
+  /** Model names the CLI offers, for the pickers. */
+  models: string[];
+  /** What Vireo uses when the owner picks nothing. */
+  defaults: { main: string; fast: string };
+}
+
 export interface ModelStatus {
   ready: boolean;
   fake: boolean;
+  /** What the owner chose, and what is in use now. */
+  provider: ModelProviderChoice;
+  using: "endpoint" | "cli";
+  /** The CLI in use (or chosen), when using is "cli". */
+  cli?: CliId;
+  /** Every supported CLI and whether it is on this machine. */
+  clis: LocalCli[];
   baseUrl: string;
   hasKey: boolean;
   /** Where each value came from, for the settings page. */
@@ -294,6 +330,9 @@ export interface ModelStatus {
   choice: { main?: string; fast?: string };
   available: string[];
   error?: string;
+  /** Models chosen per CLI (empty means the CLI's default), and paths the owner set. */
+  cliModels: Partial<Record<CliId, { main?: string; fast?: string }>>;
+  cliPaths: Partial<Record<CliId, string>>;
 }
 
 /** What the assistant knows about one catalog plugin: whether it can use it now. */
