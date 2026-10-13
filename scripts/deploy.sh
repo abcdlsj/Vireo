@@ -5,18 +5,19 @@
 # the synced build on stock images. (With the published images instead, copy
 # deploy/vps to the server and run `docker compose pull && docker compose up -d`.)
 #
-#   VIREO_DOMAIN=cloud.example.com scripts/deploy.sh
+#   DEPLOY_HOST=my-vps VIREO_DOMAIN=cloud.example.com scripts/deploy.sh
 #
-#   DEPLOY_HOST       ssh host (default tenc_sh)
+#   DEPLOY_HOST       ssh host (required)
 #   DEPLOY_DIR        directory on the server, relative to home (default vireo)
 #   VIREO_DOMAIN      the cloud's domain (required); its DNS points at the server
+#   TZ                the containers' timezone (default UTC)
 #   COMPOSE_PROFILES  optional services: node, litellm (comma-separated)
 #
 # cloud.env and node.env (from the *.env.example next to compose.yaml) and
 # data/ live only on the server and are never touched.
 set -euo pipefail
 
-DEPLOY_HOST="${DEPLOY_HOST:-tenc_sh}"
+DEPLOY_HOST="${DEPLOY_HOST:?Set DEPLOY_HOST to the ssh host of the server}"
 DEPLOY_DIR="${DEPLOY_DIR:-vireo}"
 VIREO_DOMAIN="${VIREO_DOMAIN:?Set VIREO_DOMAIN to the domain of the cloud}"
 COMPOSE_PROFILES="${COMPOSE_PROFILES:-}"
@@ -64,7 +65,7 @@ COMPOSE_PROJECT_NAME=vireo
 COMPOSE_PROFILES=$COMPOSE_PROFILES
 VIREO_DOMAIN=$VIREO_DOMAIN
 VIREO_NAME=$DEPLOY_HOST
-TZ=Asia/Shanghai
+TZ=${TZ:-UTC}
 ENV
 
 echo "→ push to $DEPLOY_HOST:~/$DEPLOY_DIR"
