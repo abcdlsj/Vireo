@@ -129,6 +129,11 @@ export class ModelService {
   /** Looks for the CLIs again (at most once a minute unless forced). */
   async detect(force = false): Promise<LocalCli[]> {
     if (!force && this.detectedAt && Date.now() - this.detectedAt < DETECT_TTL_MS) return this.clis;
+    // A forced look has to see the paths saved a moment ago, so a detection already in flight,
+    // started with the older ones, is waited on rather than shared: it would answer for the
+    // paths the owner has just changed, reporting no CLI where there is one and the machine's
+    // own CLI where the owner pointed at another.
+    if (force && this.detecting) await this.detecting;
     this.detecting ??= detectClis(this.saved().cliPaths)
       .then((list) => {
         this.clis = list;
