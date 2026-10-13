@@ -1328,6 +1328,7 @@ button.link.danger {
 }
 
 .browser-stage {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -1372,6 +1373,52 @@ button.link.danger {
   cursor: default;
   touch-action: none;
   user-select: none;
+}
+
+/* The field the owner's keyboard types into: unseen, except while an input method composes, where it
+   shows what is being composed at the spot they last clicked. 16px keeps iOS from zooming in on focus. */
+.browser-stage .browser-keys {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  border: 0;
+  margin: 0;
+  opacity: 0;
+  resize: none;
+  overflow: hidden;
+  font: 16px/1.4 var(--font, inherit);
+  color: var(--text);
+  background: transparent;
+  caret-color: transparent;
+  pointer-events: none;
+}
+
+.browser-stage .browser-keys.composing {
+  opacity: 1;
+  width: auto;
+  min-width: 2em;
+  max-width: 60%;
+  height: auto;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  box-shadow: var(--shadow-pop);
+  white-space: pre;
+  field-sizing: content;
+}
+
+/* The keyboard button matters where there is no hardware keyboard. */
+.browser-stage .browser-keyboard {
+  display: none;
+}
+
+@media (pointer: coarse) {
+  .browser-stage .browser-keyboard {
+    display: inline-flex;
+  }
 }
 
 .browser-stage .fine {
@@ -1493,8 +1540,37 @@ button.link.danger {
   }
 }
 
-.notice.browser-ask-ended svg {
+/* A settled ask: one line among the steps, its icon in a small tinted dot. */
+.browser-ask-ended {
+  display: inline-flex;
+  align-self: flex-start;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--muted);
+  padding: 2px 0;
+}
+
+.browser-ask-ended-icon {
+  display: inline-grid;
+  place-items: center;
   flex: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--accent-tag);
+  color: var(--accent);
+}
+
+.browser-ask-ended-icon svg {
+  width: 12px;
+  height: 12px;
+}
+
+.browser-ask-ended.expired .browser-ask-ended-icon,
+.browser-ask-ended.stopped .browser-ask-ended-icon {
+  background: var(--active);
+  color: var(--muted);
 }
 
 /* ---------- action & procedure cards (callout blocks) ---------- */

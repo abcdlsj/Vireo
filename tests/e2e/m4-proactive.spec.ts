@@ -202,4 +202,32 @@ test.describe("Milestone 4 — Proactive and hands-on", () => {
     await frame.getByRole("button", { name: "Try me" }).click();
     await expect(frame.getByRole("button", { name: "Clicked" })).toBeVisible();
   });
+
+  test("[M4.2] the owner types into the browser they took over, from a keyboard, an input method or a phone", async ({ page, request }) => {
+    await request.get(`${FIXTURES}/_reset`);
+    const r = await request.post("/api/threads", { data: { text: `Book a table for 2 people at ${FIXTURES}/login under the name Lisa, I'll sign in myself` } });
+    const id = (await r.json()).thread.id as string;
+    test.info().annotations.push({ type: "thread", description: id });
+    await expect.poll(async () => (await (await request.get(`/api/threads/${id}/browser/control`)).json()).controlled, { timeout: 30_000 }).toBe(true);
+    await page.goto(`/#thread/${id}?browser`);
+    const full = page.locator(".browser-stage.full");
+    await expect(full).toHaveClass(/controlled/);
+    const keys = full.getByTestId("browser-keys");
+    // Typing goes to a real text field, so keyboards, input methods and phones all have somewhere to type.
+    await expect(keys).toBeFocused();
+    await full.locator("img").click({ position: { x: 4, y: 4 } });
+    await expect(keys).toBeFocused();
+    await page.keyboard.press("Tab");
+    await page.keyboard.type("lisa");
+    await page.keyboard.press("Tab");
+    // A phone keyboard or an input method sends text with no key events, and deletes the same way.
+    await page.keyboard.insertText("s3cret-Pa55wordX");
+    await keys.evaluate((el: HTMLTextAreaElement) => {
+      el.value = "";
+      el.dispatchEvent(new InputEvent("input", { inputType: "deleteContentBackward", bubbles: true }));
+    });
+    await page.keyboard.insertText("!");
+    await page.keyboard.press("Enter");
+    await expect.poll(async () => (await request.get(`${FIXTURES}/_logins`)).json()).toEqual([{ u: "lisa", ok: true }]);
+  });
 });

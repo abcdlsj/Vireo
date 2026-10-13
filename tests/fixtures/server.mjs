@@ -7,6 +7,8 @@ const BASE = `http://localhost:${PORT}`;
 const USER = "lisa";
 const PASS = "s3cret-Pa55word!";
 const submissions = [];
+/** Who tried to sign in, and whether it worked: shows what the owner typed by hand. */
+const logins = [];
 
 const page = (title, body) =>
   `<!doctype html><html><head><meta charset="utf-8"><title>${title}</title></head><body>${body}</body></html>`;
@@ -63,6 +65,7 @@ const server = createServer(async (req, res) => {
   }
   if (url.pathname === "/login" && req.method === "POST") {
     const form = await readBody(req);
+    logins.push({ u: form.get("u"), ok: form.get("u") === USER && form.get("p") === PASS });
     if (form.get("u") === USER && form.get("p") === PASS) return send(302, "", "text/plain", { location: "/booking", "set-cookie": "session=ok; Path=/" });
     return send(401, page("Sign in failed", "<p>Wrong username or password.</p><a href='/login'>Try again</a>"));
   }
@@ -86,8 +89,10 @@ const server = createServer(async (req, res) => {
     return send(200, page("Booking confirmed", `<h1>Thank you</h1><p>Booking confirmed for ${form.get("name")}, ${form.get("guests")} guests on ${form.get("date")}.</p>`));
   }
   if (url.pathname === "/_submissions") return send(200, JSON.stringify(submissions), "application/json");
+  if (url.pathname === "/_logins") return send(200, JSON.stringify(logins), "application/json");
   if (url.pathname === "/_reset") {
     submissions.length = 0;
+    logins.length = 0;
     return send(200, "{}", "application/json");
   }
   send(404, page("Not found", "Not found"));

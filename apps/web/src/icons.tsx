@@ -114,6 +114,13 @@ export const FullscreenIcon = () => (
   </Icon>
 );
 
+export const KeyboardIcon = () => (
+  <Icon>
+    <rect x="1.8" y="4" width="12.4" height="8" rx="1.4" />
+    <path d="M4.4 6.6h.01M6.8 6.6h.01M9.2 6.6h.01M11.6 6.6h.01M4.4 9.4h.01M11.6 9.4h.01M6.4 9.4h3.2" />
+  </Icon>
+);
+
 export const ClockIcon = () => (
   <Icon>
     <circle cx="8" cy="8" r="5.6" />

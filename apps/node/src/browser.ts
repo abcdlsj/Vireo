@@ -541,14 +541,18 @@ export class BrowserService {
     return true;
   }
 
-  /** Replays the owner's mouse and keyboard on the current tab, in order. */
-  input(threadId: string, ev: OwnerInput): Promise<void> {
+  /**
+   * Replays the owner's mouse and keyboard on the current tab, in order. After a
+   * click it says whether the page's focused element takes text, so a phone can
+   * keep its keyboard up for a field and put it away for anything else.
+   */
+  input(threadId: string, ev: OwnerInput): Promise<{ editable?: boolean }> {
     const c = this.control.get(threadId);
     if (!c) return Promise.reject(new Error("Take over the browser first"));
-    const run = async () => {
+    const run = async (): Promise<{ editable?: boolean }> => {
       const t = this.tabs(threadId);
       const page = t.current;
-      if (!page) return;
+      if (!page) return {};
       const vp = page.viewportSize() ?? { width: 1280, height: 900 };
       const at = (e: { x: number; y: number }) => [Math.round(clamp01(e.x) * vp.width), Math.round(clamp01(e.y) * vp.height)] as const;
       switch (ev.type) {
@@ -562,7 +566,7 @@ export class BrowserService {
         case "up":
           await page.mouse.move(...at(ev));
           await page.mouse.up({ button: ev.button ?? "left" });
-          break;
+          return { editable: await focusTakesText(page) };
         case "wheel":
           await page.mouse.move(...at(ev));
           await page.mouse.wheel(ev.dx, ev.dy);
@@ -574,9 +578,10 @@ export class BrowserService {
           await page.keyboard.insertText(ev.text);
           break;
       }
+      return {};
     };
     const next = c.queue.then(run);
-    c.queue = next.catch(() => undefined);
+    c.queue = next.then(() => undefined, () => undefined);
     return next;
   }
 
@@ -594,6 +599,21 @@ export class BrowserService {
     this.threads.clear();
     if (ctx) await (await ctx).close().catch(() => undefined);
   }
+}
+
+/** Whether the element with focus, looking into shadow roots, is one you type into. A frame counts, since its insides can't be seen from here. */
+function focusTakesText(page: Page): Promise<boolean> {
+  return page
+    .evaluate(() => {
+      let a = document.activeElement;
+      while (a?.shadowRoot?.activeElement) a = a.shadowRoot.activeElement;
+      if (!a) return false;
+      if ((a as HTMLElement).isContentEditable || a.tagName === "TEXTAREA" || a.tagName === "IFRAME") return true;
+      if (a.tagName !== "INPUT") return false;
+      const type = (a as HTMLInputElement).type;
+      return !["button", "checkbox", "radio", "submit", "reset", "file", "image", "range", "color", "hidden"].includes(type);
+    })
+    .catch(() => false);
 }
 
 function clamp01(n: number): number {

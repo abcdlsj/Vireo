@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
 import { relTime } from "../format";
-import { AlertIcon, CheckIcon, PointerIcon } from "../icons";
+import { AlertIcon, CheckIcon, ClockIcon, PointerIcon } from "../icons";
 import { authedUrl } from "../nodes";
 
 /**
@@ -25,19 +25,19 @@ export function BrowserAsk({
   onOpen: () => void;
 }) {
   const ask = request.replace(/[.。!！]+$/, "");
-  if (state === "done") {
-    return (
-      <div className="notice browser-ask-ended" data-testid="browser-ask-ended">
-        <CheckIcon />
-        <span>You handed the browser back · {ask}</span>
-      </div>
-    );
-  }
+  // Settled, it is one quiet line in the flow of steps. The ask itself is already in Vireo's message
+  // above, so it is only a hover away here rather than said again.
   if (state !== "waiting") {
+    const [icon, text] =
+      state === "done"
+        ? [<CheckIcon key="i" />, "You handed the browser back"]
+        : state === "expired"
+          ? [<ClockIcon key="i" />, "Vireo stopped waiting after 20 minutes"]
+          : [<AlertIcon key="i" />, "Stopped while waiting for you"];
     return (
-      <div className="notice browser-ask-ended" data-testid="browser-ask-ended">
-        <AlertIcon />
-        <span>{state === "expired" ? `Vireo took the browser back after 20 minutes · ${ask}` : `Stopped while waiting for you · ${ask}`}</span>
+      <div className={`browser-ask-ended ${state}`} title={ask} data-testid="browser-ask-ended">
+        <span className="browser-ask-ended-icon">{icon}</span>
+        <span>{text}</span>
       </div>
     );
   }

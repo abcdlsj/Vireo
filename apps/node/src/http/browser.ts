@@ -78,11 +78,10 @@ export function browserRoutes(app: App): Hono {
     if (!ok) return c.json({ error: "Unknown input" }, 400);
     if ((ev.type === "down" || ev.type === "up") && ev.button && !["left", "middle", "right"].includes(ev.button)) return c.json({ error: "Unknown button" }, 400);
     try {
-      await app.browser.input(id, ev);
+      return c.json({ ok: true, ...(await app.browser.input(id, ev)) });
     } catch (err) {
       return c.json({ error: err instanceof Error ? err.message : String(err) }, 409);
     }
-    return c.json({ ok: true });
   });
 
   return r;

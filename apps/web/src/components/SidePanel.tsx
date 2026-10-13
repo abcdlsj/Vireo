@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState, type ClipboardEvent, type CSSProperties, type RefObject, type CompositionEvent, type DragEvent, type KeyboardEvent, type MouseEvent, type PointerEvent } from "react";
+import { useEffect, useRef, useState, type ClipboardEvent, type CSSProperties, type RefObject, type DragEvent, type FormEvent, type KeyboardEvent, type MouseEvent, type PointerEvent } from "react";
 import { api, fileUrl, type FileInfo, type LlmCallRecord, type ThreadAudit, type ThreadDetail, type ThreadUsage, type ModelUsage, type ToolCallRecord } from "../api";
 import { authedUrl } from "../nodes";
 import { bytes, compact, dateTime, duration, purposeLabel, shortTime, stepOutcome, stepSubject, tokens, toolLabel, usd } from "../format";
-import { AttachIcon, CalendarIcon, CloseIcon, FullscreenIcon, GlobeIcon, MailIcon, NarrowIcon, WidenIcon } from "../icons";
+import { AttachIcon, CalendarIcon, CloseIcon, FullscreenIcon, GlobeIcon, KeyboardIcon, MailIcon, NarrowIcon, WidenIcon } from "../icons";
 
 const WIDE_KEY = "vireo.panel.wide";
 
@@ -446,16 +446,35 @@ interface Control {
   request?: string;
 }
 
-const KEY_NAMES: Record<string, string> = { " ": "Space" };
-
-/** Playwright's name for a key press with modifiers, e.g. "Control+a"; null for plain characters, which are inserted as text. */
+/**
+ * Playwright's name for a key the owner pressed: "Enter", "ControlOrMeta+a". Null for anything that
+ * types text, which the keyboard field reads from its input events instead, so phone keyboards and
+ * input methods (whose key events carry no character) type the same as a hardware keyboard.
+ */
 function keyName(e: KeyboardEvent): string | null {
-  const mods = [e.ctrlKey && "Control", e.altKey && "Alt", e.metaKey && "Meta"].filter(Boolean) as string[];
-  if (e.key.length === 1 && !mods.length) return null;
-  if (["Control", "Alt", "Meta", "Shift", "Dead", "Process", "Unidentified"].includes(e.key)) return "";
-  if (e.shiftKey && e.key.length > 1) mods.push("Shift");
-  return [...mods, KEY_NAMES[e.key] ?? e.key].join("+");
+  if (e.nativeEvent.isComposing || e.keyCode === 229 || ["Process", "Unidentified", "Dead"].includes(e.key)) return null;
+  if (["Control", "Alt", "Meta", "Shift", "CapsLock"].includes(e.key)) return null;
+  const command = e.ctrlKey || e.metaKey;
+  // Plain characters, Option characters on a Mac and AltGr characters elsewhere are text.
+  if (e.key.length === 1 && (!command || (e.ctrlKey && e.altKey))) return null;
+  // The page runs on Linux, where Command shortcuts are Control ones.
+  const mods = [command && "ControlOrMeta", e.altKey && "Alt", e.shiftKey && "Shift"].filter(Boolean) as string[];
+  return [...mods, e.key === " " ? "Space" : e.key].join("+");
 }
+
+/** What the keyboard field holds between keystrokes, so a phone's backspace has something to delete. */
+const SINK = "\u200b";
+
+/** What the owner's edit did to the keyboard field: characters deleted before the caret, and text typed. */
+function sinkEdit(value: string): { deleted: number; text: string } {
+  let pre = 0;
+  while (pre < SINK.length && pre < value.length && value[pre] === SINK[pre]) pre++;
+  let post = 0;
+  while (post < SINK.length - pre && post < value.length - pre && value[value.length - 1 - post] === SINK[SINK.length - 1 - post]) post++;
+  return { deleted: SINK.length - pre - post, text: value.slice(pre, value.length - post).replaceAll(SINK, "") };
+}
+
+const coarse = () => typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches;
 
 const BUTTONS = ["left", "middle", "right"] as const;
 
@@ -479,6 +498,9 @@ export function BrowserView({ threadId, running, asking, overlay, onClose }: { t
   const timer = useRef<number | undefined>(undefined);
   const img = useRef<HTMLImageElement>(null);
   const stage = useRef<HTMLDivElement>(null);
+  const sink = useRef<HTMLTextAreaElement>(null);
+  const [composing, setComposing] = useState(false);
+  const [caret, setCaret] = useState<{ x: number; y: number } | null>(null);
   const queue = useRef<Promise<unknown>>(Promise.resolve());
   const pendingMove = useRef<{ x: number; y: number } | null>(null);
   const live = running || control.controlled;
@@ -491,7 +513,7 @@ export function BrowserView({ threadId, running, asking, overlay, onClose }: { t
       .get<Control>(`/api/threads/${threadId}/browser/control`)
       .then((c) => {
         setControl(c);
-        if (overlay && c.controlled) window.setTimeout(() => stage.current?.focus(), 0);
+        if (overlay && c.controlled) window.setTimeout(() => sink.current?.focus(), 0);
       })
       .catch(() => undefined);
   }, [threadId, running, state, asking, overlay]);
@@ -509,7 +531,7 @@ export function BrowserView({ threadId, running, asking, overlay, onClose }: { t
       if (!on && overlay) setFull(false);
       if (on) {
         setFull(true);
-        window.setTimeout(() => stage.current?.focus(), 0);
+        window.setTimeout(() => sink.current?.focus(), 0);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -540,9 +562,43 @@ export function BrowserView({ threadId, running, asking, overlay, onClose }: { t
     return () => window.removeEventListener("keydown", onKey);
   }, [full, control.controlled]);
 
-  /** Sends inputs one after another so the page sees them in order. */
-  const send = (ev: Record<string, unknown>) => {
-    queue.current = queue.current.then(() => api.post(`/api/threads/${threadId}/browser/input`, ev)).catch(() => undefined);
+  /**
+   * Sends inputs one after another so the page sees them in order. When one is refused, the
+   * browser was handed back meanwhile (Vireo stopped waiting), so the view catches up.
+   */
+  const send = (ev: Record<string, unknown>, then?: (res: { editable?: boolean }) => void) => {
+    queue.current = queue.current
+      .then(() => api.post<{ editable?: boolean }>(`/api/threads/${threadId}/browser/input`, ev))
+      .then((res) => then?.(res))
+      .catch(() =>
+        api
+          .get<Control>(`/api/threads/${threadId}/browser/control`)
+          .then(setControl)
+          .catch(() => undefined),
+      );
+  };
+
+  /** Puts keyboard focus in the keyboard field; on a phone, from a tap, that brings up the keyboard. */
+  const focusKeys = () => {
+    const el = sink.current;
+    if (!el) return;
+    if (el.value !== SINK) el.value = SINK;
+    el.focus({ preventScroll: true });
+    el.setSelectionRange(SINK.length, SINK.length);
+  };
+
+  /** Sends what the owner typed into the keyboard field to the page, then empties the field. */
+  const flush = () => {
+    const el = sink.current;
+    if (!el || el.value === SINK) return;
+    const { deleted, text } = sinkEdit(el.value);
+    el.value = SINK;
+    el.setSelectionRange(SINK.length, SINK.length);
+    for (let i = 0; i < deleted; i++) send({ type: "key", key: "Backspace" });
+    text.split(/\r?\n/).forEach((line, i) => {
+      if (i) send({ type: "key", key: "Enter" });
+      if (line) send({ type: "text", text: line });
+    });
   };
 
   const at = (clientX: number, clientY: number) => {
@@ -566,11 +622,21 @@ export function BrowserView({ threadId, running, asking, overlay, onClose }: { t
     ? {
         onPointerDown: (e: PointerEvent) => {
           e.preventDefault();
-          stage.current?.focus();
+          const r = stage.current?.getBoundingClientRect();
+          // What an input method composes shows by the click, kept inside the view.
+          if (r) setCaret({ x: Math.max(0, Math.min(e.clientX - r.left, r.width - 160)), y: e.clientY - r.top });
+          focusKeys();
           (e.target as Element).setPointerCapture(e.pointerId);
           send({ type: "down", ...at(e.clientX, e.clientY), button: BUTTONS[e.button] ?? "left" });
         },
-        onPointerUp: (e: PointerEvent) => send({ type: "up", ...at(e.clientX, e.clientY), button: BUTTONS[e.button] ?? "left" }),
+        onPointerUp: (e: PointerEvent) => {
+          // iOS opens the keyboard only for focus given while handling the tap itself.
+          if (e.pointerType !== "mouse") focusKeys();
+          send({ type: "up", ...at(e.clientX, e.clientY), button: BUTTONS[e.button] ?? "left" }, (res) => {
+            // On a phone, the keyboard stays up for a text field and goes away for anything else.
+            if (coarse() && res.editable === false && document.activeElement === sink.current) sink.current?.blur();
+          });
+        },
         onPointerMove: (e: PointerEvent) => {
           const first = !pendingMove.current;
           pendingMove.current = at(e.clientX, e.clientY);
@@ -585,25 +651,30 @@ export function BrowserView({ threadId, running, asking, overlay, onClose }: { t
       }
     : {};
 
-  const keys = control.controlled
-    ? {
-        onKeyDown: (e: KeyboardEvent) => {
-          if (e.nativeEvent.isComposing) return;
-          // Leave paste to the paste event, which carries the text.
-          if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "v") return;
-          const name = keyName(e);
-          e.preventDefault();
-          if (name === null) send({ type: "text", text: e.key });
-          else if (name) send({ type: "key", key: name });
-        },
-        onPaste: (e: ClipboardEvent) => {
-          e.preventDefault();
-          const text = e.clipboardData.getData("text/plain");
-          if (text) send({ type: "text", text });
-        },
-        onCompositionEnd: (e: CompositionEvent) => e.data && send({ type: "text", text: e.data }),
-      }
-    : {};
+  const keys = {
+    onKeyDown: (e: KeyboardEvent) => {
+      // Leave paste to the paste event, which carries the text.
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "v") return;
+      const name = keyName(e);
+      if (name === null) return;
+      e.preventDefault();
+      send({ type: "key", key: name });
+    },
+    onInput: (e: FormEvent<HTMLTextAreaElement>) => {
+      if (!composing && !(e.nativeEvent as InputEvent).isComposing) flush();
+    },
+    onCompositionStart: () => setComposing(true),
+    onCompositionEnd: () => {
+      setComposing(false);
+      // Some browsers send the last input event before composition ends, some after.
+      flush();
+    },
+    onPaste: (e: ClipboardEvent) => {
+      e.preventDefault();
+      const text = e.clipboardData.getData("text/plain");
+      if (text) send({ type: "text", text });
+    },
+  };
 
   const canTakeOver = control.page && state === "shown";
 
@@ -616,13 +687,16 @@ export function BrowserView({ threadId, running, asking, overlay, onClose }: { t
         role={full ? "dialog" : undefined}
         aria-modal={full || undefined}
         aria-label={full ? "Browser" : undefined}
-        tabIndex={control.controlled ? 0 : undefined}
         data-testid="browser-stage"
-        {...keys}
       >
         <div className="browser-head">
           <span>{state === "none" ? "" : control.controlled ? "You're in control" : running ? "Live" : "Last seen"}</span>
           <span className="browser-actions">
+            {control.controlled ? (
+              <button className="btn small ghost browser-keyboard" onClick={focusKeys} aria-label="Keyboard" title="Keyboard" data-testid="browser-keyboard">
+                <KeyboardIcon />
+              </button>
+            ) : null}
             {canTakeOver || control.controlled ? (
               <button className={`btn small ${control.controlled ? "primary" : "ghost"}`} onClick={() => void setControlled(!control.controlled)} data-testid="browser-takeover">
                 {control.controlled ? (control.request ? "Done, hand back" : "Hand back") : "Take over"}
@@ -655,12 +729,29 @@ export function BrowserView({ threadId, running, asking, overlay, onClose }: { t
           }}
           {...input}
         />
-        {control.controlled && control.request ? (
+        {control.controlled ? (
+          <textarea
+            ref={sink}
+            className={`browser-keys ${composing ? "composing" : ""}`}
+            style={caret ? { left: caret.x, top: caret.y } : undefined}
+            defaultValue={SINK}
+            rows={1}
+            autoCapitalize="off"
+            autoComplete="off"
+            autoCorrect="off"
+            spellCheck={false}
+            enterKeyHint="enter"
+            aria-label="Type into the page"
+            data-testid="browser-keys"
+            {...keys}
+          />
+        ) : null}
+        {control.controlled && control.request && full ? (
           <p className="browser-request" data-testid="browser-request">
             <b>Vireo asks:</b> {control.request.replace(/[.。!！]+$/, "")}. Vireo is paused until you hand the browser back.
           </p>
         ) : control.controlled ? (
-          <p className="muted fine">Vireo waits while you use the browser. Hand it back when you're done.</p>
+          <p className="muted fine">{control.request ? "Vireo is paused until you hand the browser back." : "Vireo waits while you use the browser. Hand it back when you're done."}</p>
         ) : null}
       </div>
     </div>
