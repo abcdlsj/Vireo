@@ -1,8 +1,21 @@
 name: Publish askvireo
 
-# Publishes apps/node to npm as `askvireo` on version tags, so anyone can
-# run a node with `npx askvireo`. Needs an NPM_TOKEN repository secret
-# (an npm granular token with publish rights to the package).
+# Publishes apps/node to npm as `askvireo` on version tags, so anyone can run a
+# node with `npx askvireo`. A workflow_dispatch run from main publishes the
+# version that main already carries.
+#
+# Authentication is npm trusted publishing (OIDC) once it is configured, and the
+# NPM_TOKEN secret until then: the npm CLI looks for OIDC first and falls back to
+# the token, so this workflow works either way.
+#
+#   Trusted publishing, set up once at
+#   npmjs.com → Packages → askvireo → Settings → Trusted publishing:
+#     Organization or user   abcdlsj
+#     Repository             Vireo
+#     Workflow filename      npm.yml
+#   The configuration must publish successfully once within two days of being
+#   created, or it expires. Afterwards revoke NPM_TOKEN and switch the package to
+#   "Require two-factor authentication and disallow tokens".
 on:
   push:
     tags: ["v*"]
@@ -10,22 +23,62 @@ on:
 
 permissions:
   contents: read
-  id-token: write
+  id-token: write # npm trusted publishing and the provenance attestation
+
+# A running publish finishes; a newer run queues behind it instead of racing it.
+concurrency:
+  group: npm-publish-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   publish:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
           registry-url: https://registry.npmjs.org
+          # Deliberately no dependency cache: a release build should not use
+          # anything a pull request could have written.
       - run: npm ci
         env:
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+      - run: npm run typecheck -w askvireo
+      - run: npm test
       - run: npm run build -w askvireo
-      - run: npm publish -w askvireo --access public --provenance
+      # Trusted publishing needs npm 11.5.1 or newer; Node 22 ships an older one.
+      # Installed after npm ci so dependencies are installed by the npm the
+      # lockfile was written with.
+      - run: npm install -g npm@^11.5.1
+      - name: Check the version
+        id: version
+        run: |
+          version="$(node -p "require('./apps/node/package.json').version")"
+          echo "version=$version" >>"$GITHUB_OUTPUT"
+          if [[ "$GITHUB_REF_TYPE" == "tag" && "$GITHUB_REF_NAME" != "v$version" ]]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match apps/node's version $version" >&2
+            exit 1
+          fi
+          if [[ "$GITHUB_REF_TYPE" == "branch" && "$GITHUB_REF_NAME" != "main" ]]; then
+            echo "::error::A manual publish has to run from main" >&2
+            exit 1
+          fi
+          if npm view "askvireo@$version" version >/dev/null 2>&1; then
+            echo "published=true" >>"$GITHUB_OUTPUT"
+          else
+            echo "published=false" >>"$GITHUB_OUTPUT"
+          fi
+      - name: Publish to npm
+        if: steps.version.outputs.published == 'false'
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          # A version with a suffix (1.0.0-rc.1) must not take over `latest`.
+          tag=latest
+          case "${{ steps.version.outputs.version }}" in *-*) tag=next ;; esac
+          npm publish -w askvireo --access public --provenance --tag "$tag"
+      - name: Already published
+        if: steps.version.outputs.published == 'true'
+        run: echo "askvireo@${{ steps.version.outputs.version }} is already on npm; nothing to publish."

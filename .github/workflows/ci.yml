@@ -5,6 +5,15 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
+# A newer commit on the same branch or pull request makes the older run moot;
+# cancel it rather than hold a runner for twenty minutes.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   acceptance:
     runs-on: ubuntu-latest
