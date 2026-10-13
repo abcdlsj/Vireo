@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { App } from "../../apps/node/src/app.js";
 import { createApp } from "../../apps/node/src/app.js";
-import { CallFilter, detectClis, parseCalls, promptText, systemText } from "../../apps/node/src/cli-model.js";
+import { CallFilter, detectClis, parseCalls, piExtension, promptText, strayCall, systemText } from "../../apps/node/src/cli-model.js";
 import { loadConfig } from "../../apps/node/src/config.js";
 import { tempDir } from "./helpers.js";
 
@@ -19,8 +19,10 @@ afterEach(async () => {
 
 /**
  * A stand-in for Claude Code's headless mode: it logs its arguments, reads the
- * system prompt file and the prompt on stdin, and streams a reply in
- * stream-json. A new request hands off to general; anything else is answered.
+ * system prompt file and the prompt on stdin, lists the tools on the MCP
+ * server it was given, and streams a reply in stream-json. A new request hands
+ * off to general with a native tool call, then hangs the way Claude Code would
+ * go on (the bridge has to stop it); anything else is answered.
  */
 function fakeClaude(): { path: string; log: string } {
   const dir = tempDir();
@@ -34,14 +36,27 @@ const args = process.argv.slice(2);
 if (args.includes("--version")) { console.log("9.9.9 (Claude Code)"); process.exit(0); }
 const sys = fs.readFileSync(args[args.indexOf("--system-prompt-file") + 1], "utf8");
 let input = "";
-process.stdin.on("data", (d) => (input += d)).on("end", () => {
-  fs.appendFileSync(${JSON.stringify(log)}, JSON.stringify({ args, sys, input, env: process.env.VIREO_AS_MODEL }) + "\\n");
+process.stdin.on("data", (d) => (input += d)).on("end", async () => {
+  const mcp = args.includes("--mcp-config") ? JSON.parse(args[args.indexOf("--mcp-config") + 1]).mcpServers.vireo.url : "";
+  let tools = [];
+  if (mcp) {
+    const rpc = (method, id) => fetch(mcp, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id, method, params: {} }) }).then((r) => r.json());
+    await rpc("initialize", 0);
+    tools = (await rpc("tools/list", 1)).result.tools.map((t) => t.name);
+  }
+  fs.appendFileSync(${JSON.stringify(log)}, JSON.stringify({ args, sys, input, tools, env: process.env.VIREO_AS_MODEL }) + "\\n");
+  const out = (o) => process.stdout.write(JSON.stringify(o) + "\\n");
+  out({ type: "system", subtype: "init" });
+  if (tools.includes("transfer_to_general") && !input.includes("<tool_result")) {
+    out({ type: "stream_event", event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "On it." } } });
+    out({ type: "assistant", message: { content: [{ type: "tool_use", id: "toolu_1", name: "mcp__vireo__transfer_to_general", input: {} }] } });
+    out({ type: "stream_event", event: { type: "message_delta", delta: { stop_reason: "tool_use" }, usage: { input_tokens: 10, output_tokens: 5, cache_read_input_tokens: 3, cache_creation_input_tokens: 0 } } });
+    setTimeout(() => {}, 60_000);
+    return;
+  }
   let reply = "Hello from the CLI.";
   if (/^Task: connection_test/m.test(sys)) reply = "ok";
   else if (/^Task: /m.test(sys)) reply = "A title";
-  else if (sys.includes("## transfer_to_general") && !input.includes("<tool_result")) reply = 'On it. <tool_call>{"name": "transfer_to_general", "arguments": {}}</tool_call>';
-  const out = (o) => process.stdout.write(JSON.stringify(o) + "\\n");
-  out({ type: "system", subtype: "init" });
   for (const piece of reply.match(/[\\s\\S]{1,4}/g)) out({ type: "stream_event", event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: piece } } });
   out({ type: "result", subtype: "success", is_error: false, result: reply, usage: { input_tokens: 10, output_tokens: 5, cache_read_input_tokens: 3, cache_creation_input_tokens: 0 } });
 });
@@ -75,7 +90,20 @@ describe("a CLI as the model", () => {
     expect(parseCalls("No tools here.", ["web_search"])).toEqual({ text: "No tools here.", calls: [] });
   });
 
-  it("writes the tools into the system prompt and the conversation as a transcript", () => {
+  it("spots a tool call written in a model's own markup, so it isn't shown as an answer", () => {
+    expect(strayCall('<｜｜DSML｜｜ calls>{"name": "transfer_to_browser", "arguments": {}}</｜｜DSML｜｜ parameter>')).toBe(true);
+    expect(strayCall('<tool_call>{"name": "web_search"')).toBe(true);
+    expect(strayCall("<function_calls><invoke name=\"x\">")).toBe(true);
+    expect(strayCall("Done: the Google plugin is set up. Use a < b for comparisons.")).toBe(false);
+  });
+
+  it("gives pi the tools as stand-ins that stop the turn instead of running", () => {
+    const ext = piExtension([{ function: { name: "web_search", description: "Search the web", parameters: { type: "object", properties: { query: { type: "string" } } } } }]);
+    expect(ext).toContain('"name":"web_search"');
+    expect(ext).toContain("terminate: true");
+  });
+
+  it("tells the model how tools work here and writes the conversation as a transcript", () => {
     const req = {
       model: "sonnet",
       messages: [
@@ -88,8 +116,9 @@ describe("a CLI as the model", () => {
     };
     const sys = systemText(req);
     expect(sys).toContain("You are Vireo.");
-    expect(sys).toContain("## get_weather");
-    expect(sys).toContain("<tool_call>");
+    expect(sys).toContain("# Tools");
+    // The tools themselves go to the CLI as real tools, not as text.
+    expect(sys).not.toContain("Weather for a city");
     const prompt = promptText(req);
     expect(prompt).toContain('<tool_call>{"name":"get_weather","arguments":{"city":"Lisbon"}}</tool_call>');
     expect(prompt).toContain('<tool_result name="get_weather">');
@@ -121,12 +150,13 @@ describe("a CLI as the model", () => {
     await app.runner.settled(thread.id);
     const said = app.threads.messages(thread.id).filter((m) => m.role === "assistant");
     expect(JSON.stringify(said.map((m) => m.body))).toContain("Hello from the CLI.");
-    // Triage handed off through a text tool call.
+    // Triage handed off through a native tool call, and the CLI was stopped there.
     expect(app.threads.get(thread.id)!.agent).toBe("general");
 
-    const calls = readFileSync(log, "utf8").trim().split("\n").map((l) => JSON.parse(l) as { args: string[]; env?: string });
-    const agentCall = calls.find((c) => c.args.includes("opus"))!;
-    expect(agentCall.args).toEqual(expect.arrayContaining(["-p", "--tools", "", "--strict-mcp-config", "--no-session-persistence"]));
+    const calls = readFileSync(log, "utf8").trim().split("\n").map((l) => JSON.parse(l) as { args: string[]; tools: string[]; env?: string });
+    const agentCall = calls.find((c) => c.args.includes("opus") && c.tools.length)!;
+    expect(agentCall.args).toEqual(expect.arrayContaining(["-p", "--tools", "", "--strict-mcp-config", "--mcp-config", "--no-session-persistence"]));
+    expect(calls.some((c) => c.tools.includes("transfer_to_general"))).toBe(true);
     expect(agentCall.env).toBe("1");
     const usage = app.db.all<{ provider: string; input_tokens: number }>("SELECT provider, input_tokens FROM llm_calls WHERE purpose = 'agent'");
     expect(usage[0]).toMatchObject({ provider: "claude cli", input_tokens: 13 });

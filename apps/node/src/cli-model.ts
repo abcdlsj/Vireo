@@ -22,9 +22,12 @@ import { newId } from "./util.js";
  *
  * The bridge speaks Chat Completions on a loopback port, like the scripted
  * test model, so the rest of Vireo talks to it exactly as it would to any
- * OpenAI-compatible endpoint. Tool calls travel as text: the system prompt
- * lists Vireo's tools and how to call them, and the reply's <tool_call>
- * blocks come back as Chat Completions tool calls.
+ * OpenAI-compatible endpoint. Vireo's tools are declared to the CLI as real
+ * tools that do nothing (an extension for pi, an MCP server on the bridge
+ * for Claude Code and Codex), so the model calls them in its own native
+ * format. The turn ends at the first batch of calls, which come back as Chat
+ * Completions tool calls for Vireo to run. Calls written as <tool_call> text
+ * are still read, for a model that writes them anyway.
  */
 
 /** The model name that means "whatever the CLI itself is set to use". */
@@ -39,13 +42,24 @@ interface CliSpec {
   defaults: { main: string; fast: string };
   /** The CLI keeps the system prompt it was given, rather than its own (codex has no switch for it). */
   ownsSystemPrompt: boolean;
-  args(o: { model: string; systemFile: string; cwd: string }): string[];
+  /** How long to wait after a tool call for more of the same batch, when the CLI doesn't say the batch is over. */
+  callsSettleMs?: number;
+  args(o: { model: string; systemFile: string; cwd: string; tools: ToolDecl }): string[];
   /** Models the CLI offers, read from it or its files; best effort. */
   models(path: string): Promise<string[]>;
   reader(): CliReader;
 }
 
-/** Reads one CLI's JSON lines into text deltas, the final text, usage and errors. */
+/** Vireo's tools for one turn, as the CLI is given them. */
+interface ToolDecl {
+  names: string[];
+  /** A pi extension that registers them. */
+  extFile: string;
+  /** An MCP server on the bridge that lists them (Claude Code, Codex). */
+  mcpUrl?: string;
+}
+
+/** Reads one CLI's JSON lines into text deltas, the final text, tool calls, usage and errors. */
 interface CliReader {
   push(line: Record<string, unknown>, out: CliOutput): void;
 }
@@ -53,9 +67,17 @@ interface CliReader {
 interface CliOutput {
   onDelta(text: string): void;
   text: string;
+  calls: ParsedCall[];
+  /** The model has made its calls: the turn is over and the CLI can be stopped. */
+  done: boolean;
   usage: { input: number; output: number; cached: number; cacheWrite: number };
   error?: string;
 }
+
+/** The MCP server's name in the CLIs' configuration, and so in Claude Code's tool names. */
+const MCP_NAME = "vireo";
+
+const argsJson = (v: unknown): string => (typeof v === "string" ? v : JSON.stringify(v ?? {}));
 
 const num = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) ? v : 0);
 const str = (v: unknown): string | undefined => (typeof v === "string" ? v : undefined);
@@ -69,17 +91,18 @@ const claude: CliSpec = {
   signIn: "claude",
   defaults: { main: "sonnet", fast: "haiku" },
   ownsSystemPrompt: true,
-  args: ({ model, systemFile }) => [
+  args: ({ model, systemFile, tools }) => [
     "-p",
     "--output-format",
     "stream-json",
     "--verbose",
     "--include-partial-messages",
     "--no-session-persistence",
-    // No built-in tools, no MCP servers, no hooks: Vireo's own tools are the only ones.
+    // No built-in tools, no MCP servers but Vireo's, no hooks: Vireo's own tools are the only ones.
     "--tools",
     "",
     "--strict-mcp-config",
+    ...(tools.mcpUrl ? ["--mcp-config", JSON.stringify({ mcpServers: { [MCP_NAME]: { type: "http", url: tools.mcpUrl } } })] : []),
     "--settings",
     JSON.stringify({ disableAllHooks: true }),
     "--system-prompt-file",
@@ -98,6 +121,19 @@ const claude: CliSpec = {
             streamed = true;
             out.text += delta.text as string;
             out.onDelta(delta.text as string);
+          } else if (ev.type === "message_delta" && obj(ev.delta).stop_reason === "tool_use") {
+            // Claude Code would refuse the calls (they aren't allowed) and go on; the turn ends here.
+            const u = obj(ev.usage);
+            out.usage = { input: num(u.input_tokens) + num(u.cache_read_input_tokens) + num(u.cache_creation_input_tokens), output: num(u.output_tokens), cached: num(u.cache_read_input_tokens), cacheWrite: num(u.cache_creation_input_tokens) };
+            out.done = true;
+          }
+        } else if (l.type === "assistant" && !l.parent_tool_use_id) {
+          const prefix = `mcp__${MCP_NAME}__`;
+          for (const c of (obj(l.message).content as unknown[] | undefined) ?? []) {
+            const b = obj(c);
+            if (b.type === "tool_use" && str(b.name)?.startsWith(prefix) && !out.calls.some((x) => x.id === b.id)) {
+              out.calls.push({ id: str(b.id) ?? newId("call"), name: (b.name as string).slice(prefix.length), arguments: argsJson(b.input) });
+            }
           }
         } else if (l.type === "result") {
           const u = obj(l.usage);
@@ -121,7 +157,9 @@ const codex: CliSpec = {
   signIn: "codex login",
   defaults: { main: CLI_DEFAULT_MODEL, fast: CLI_DEFAULT_MODEL },
   ownsSystemPrompt: false,
-  args: ({ model, cwd }) => [
+  // Codex starts a batch's calls one after another and never says the batch is complete.
+  callsSettleMs: 500,
+  args: ({ model, cwd, tools }) => [
     "exec",
     "--json",
     "--ephemeral",
@@ -146,6 +184,7 @@ const codex: CliSpec = {
     "features.computer_use=false",
     "-c",
     "notify=[]",
+    ...(tools.mcpUrl ? ["-c", `mcp_servers.${MCP_NAME}.url=${JSON.stringify(tools.mcpUrl)}`] : []),
     ...(model && model !== CLI_DEFAULT_MODEL ? ["-m", model] : []),
     "-",
   ],
@@ -169,6 +208,12 @@ const codex: CliSpec = {
           out.text += add;
           out.onDelta(add);
         }
+      } else if (l.type === "item.started") {
+        // The call never gets an answer from the bridge; the turn ends once the batch is in.
+        const item = obj(l.item);
+        if (item.type === "mcp_tool_call" && item.server === MCP_NAME && str(item.tool)) {
+          out.calls.push({ id: newId("call"), name: item.tool as string, arguments: argsJson(item.arguments) });
+        }
       } else if (l.type === "turn.completed") {
         const u = obj(l.usage);
         out.usage = { input: num(u.input_tokens), output: num(u.output_tokens), cached: num(u.cached_input_tokens), cacheWrite: 0 };
@@ -189,12 +234,13 @@ const pi: CliSpec = {
   signIn: "pi",
   defaults: { main: CLI_DEFAULT_MODEL, fast: CLI_DEFAULT_MODEL },
   ownsSystemPrompt: true,
-  args: ({ model, systemFile }) => [
+  args: ({ model, systemFile, tools }) => [
     "-p",
     "--mode",
     "json",
     "--no-session",
-    "--no-tools",
+    // Only Vireo's tools, from an extension of stand-ins (other extensions still load: some are providers).
+    ...(tools.names.length ? ["-e", tools.extFile, "--tools", tools.names.join(",")] : ["--no-tools"]),
     "--no-skills",
     "--no-prompt-templates",
     "--no-context-files",
@@ -221,6 +267,9 @@ const pi: CliSpec = {
         if (ev.type === "text_delta" && str(ev.delta)) {
           out.text += ev.delta as string;
           out.onDelta(ev.delta as string);
+        } else if (ev.type === "toolcall_end") {
+          const c = obj(ev.toolCall);
+          if (str(c.name)) out.calls.push({ id: str(c.id) ?? newId("call"), name: c.name as string, arguments: argsJson(c.arguments) });
         }
       } else if (l.type === "message_end") {
         const m = obj(l.message);
@@ -228,6 +277,7 @@ const pi: CliSpec = {
         const u = obj(m.usage);
         out.usage = { input: num(u.input) + num(u.cacheRead) + num(u.cacheWrite), output: num(u.output), cached: num(u.cacheRead), cacheWrite: num(u.cacheWrite) };
         if (m.stopReason === "error" || m.stopReason === "aborted") out.error = str(m.errorMessage) ?? "pi reported an error";
+        else if (out.calls.length) out.done = true;
       }
     },
   }),
@@ -350,30 +400,42 @@ function partsText(content: ChatMessage["content"]): string {
 const TOOL_RULES = [
   "# Tools",
   "",
-  "You can't use any tools of your own here (no shell, files, web or editing). You act only through the tools below, by writing a call as its own block:",
+  "You can't use any tools of your own here (no shell, files, web or editing). You act only through the tools you are given, which are Vireo's.",
   "",
-  '<tool_call>{"name": "tool_name", "arguments": {"param": "value"}}</tool_call>',
-  "",
-  "- The block holds one JSON object with the tool's name and its arguments, matching the tool's parameters.",
-  "- Several calls in one turn are fine, one block each. A short sentence to the owner before the calls is fine too.",
-  "- After your calls, stop. The results come back in the next message as <tool_result> blocks; never write a result yourself.",
-  "- When you need no tool, answer the owner in plain text with no blocks.",
-  "",
-  "Available tools:",
+  "- Call them the usual way. Several calls in one turn are fine, and so is a short sentence to the owner before them.",
+  "- After your calls, stop: Vireo runs them and the results come back in the next message.",
+  "- Earlier calls and their results appear in the conversation as <tool_call> and <tool_result> blocks. That is only how the record is written; never write a result yourself.",
+  "- When you need no tool, answer the owner in plain text.",
 ];
 
-/** Vireo's system prompt plus the tool list and how to call them. */
+/** Vireo's system prompt, plus how its tools work here. */
 export function systemText(req: ChatRequest): string {
   const system = req.messages.filter((m) => m.role === "system" || m.role === "developer").map((m) => partsText(m.content));
-  const tools = req.tool_choice === "none" ? [] : (req.tools ?? []);
-  if (tools.length) {
-    const list = tools.map((t) => {
-      const params = JSON.stringify(t.function.parameters ?? { type: "object", properties: {} });
-      return `## ${t.function.name}\n${t.function.description ?? ""}\nParameters (JSON Schema): ${params}`;
-    });
-    system.push([...TOOL_RULES, "", ...list].join("\n"));
-  }
+  if (offeredTools(req).length) system.push(TOOL_RULES.join("\n"));
   return system.join("\n\n").trim();
+}
+
+/** The tools the model may call this turn. */
+export function offeredTools(req: ChatRequest): ChatTool[] {
+  return req.tool_choice === "none" ? [] : (req.tools ?? []).filter((t) => /^[A-Za-z0-9_-]{1,64}$/.test(t.function.name));
+}
+
+/** A pi extension that registers the tools as stand-ins: pi never runs a call, it only reports it and stops. */
+export function piExtension(tools: ChatTool[]): string {
+  const list = tools.map((t) => ({ name: t.function.name, description: t.function.description ?? "", parameters: t.function.parameters ?? { type: "object", properties: {} } }));
+  return `const TOOLS = ${JSON.stringify(list)};
+export default function (pi) {
+  for (const t of TOOLS) {
+    pi.registerTool({
+      name: t.name,
+      label: t.name,
+      description: t.description,
+      parameters: t.parameters,
+      execute: async () => ({ content: [{ type: "text", text: "Vireo runs this call." }], details: undefined, terminate: true }),
+    });
+  }
+}
+`;
 }
 
 const esc = (s: string) => s.replace(/<(\/?)(owner|assistant|tool_call|tool_result|conversation)\b/g, "<\\$1$2");
@@ -404,7 +466,7 @@ export function promptText(req: ChatRequest): string {
       lines.push(`<tool_result name="${name}">\n${esc(partsText(m.content))}\n</tool_result>`);
     }
   }
-  lines.push("</conversation>", "", "Continue as the assistant: write only your next turn, as plain text and/or <tool_call> blocks.");
+  lines.push("</conversation>", "", "Continue as the assistant: write only your next turn, plain text and/or tool calls.");
   return lines.join("\n");
 }
 
@@ -482,29 +544,45 @@ export function parseCalls(text: string, tools: string[]): { text: string; calls
   return { text: calls.length ? rest.trim() : text.trim(), calls };
 }
 
+/**
+ * A reply that looks like a tool call no one could read: a model's own call markup (DeepSeek's
+ * DSML, Hermes-style tags) or a broken <tool_call> block. Shown as an answer, it would leave the
+ * owner with gibberish and nothing done.
+ */
+export function strayCall(text: string): boolean {
+  return /<[|｜]{1,2}[^>]*(?:tool|call|invoke|DSML)|<\/?(?:tool_call|function_calls?|invoke)\b|"name"\s*:\s*"transfer_to_/i.test(text);
+}
+
 // ---------------------------------------------------------------- running
 
 export interface CliRun {
   text: string;
+  calls: ParsedCall[];
   usage: CliOutput["usage"];
   error?: string;
 }
 
-/** Runs one model turn on a CLI. Stopping (the signal) kills it and anything it started. */
-export function runCli(id: CliId, path: string, req: ChatRequest, opts: { onDelta?: (text: string) => void; signal?: AbortSignal; timeoutMs?: number } = {}): Promise<CliRun> {
+/**
+ * Runs one model turn on a CLI. Stopping (the signal) kills it and anything it started, and so
+ * does the model's first batch of tool calls. `mcpUrl` is where the bridge lists the turn's tools.
+ */
+export function runCli(id: CliId, path: string, req: ChatRequest, opts: { onDelta?: (text: string) => void; signal?: AbortSignal; timeoutMs?: number; mcpUrl?: string } = {}): Promise<CliRun> {
   const spec = CLIS[id];
   const dir = mkdtempSync(join(tmpdir(), "vireo-cli-"));
   const systemFile = join(dir, "system.md");
   const system = systemText(req);
   const prompt = promptText(req);
   writeFileSync(systemFile, system || "You are a helpful assistant.");
+  const offered = offeredTools(req);
+  const tools: ToolDecl = { names: offered.map((t) => t.function.name), extFile: join(dir, "vireo-tools.ts"), mcpUrl: offered.length ? opts.mcpUrl : undefined };
+  if (offered.length) writeFileSync(tools.extFile, piExtension(offered));
   // Codex keeps its own system prompt, so Vireo's goes first in the message instead.
   const input = spec.ownsSystemPrompt || !system ? prompt : `<instructions>\n${system}\n</instructions>\n\n${prompt}`;
   const reader = spec.reader();
-  const out: CliOutput = { text: "", usage: { input: 0, output: 0, cached: 0, cacheWrite: 0 }, onDelta: (t) => opts.onDelta?.(t) };
+  const out: CliOutput = { text: "", calls: [], done: false, usage: { input: 0, output: 0, cached: 0, cacheWrite: 0 }, onDelta: (t) => opts.onDelta?.(t) };
 
   return new Promise((resolve) => {
-    const child = spawn(path, spec.args({ model: req.model, systemFile, cwd: dir }), {
+    const child = spawn(path, spec.args({ model: req.model, systemFile, cwd: dir, tools }), {
       cwd: dir,
       env: cliEnv(path, { VIREO_AS_MODEL: "1" }),
       stdio: ["pipe", "pipe", "pipe"],
@@ -530,25 +608,40 @@ export function runCli(id: CliId, path: string, req: ChatRequest, opts: { onDelt
       kill();
     };
     opts.signal?.addEventListener("abort", onAbort, { once: true });
+    // The calls are in: Vireo runs them, so the CLI has nothing left to do this turn.
+    let settle: NodeJS.Timeout | undefined;
+    let seen = 0;
     const line = (l: string) => {
       const t = l.trim();
-      if (!t.startsWith("{")) return;
+      if (!t.startsWith("{") || out.done) return;
       try {
         reader.push(JSON.parse(t) as Record<string, unknown>, out);
       } catch {
         // Not a JSON line.
+      }
+      if (out.done) {
+        clearTimeout(settle);
+        kill();
+      } else if (spec.callsSettleMs && out.calls.length > seen) {
+        seen = out.calls.length;
+        clearTimeout(settle);
+        settle = setTimeout(() => {
+          out.done = true;
+          kill();
+        }, spec.callsSettleMs);
       }
     };
     const finish = (code: number | null, err?: Error) => {
       if (done) return;
       done = true;
       clearTimeout(timer);
+      clearTimeout(settle);
       opts.signal?.removeEventListener("abort", onAbort);
       if (pending) line(pending);
       rmSync(dir, { recursive: true, force: true });
       if (err) out.error = `Could not start ${spec.name}: ${err.message}`;
-      else if (!out.error && code !== 0 && !out.text) out.error = `${spec.name} exited with code ${code}${stderr.trim() ? `: ${stderr.trim().split("\n").slice(-3).join(" ")}` : ""}`;
-      resolve({ text: out.text, usage: out.usage, error: out.error });
+      else if (!out.error && !out.done && code !== 0 && !out.text) out.error = `${spec.name} exited with code ${code}${stderr.trim() ? `: ${stderr.trim().split("\n").slice(-3).join(" ")}` : ""}`;
+      resolve({ text: out.text, calls: out.calls, usage: out.usage, error: out.error });
     };
     child.stdout.on("data", (chunk: Buffer) => {
       const lines = (pending + chunk.toString("utf8")).split("\n");
@@ -567,13 +660,22 @@ export function runCli(id: CliId, path: string, req: ChatRequest, opts: { onDelt
 
 // ---------------------------------------------------------------- bridge
 
+type Resolve = (id: CliId) => { path?: string; models: string[] };
+
+/** Each running turn's tools, by the unguessable path its MCP server is at. */
+type Turns = Map<string, ChatTool[]>;
+
 /**
- * Serves the CLIs over Chat Completions at http://127.0.0.1:<port>/<cli>/v1.
- * `resolve` gives the executable for a CLI and its model list.
+ * Serves the CLIs over Chat Completions at http://127.0.0.1:<port>/<cli>/v1,
+ * and each turn's tools over MCP at /mcp/<turn>. `resolve` gives the
+ * executable for a CLI and its model list.
  */
-export async function startCliBridge(resolve: (id: CliId) => { path?: string; models: string[] }): Promise<{ url: string; server: Server }> {
+export async function startCliBridge(resolve: Resolve): Promise<{ url: string; server: Server }> {
+  const turns: Turns = new Map();
+  let base = "";
   const server = createServer((req, res) => {
-    void handle(req, res, resolve).catch((err) => {
+    const work = (req.url ?? "").startsWith("/mcp/") ? mcp(req, res, turns) : handle(req, res, resolve, turns, base);
+    void work.catch((err) => {
       if (!res.headersSent) res.writeHead(500, { "content-type": "application/json" });
       res.end(JSON.stringify({ error: { message: String(err) } }));
     });
@@ -581,7 +683,43 @@ export async function startCliBridge(resolve: (id: CliId) => { path?: string; mo
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
   server.unref();
   const { port } = server.address() as AddressInfo;
-  return { url: `http://127.0.0.1:${port}`, server };
+  base = `http://127.0.0.1:${port}`;
+  return { url: base, server };
+}
+
+/**
+ * A turn's tools as a stateless MCP server (Streamable HTTP, JSON replies). It lists them and
+ * never answers a call: the CLI is stopped once the model has made its calls, and Vireo runs them.
+ * The tools are marked read-only so Codex doesn't refuse them for want of an approval.
+ */
+async function mcp(req: IncomingMessage, res: ServerResponse, turns: Turns): Promise<void> {
+  const tools = turns.get((req.url ?? "").slice("/mcp/".length).split(/[/?]/)[0]!);
+  if (!tools) return fail(res, 404, "No such turn");
+  if (req.method !== "POST") return fail(res, 405, "POST only");
+  let raw = "";
+  for await (const chunk of req) raw += chunk;
+  const msg = obj(JSON.parse(raw || "{}"));
+  if (msg.id === undefined || msg.id === null) {
+    res.writeHead(202).end();
+    return;
+  }
+  const reply = (body: Record<string, unknown>) => {
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify({ jsonrpc: "2.0", id: msg.id, ...body }));
+  };
+  if (msg.method === "tools/call") return;
+  if (msg.method === "initialize") {
+    return reply({ result: { protocolVersion: str(obj(msg.params).protocolVersion) ?? "2025-06-18", capabilities: { tools: {} }, serverInfo: { name: MCP_NAME, version: "1" } } });
+  }
+  if (msg.method === "tools/list") {
+    return reply({
+      result: {
+        tools: tools.map((t) => ({ name: t.function.name, description: t.function.description ?? "", inputSchema: t.function.parameters ?? { type: "object", properties: {} }, annotations: { readOnlyHint: true } })),
+      },
+    });
+  }
+  if (msg.method === "ping") return reply({ result: {} });
+  reply({ error: { code: -32601, message: `Method not found: ${String(msg.method)}` } });
 }
 
 function fail(res: ServerResponse, status: number, message: string): void {
@@ -589,7 +727,7 @@ function fail(res: ServerResponse, status: number, message: string): void {
   res.end(JSON.stringify({ error: { message, type: "cli_error" } }));
 }
 
-async function handle(req: IncomingMessage, res: ServerResponse, resolve: (id: CliId) => { path?: string; models: string[] }): Promise<void> {
+async function handle(req: IncomingMessage, res: ServerResponse, resolve: Resolve, turns: Turns, bridgeUrl: string): Promise<void> {
   const m = (req.url ?? "").match(/^\/(claude|codex|pi)\/v1\/(models|chat\/completions)\b/);
   if (!m) return fail(res, 404, "Not found");
   const id = m[1] as CliId;
@@ -620,25 +758,39 @@ async function handle(req: IncomingMessage, res: ServerResponse, resolve: (id: C
     res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache" });
     send({ delta: { role: "assistant", content: "" } });
   }
+  const turn = newId("turn");
+  turns.set(turn, offeredTools(body));
   const run = await runCli(id, found.path, body, {
     signal: abort.signal,
+    mcpUrl: `${bridgeUrl}/mcp/${turn}`,
     onDelta: body.stream
       ? (t) => {
           const visible = filter.push(t);
           if (visible) send({ delta: { content: visible } });
         }
       : undefined,
-  });
+  }).finally(() => turns.delete(turn));
   if (abort.signal.aborted) return;
 
   const usage = { prompt_tokens: run.usage.input, completion_tokens: run.usage.output, total_tokens: run.usage.input + run.usage.output, prompt_tokens_details: { cached_tokens: run.usage.cached, cache_creation_tokens: run.usage.cacheWrite } };
-  if (run.error && !run.text) {
+  if (run.error && !run.text && !run.calls.length) {
     if (!body.stream) return fail(res, 502, run.error);
     // Mid-stream, an error event is what the OpenAI client turns into a thrown error.
     res.end(`data: ${JSON.stringify({ error: { message: run.error, type: "cli_error" } })}\n\n`);
     return;
   }
-  const { text, calls } = parseCalls(run.text, toolNames);
+  // Native calls; calls written as text count only when there are none.
+  const written = parseCalls(run.text, toolNames);
+  // Vireo's own ids: the CLIs' are long, and pi's carry a "|".
+  const native = run.calls.filter((c) => toolNames.includes(c.name)).map((c) => ({ ...c, id: newId("call") }));
+  const calls = native.length ? native : written.calls;
+  const text = native.length ? run.text.trim() : written.text;
+  if (!calls.length && strayCall(text)) {
+    const message = "The model tried to call a tool in a form Vireo can't read, so nothing ran. Try again, or pick another model.";
+    if (!body.stream) return fail(res, 502, message);
+    res.end(`data: ${JSON.stringify({ error: { message, type: "cli_error" } })}\n\n`);
+    return;
+  }
   const toolCalls = calls.map((c, index) => ({ index, id: c.id, type: "function", function: { name: c.name, arguments: c.arguments } }));
   const finish = calls.length ? "tool_calls" : "stop";
   if (!body.stream) {
@@ -654,7 +806,7 @@ async function handle(req: IncomingMessage, res: ServerResponse, resolve: (id: C
     return;
   }
   const tail = filter.end();
-  if (tail && !calls.length) send({ delta: { content: tail } });
+  if (tail) send({ delta: { content: tail } });
   if (toolCalls.length) send({ delta: { tool_calls: toolCalls } });
   send({ delta: {}, finish_reason: finish });
   send(null, { usage });
