@@ -93,6 +93,13 @@ export class MemoryHub implements NodeHub {
 
   close(): void {
     clearInterval(this.heartbeat);
-    for (const c of this.conns.values()) c.ws.close(1001, "Cloud shutting down");
+    for (const c of this.conns.values()) {
+      c.channel.close("Cloud shutting down");
+      c.ws.close(1001, "Cloud shutting down");
+    }
+    // Forget them before their sockets finish closing: the cloud is going down
+    // and its database with it, so the close handlers must not try to record a
+    // last-seen time against a closed database.
+    this.conns.clear();
   }
 }
