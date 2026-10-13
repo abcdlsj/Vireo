@@ -8,6 +8,7 @@ import "./cards/cards.css";
 import "./shell.css";
 import { takeSignIn } from "./cloud";
 import { initTheme } from "./theme";
+import { ErrorBoundary, reloadForUpdate } from "./components/ErrorBoundary";
 
 initTheme();
 
@@ -36,10 +37,17 @@ if ("serviceWorker" in navigator && location.protocol !== "file:") {
   });
 }
 
+// A page's file that is gone after a deploy: load the new version rather than break.
+window.addEventListener("vite:preloadError", (e) => {
+  if (reloadForUpdate()) e.preventDefault();
+});
+
 const signInError = await takeSignIn();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <App signInError={signInError} />
+    <ErrorBoundary full>
+      <App signInError={signInError} />
+    </ErrorBoundary>
   </StrictMode>,
 );

@@ -3,7 +3,8 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react"
 import { api, ApiError, closeEvents, onEvent, type Me, type Thread } from "./api";
 import { cloud, SIGNED_OUT, signedIn } from "./cloud";
 import { NodeSwitcher } from "./components/Nodes";
-import { ApproveNode, NoNodes, SignIn, Unreachable } from "./components/SignIn";
+import { ApproveNode, CloudUnreachable, NoNodes, SignIn, Unreachable } from "./components/SignIn";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { currentNode, loadNodes, nodeAccess, restoreNodes } from "./nodes";
 import { cacheGet, cacheSet } from "./local-cache";
 import { Home } from "./components/Home";
@@ -23,6 +24,7 @@ type State =
   | { name: "loading" }
   | { name: "signed-out" }
   | { name: "no-nodes" }
+  | { name: "offline"; message: string }
   | { name: "unreachable"; node: NodeSummary; message: string }
   | { name: "ready"; node: NodeSummary };
 
@@ -49,7 +51,9 @@ export function App({ signInError }: { signInError?: string }) {
       setUser(me);
     } catch (err) {
       if (!signedIn()) return setState({ name: "signed-out" });
-      throw err;
+      // Opened on what this device kept: stay there. Otherwise say so, rather than a blank page for good.
+      if (kept) return;
+      return setState({ name: "offline", message: err instanceof Error ? err.message : String(err) });
     }
     const node = currentNode();
     if (!node) return setState({ name: "no-nodes" });
@@ -77,6 +81,7 @@ export function App({ signInError }: { signInError?: string }) {
   if (route.name === "link") return <ApproveNode code={route.code} />;
   if (state.name === "loading") return <div className="splash" aria-busy="true" />;
   if (state.name === "no-nodes") return <NoNodes />;
+  if (state.name === "offline") return <CloudUnreachable message={state.message} onRetry={() => void connect()} />;
   if (state.name === "unreachable") return <Unreachable node={state.node} message={state.message} onRetry={() => void connect()} />;
   return <Shell key={state.node.id} user={user} />;
 }
@@ -188,6 +193,7 @@ function Shell({ user }: { user: User | null }) {
         </nav>
       </aside>
       <main className="main">
+        <ErrorBoundary key={route.name === "thread" ? `thread/${route.id}` : route.name}>
         {route.name === "home" ? (
           <Home me={me} onSearch={() => setJump(true)} />
         ) : route.name === "thread" ? (
@@ -205,6 +211,7 @@ function Shell({ user }: { user: User | null }) {
         ) : (
           <Home me={me} onSearch={() => setJump(true)} />
         )}
+        </ErrorBoundary>
       </main>
       {jump ? <QuickJump threads={threads} onClose={() => setJump(false)} /> : null}
     </div>

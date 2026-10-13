@@ -13,6 +13,14 @@ const DEFAULT = "default";
 const modelLabel = (m: string | undefined) => (!m || m === DEFAULT ? "the CLI's default" : m);
 
 /**
+ * A node from before CLIs could be the model sends none of their fields; it
+ * is on an endpoint then. Without this the page (and the app) broke on it.
+ */
+export function modelStatus(st: ModelStatus): ModelStatus {
+  return { ...st, provider: st.provider ?? "endpoint", using: st.using ?? "endpoint", clis: st.clis ?? [], cliModels: st.cliModels ?? {}, cliPaths: st.cliPaths ?? {} };
+}
+
+/**
  * Settings → Model: where Vireo's thinking comes from. A CLI on this machine
  * is set up as a short guided flow (pick, install, sign in, models, test);
  * an endpoint as the usual form.
@@ -20,14 +28,14 @@ const modelLabel = (m: string | undefined) => (!m || m === DEFAULT ? "the CLI's 
 export function Models({ reload }: { reload: () => Promise<void> }) {
   const [st, setSt] = useState<ModelStatus | null>(null);
   const [busy, setBusy] = useState(false);
-  const load = () => api.get<ModelStatus>("/api/models").then(setSt);
+  const load = () => api.get<ModelStatus>("/api/models").then((s) => setSt(modelStatus(s)));
   useEffect(() => {
     void load();
   }, []);
   if (!st) return null;
 
   const saved = async (next: ModelStatus) => {
-    setSt(next);
+    setSt(modelStatus(next));
     await reload();
   };
   const setSource = async (provider: ModelProviderChoice) => {

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, onEvent, type ModelStatus, type PluginRow, type PluginView } from "../api";
+import { modelStatus } from "./ModelSettings";
 import { Plugin } from "./PluginsCard";
 
 /**
@@ -15,7 +16,7 @@ export function CodingAgents({ reload }: { reload: () => Promise<void> }) {
   const load = useCallback(async () => {
     const [{ plugins }, m] = await Promise.all([api.get<{ plugins: PluginView[] }>("/api/plugins"), api.get<ModelStatus>("/api/models")]);
     setPlugin(plugins.find((p) => p.id === "agents") ?? null);
-    setModels(m);
+    setModels(modelStatus(m));
   }, []);
   useEffect(() => {
     void load();
@@ -39,7 +40,7 @@ export function CodingAgents({ reload }: { reload: () => Promise<void> }) {
   const lookAgain = async () => {
     setBusy(true);
     try {
-      setModels(await api.post<ModelStatus>("/api/models/detect"));
+      setModels(modelStatus(await api.post<ModelStatus>("/api/models/detect")));
       await load();
     } finally {
       setBusy(false);

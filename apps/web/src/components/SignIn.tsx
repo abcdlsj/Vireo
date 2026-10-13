@@ -165,6 +165,20 @@ export function NoNodes() {
 }
 
 /** The current node can't be reached. */
+/** The cloud didn't answer while starting up, and nothing was kept on this device to open on. */
+export function CloudUnreachable({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <Page title="Can't reach Vireo">
+      <p className="muted">{message}</p>
+      <div className="row-buttons center">
+        <button className="btn primary" onClick={onRetry}>
+          Try again
+        </button>
+      </div>
+    </Page>
+  );
+}
+
 export function Unreachable({ node, message, onRetry }: { node: NodeSummary; message: string; onRetry: () => void }) {
   const others = nodes().filter((n) => n.id !== node.id);
   return (
