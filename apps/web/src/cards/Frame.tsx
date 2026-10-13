@@ -117,7 +117,9 @@ export function Frame({
   const labelNode = label ?? (namesOwnMatter(card) ? null : <a href={`#thread/${card.threadId}`}>{card.threadTitle}</a>);
   // A ready card with nothing to label needs no head: an empty line with only a time in it is noise.
   const quiet = !card.running && (card.status === "ready" || (Boolean(board?.grouped) && (card.status === "needs_you" || card.status === "watching")));
-  const head = label !== null && !(labelNode === null && quiet);
+  // Nor does a head with nothing in it at all (in a thread, a card needing the owner): it would only push the title down.
+  const empty = labelNode === null && !interactive && !statusShown(card, board?.grouped);
+  const head = label !== null && !(labelNode === null && quiet) && !empty;
   const own = buttons ?? (card.buttons.length ? <Buttons card={card} buttons={card.buttons} /> : null);
   const actions = interactive ? (
     <span className="vcard-actions">
@@ -151,9 +153,9 @@ export function Frame({
             {actions}
           </span>
         </header>
-      ) : (
+      ) : actions ? (
         <span className="vcard-corner floating">{actions}</span>
-      )}
+      ) : null}
       <div className="vcard-body" ref={body}>
         {children}
       </div>
@@ -210,12 +212,17 @@ function Pulse({ card, live }: { card: Card; live: boolean }) {
   );
 }
 
-export function Status({ card, grouped }: { card: Card; grouped?: boolean }) {
+/** Whether Status draws anything for this card. */
+function statusShown(card: Card, grouped?: boolean): boolean {
   // Working shows once, as the eyes on the card's step line; on the board the heading says the rest, and the peek says when it moved.
-  if (card.running || card.status === "working") return null;
-  if (grouped) return null;
+  if (card.running || card.status === "working") return false;
+  if (grouped) return false;
   // Needs you is said by where the card sits (the board's heading, the peek's head, the thread's status), not on the card.
-  if (card.status === "needs_you") return null;
+  return card.status !== "needs_you";
+}
+
+export function Status({ card, grouped }: { card: Card; grouped?: boolean }) {
+  if (!statusShown(card, grouped)) return null;
   if (card.status === "watching") return <span className="vcard-status watching">Watching</span>;
   if (card.status === "done") return <span className="vcard-status done">Done</span>;
   return <span className="vcard-status quiet">{relTime(card.updatedAt)}</span>;

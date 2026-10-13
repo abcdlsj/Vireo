@@ -763,6 +763,26 @@
 
 .vcard-foot {
   flex-shrink: 0;
+  /* The buttons answer the whole card, so they stand a little apart from what they answer. */
+  margin-top: 4px;
+}
+
+/*
+ * In a thread or the peek a card has the room it needs: more air around it,
+ * and a clear pause before its buttons.
+ */
+.vcard.expanded:not(.tone-bare):not(.pass):not(.flush) {
+  padding: 24px 26px;
+}
+
+@media (max-width: 600px) {
+  .vcard.expanded:not(.tone-bare):not(.pass):not(.flush) {
+    padding: 22px 20px;
+  }
+}
+
+.vcard.expanded:not(.pass) > .vcard-foot {
+  margin-top: 10px;
 }
 
 /* What moved: the live step while Vireo works, or the facts the last update changed. */
@@ -1470,6 +1490,10 @@
 /* ---------- the general card: title, a line, and blocks ---------- */
 .vcard.gcard .vcard-body {
   gap: 14px;
+}
+
+.vcard.gcard.expanded .vcard-body {
+  gap: 18px;
 }
 
 .g-head {
