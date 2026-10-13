@@ -56,7 +56,7 @@ The app is a static build of `apps/web` (`npm run build` there, output `apps/web
 
 **Vercel:** import the repository and set **Root Directory** to `apps/web`. `apps/web/vercel.json` sets the install and build commands, the SPA fallback and cache headers. Add `VITE_VIREO_CLOUD` under Environment Variables and redeploy.
 
-**Cloudflare Workers:** `cd apps/web && VITE_VIREO_CLOUD=... npm run build && npx wrangler deploy` (configured by `wrangler.jsonc`, on `app.askvireo.com`).
+**Cloudflare Workers:** `cd apps/web && VITE_VIREO_CLOUD=... VITE_VIREO_SAME_ORIGIN=1 npm run build && npx wrangler deploy` (configured by `wrangler.jsonc`, on `app.askvireo.com`). The app's Worker (`apps/web/worker`) hands `/api`, `/auth`, `/n` and `/.well-known` to the cloud Worker over a service binding, so the app calls the cloud on its own origin and the browser makes no CORS preflight before each new address. It needs the cloud deployed as `vireo-cloud` in the same account; without `VITE_VIREO_SAME_ORIGIN` the app calls the cloud at `VITE_VIREO_CLOUD` directly, as on Vercel and Pages.
 
 **Cloudflare Pages:** root directory `apps/web`, build command `npm run build`, output directory `dist`, and `VITE_VIREO_CLOUD` as an environment variable.
 

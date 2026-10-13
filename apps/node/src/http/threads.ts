@@ -4,6 +4,17 @@ import type { App } from "../app.js";
 import type { ImageContent } from "../messages.js";
 import { OVERVIEW_ID } from "../threads.js";
 import { viewMessage } from "./views.js";
+import { createHash } from "node:crypto";
+
+/** The last messages of a thread, which may still change (a notice's state, a message moved to the end), are always sent. */
+const RECENT = 12;
+
+/** A fingerprint of the first `count` messages as the app sees them. */
+export function signature(messages: unknown[], count: number): string {
+  const h = createHash("sha1");
+  for (let i = 0; i < count; i++) h.update(JSON.stringify(messages[i])).update("\n");
+  return h.digest("base64url").slice(0, 22);
+}
 
 /** Threads: the list, one thread in full, messages, and a thread's audit trail and usage. */
 export function threadRoutes(app: App): Hono {
@@ -22,17 +33,25 @@ export function threadRoutes(app: App): Hono {
     const id = c.req.param("id");
     const thread = app.threads.get(id);
     if (!thread) return c.json({ error: "Not found" }, 404);
+    const messages = app.threads.messages(id).map((m) => {
+      const v = viewMessage(m);
+      // What Vireo remembered from this thread, minus what the owner has since taken back.
+      if (v.role === "notice" && v.kind === "remembered" && v.data) {
+        const facts = (v.data as { facts?: { id: string; statement: string }[] }).facts ?? [];
+        return { ...v, data: { facts: facts.map((f) => ({ ...f, forgotten: !app.memory.fact(f.id) })) } };
+      }
+      return v;
+    });
+    // The app asks again after every change while a thread runs; most of a long
+    // conversation is unchanged, so it can get just the end (the relay carries less).
+    const from = Number(c.req.query("from") ?? 0);
+    const same = Number.isInteger(from) && from > 0 && from <= messages.length && c.req.query("sig") === signature(messages, from);
+    const count = Math.max(0, messages.length - RECENT);
     const detail: ThreadDetail = {
       thread,
-      messages: app.threads.messages(id).map((m) => {
-        const v = viewMessage(m);
-        // What Vireo remembered from this thread, minus what the owner has since taken back.
-        if (v.role === "notice" && v.kind === "remembered" && v.data) {
-          const facts = (v.data as { facts?: { id: string; statement: string }[] }).facts ?? [];
-          return { ...v, data: { facts: facts.map((f) => ({ ...f, forgotten: !app.memory.fact(f.id) })) } };
-        }
-        return v;
-      }),
+      messages: same ? messages.slice(from) : messages,
+      from: same ? from : 0,
+      prefix: { count, sig: signature(messages, count) },
       actions: app.actions.forThread(id),
       related: app.threads.related(id),
       files: app.files.forThread(id),

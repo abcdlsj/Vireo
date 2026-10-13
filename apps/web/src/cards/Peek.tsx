@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
-import { cachedThread, rememberThread } from "../thread-cache";
+import { cachedThread, fetchThread, rememberThread } from "../thread-cache";
 import { api, onEvent, type ThreadDetail } from "../api";
 import { relTime } from "../format";
 import { ArrowUpIcon, ArrowUpRightIcon, CheckIcon, CloseIcon } from "../icons";
@@ -21,7 +21,7 @@ export function Peek({ card, onClose, refresh }: { card: Card; onClose: () => vo
 
   const load = useCallback(async () => {
     try {
-      const d = await api.get<ThreadDetail>(`/api/threads/${threadId}`);
+      const d = await fetchThread(threadId, cachedThread(threadId));
       setDetail(d);
       rememberThread(d);
     } catch {

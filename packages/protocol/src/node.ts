@@ -136,6 +136,14 @@ export interface ThreadDetail {
   files: FileInfo[];
   procedures: Procedure[];
   cards: Card[];
+  /**
+   * When asked with ?from=N&sig=…, and the first N messages are still what
+   * the caller has, `messages` holds only the ones after them and `from` is
+   * N; otherwise `from` is 0 and `messages` is the whole conversation.
+   */
+  from?: number;
+  /** A fingerprint of the conversation's older part, to send back as ?from=count&sig=value next time. */
+  prefix?: { count: number; sig: string };
 }
 
 export interface ToolCallRecord {

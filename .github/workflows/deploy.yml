@@ -28,6 +28,8 @@ concurrency:
 
 env:
   VITE_VIREO_CLOUD: https://cloud.askvireo.com
+  # The app's Worker hands the cloud's paths to it (apps/web/worker), so the app calls it on its own origin.
+  VITE_VIREO_SAME_ORIGIN: "1"
 
 jobs:
   changed:

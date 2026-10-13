@@ -11,7 +11,7 @@ import { ProcedureCard } from "./ProcedureCard";
 import { BrowserAsk } from "./BrowserAsk";
 import { BrowserView, SHEET_QUERY, SidePanel } from "./SidePanel";
 import { CardSlot } from "../cards/CardSlot";
-import { cachedThread, forgetThread, rememberThread } from "../thread-cache";
+import { cachedThread, fetchThread, forgetThread, rememberThread } from "../thread-cache";
 import { Status } from "../cards/Frame";
 import type { Card } from "@vireo/protocol";
 import { AlertIcon, ArrowUpRightIcon, BellIcon, CheckIcon, ChevronLeft, ChevronRight, ClockIcon, MemoryIcon, PanelIcon, StatusIcon } from "../icons";
@@ -163,6 +163,8 @@ export function ThreadView({ id }: { id: string }) {
   const reloadTimer = useRef<number | undefined>(undefined);
   // Loads can finish out of order on a slow connection; only the newest one counts.
   const loadSeq = useRef(0);
+  // What the last load brought, so the next asks only for what changed after it.
+  const latest = useRef(detail);
 
   const browsing = Boolean(detail?.thread.running) && liveSteps.some((s) => s.tool.startsWith("browser_"));
   useEffect(() => setPanelChoice(null), [id]);
@@ -210,8 +212,9 @@ export function ThreadView({ id }: { id: string }) {
   const load = useCallback(async () => {
     const seq = ++loadSeq.current;
     try {
-      const d = await api.get<ThreadDetail>(`/api/threads/${id}`);
+      const d = await fetchThread(id, latest.current);
       if (seq !== loadSeq.current) return;
+      latest.current = d;
       // In the same render as the new detail, so the answer never blinks out between the two.
       setDetail(d);
       rememberThread(d);

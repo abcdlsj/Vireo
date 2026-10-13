@@ -9,6 +9,18 @@ import { cacheClear } from "./local-cache";
 import type { CloudInfo, LinkRequest, NodeAccess, NodeSummary, User } from "@vireo/protocol";
 
 export const CLOUD_URL = (import.meta.env.VITE_VIREO_CLOUD ?? "").replace(/\/+$/, "");
+/**
+ * Where the app calls the cloud: on its own origin when the app's host hands
+ * the cloud's paths on (VITE_VIREO_SAME_ORIGIN, see apps/web/worker), which
+ * saves a CORS preflight before each new address; else at the cloud itself.
+ * Signing in still goes through the cloud's own address.
+ */
+const API_URL = import.meta.env.VITE_VIREO_SAME_ORIGIN ? "" : CLOUD_URL;
+
+/** A node reached through the cloud relay is reached the same way. */
+function viaApp(a: NodeAccess): NodeAccess {
+  return API_URL === CLOUD_URL || !a.baseUrl.startsWith(`${CLOUD_URL}/n/`) ? a : { ...a, baseUrl: a.baseUrl.slice(CLOUD_URL.length) };
+}
 
 const SESSION = "vireo.session";
 /** A node approval the owner opened before signing in; picked up after. */
@@ -61,7 +73,7 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
   if (session) headers.authorization = `Bearer ${session}`;
   let res: Response;
   try {
-    res = await fetch(`${CLOUD_URL}${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
+    res = await fetch(`${API_URL}${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
   } catch {
     throw new ApiError("Can't reach Vireo. Check your connection.", 0);
   }
@@ -77,7 +89,7 @@ export const cloud = {
   nodes: () => call<{ nodes: NodeSummary[] }>("GET", "/api/nodes").then((r) => r.nodes),
   renameNode: (id: string, name: string) => call<{ node: NodeSummary }>("PATCH", `/api/nodes/${id}`, { name }).then((r) => r.node),
   removeNode: (id: string) => call<{ ok: true }>("DELETE", `/api/nodes/${id}`),
-  access: (id: string) => call<NodeAccess>("POST", `/api/nodes/${id}/token`, {}),
+  access: (id: string) => call<NodeAccess>("POST", `/api/nodes/${id}/token`, {}).then(viaApp),
   linkRequest: (code: string) => call<{ request: LinkRequest }>("GET", `/api/link/${encodeURIComponent(code)}`).then((r) => r.request),
   approve: (code: string, name?: string) => call<{ node: NodeSummary }>("POST", `/api/link/${encodeURIComponent(code)}/approve`, { name }).then((r) => r.node),
   deny: (code: string) => call<{ ok: boolean }>("POST", `/api/link/${encodeURIComponent(code)}/deny`, {}),

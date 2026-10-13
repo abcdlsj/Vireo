@@ -1,5 +1,5 @@
 import type { NodeSummary, User } from "@vireo/protocol";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiError, closeEvents, onEvent, type Me, type Thread } from "./api";
 import { cloud, SIGNED_OUT, signedIn } from "./cloud";
 import { NodeSwitcher } from "./components/Nodes";
@@ -7,15 +7,17 @@ import { ApproveNode, NoNodes, SignIn, Unreachable } from "./components/SignIn";
 import { currentNode, loadNodes, nodeAccess, restoreNodes } from "./nodes";
 import { cacheGet, cacheSet } from "./local-cache";
 import { Home } from "./components/Home";
-import { MemoryPage } from "./components/MemoryPage";
 import { NewThread } from "./components/NewThread";
-import { SettingsPage } from "./components/SettingsPage";
 import { ThreadList } from "./components/ThreadList";
 import { ThreadView } from "./components/ThreadView";
 import { HomeIcon, MemoryIcon, PlusIcon, SearchIcon, SettingsIcon } from "./icons";
 import { QuickJump } from "./components/QuickJump";
 import { go, useRoute } from "./route";
 import { useGlide } from "./glide";
+
+// Pages opened now and then load when first opened, so starting the app downloads less.
+const SettingsPage = lazy(() => import("./components/SettingsPage").then((m) => ({ default: m.SettingsPage })));
+const MemoryPage = lazy(() => import("./components/MemoryPage").then((m) => ({ default: m.MemoryPage })));
 
 type State =
   | { name: "loading" }
@@ -193,9 +195,13 @@ function Shell({ user }: { user: User | null }) {
         ) : route.name === "new" ? (
           <NewThread />
         ) : route.name === "memory" ? (
-          <MemoryPage />
+          <Suspense fallback={null}>
+            <MemoryPage />
+          </Suspense>
         ) : route.name === "settings" ? (
-          <SettingsPage section={route.section} me={me} user={user} reload={reloadMe} />
+          <Suspense fallback={null}>
+            <SettingsPage section={route.section} me={me} user={user} reload={reloadMe} />
+          </Suspense>
         ) : (
           <Home me={me} onSearch={() => setJump(true)} />
         )}
