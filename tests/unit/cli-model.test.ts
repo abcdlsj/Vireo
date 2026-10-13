@@ -155,7 +155,7 @@ describe("a CLI as the model", () => {
 
     const calls = readFileSync(log, "utf8").trim().split("\n").map((l) => JSON.parse(l) as { args: string[]; tools: string[]; env?: string });
     const agentCall = calls.find((c) => c.args.includes("opus") && c.tools.length)!;
-    expect(agentCall.args).toEqual(expect.arrayContaining(["-p", "--tools", "", "--strict-mcp-config", "--mcp-config", "--no-session-persistence"]));
+    expect(agentCall.args).toEqual(expect.arrayContaining(["-p", "--tools", "", "--strict-mcp-config", "--mcp-config", "--setting-sources", "--no-session-persistence"]));
     expect(calls.some((c) => c.tools.includes("transfer_to_general"))).toBe(true);
     expect(agentCall.env).toBe("1");
     const usage = app.db.all<{ provider: string; input_tokens: number }>("SELECT provider, input_tokens FROM llm_calls WHERE purpose = 'agent'");

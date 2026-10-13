@@ -45,6 +45,8 @@ interface CliSpec {
   /** How long to wait after a tool call for more of the same batch, when the CLI doesn't say the batch is over. */
   callsSettleMs?: number;
   args(o: { model: string; systemFile: string; cwd: string; tools: ToolDecl }): string[];
+  /** Environment the CLI needs from the owner's own configuration, which it is told not to read. */
+  env?(): Record<string, string>;
   /** Models the CLI offers, read from it or its files; best effort. */
   models(path: string): Promise<string[]>;
   reader(): CliReader;
@@ -83,13 +85,22 @@ const num = (v: unknown): number => (typeof v === "number" && Number.isFinite(v)
 const str = (v: unknown): string | undefined => (typeof v === "string" ? v : undefined);
 const obj = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
 
+/** Claude Code's own settings file for the owner (~/.claude/settings.json, or under CLAUDE_CONFIG_DIR). */
+function claudeUserSettings(): Record<string, unknown> {
+  try {
+    return obj(JSON.parse(readFileSync(join(process.env.CLAUDE_CONFIG_DIR || join(homedir(), ".claude"), "settings.json"), "utf8")));
+  } catch {
+    return {};
+  }
+}
+
 const claude: CliSpec = {
   id: "claude",
   name: "Claude Code",
   bin: "claude",
   install: "npm install -g @anthropic-ai/claude-code",
   signIn: "claude",
-  defaults: { main: "sonnet", fast: "haiku" },
+  defaults: { main: CLI_DEFAULT_MODEL, fast: "haiku" },
   ownsSystemPrompt: true,
   args: ({ model, systemFile, tools }) => [
     "-p",
@@ -103,12 +114,18 @@ const claude: CliSpec = {
     "",
     "--strict-mcp-config",
     ...(tools.mcpUrl ? ["--mcp-config", JSON.stringify({ mcpServers: { [MCP_NAME]: { type: "http", url: tools.mcpUrl } } })] : []),
+    // None of the owner's settings, CLAUDE.md or plugins: they are for the owner's own sessions, and
+    // steer (and bloat) a turn of Vireo's. Only how to reach the model is kept (see env below).
+    "--setting-sources",
+    "",
     "--settings",
-    JSON.stringify({ disableAllHooks: true }),
+    JSON.stringify({ disableAllHooks: true, ...(str(claudeUserSettings().apiKeyHelper) ? { apiKeyHelper: claudeUserSettings().apiKeyHelper } : {}) }),
     "--system-prompt-file",
     systemFile,
     ...(model && model !== CLI_DEFAULT_MODEL ? ["--model", model] : []),
   ],
+  // The settings' env often holds the endpoint, token or CA certificates the account needs.
+  env: () => Object.fromEntries(Object.entries(obj(claudeUserSettings().env)).filter((e): e is [string, string] => typeof e[1] === "string")),
   models: async () => ["opus", "sonnet", "haiku"],
   reader: () => {
     let streamed = false;
@@ -158,6 +175,8 @@ const codex: CliSpec = {
   defaults: { main: CLI_DEFAULT_MODEL, fast: CLI_DEFAULT_MODEL },
   ownsSystemPrompt: false,
   // Codex starts a batch's calls one after another and never says the batch is complete.
+  // Known gap: it reports usage only at turn.completed, which a turn ending in calls never reaches,
+  // so those turns are recorded with no tokens.
   callsSettleMs: 500,
   args: ({ model, cwd, tools }) => [
     "exec",
@@ -584,7 +603,7 @@ export function runCli(id: CliId, path: string, req: ChatRequest, opts: { onDelt
   return new Promise((resolve) => {
     const child = spawn(path, spec.args({ model: req.model, systemFile, cwd: dir, tools }), {
       cwd: dir,
-      env: cliEnv(path, { VIREO_AS_MODEL: "1" }),
+      env: cliEnv(path, { ...spec.env?.(), VIREO_AS_MODEL: "1" }),
       stdio: ["pipe", "pipe", "pipe"],
       detached: process.platform !== "win32",
     });
