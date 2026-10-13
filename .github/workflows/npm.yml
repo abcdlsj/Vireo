@@ -4,18 +4,17 @@ name: Publish askvireo
 # node with `npx askvireo`. A workflow_dispatch run from main publishes the
 # version that main already carries.
 #
-# Authentication is npm trusted publishing (OIDC) once it is configured, and the
-# NPM_TOKEN secret until then: the npm CLI looks for OIDC first and falls back to
-# the token, so this workflow works either way.
-#
-#   Trusted publishing, set up once at
+# Authentication is npm trusted publishing (OIDC): the workflow asks GitHub for
+# an OIDC token and npm exchanges it, so there is no npm token to leak or rotate.
+# The publisher is registered at
 #   npmjs.com → Packages → askvireo → Settings → Trusted publishing:
 #     Organization or user   abcdlsj
 #     Repository             Vireo
 #     Workflow filename      npm.yml
-#   The configuration must publish successfully once within two days of being
-#   created, or it expires. Afterwards revoke NPM_TOKEN and switch the package to
-#   "Require two-factor authentication and disallow tokens".
+# and the package is set to "Require two-factor authentication and disallow
+# tokens", so this workflow is the only way a version gets published: if the
+# connection is lost, publishing stops until it is remade, and a remade one has
+# to publish within two days or it expires.
 on:
   push:
     tags: ["v*"]
@@ -74,8 +73,6 @@ jobs:
           fi
       - name: Publish to npm
         if: steps.version.outputs.published == 'false'
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           # A version with a suffix (1.0.0-rc.1) must not take over `latest`.
           tag=latest
