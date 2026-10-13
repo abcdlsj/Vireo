@@ -45,6 +45,8 @@ jobs:
       - run: npm ci
         env:
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+      # tests/unit/browser.test.ts drives a real Chromium, as CI does.
+      - run: npx playwright install --with-deps chromium
       - run: npm run typecheck -w askvireo
       - run: npm test
       - run: npm run build -w askvireo
