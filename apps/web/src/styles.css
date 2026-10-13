@@ -3070,6 +3070,80 @@ pre.command {
   user-select: all;
 }
 
+/* Onboarding steps: a numbered column, the current step in the accent, finished ones ticked. */
+.setup-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 14px;
+  counter-reset: step;
+  text-align: left;
+}
+
+.setup-steps > li {
+  position: relative;
+  display: grid;
+  gap: 6px;
+  padding-left: 34px;
+  counter-increment: step;
+  min-width: 0;
+}
+
+.setup-steps > li::before {
+  content: counter(step);
+  position: absolute;
+  left: 0;
+  top: -1px;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  box-shadow: inset 0 0 0 1.5px var(--line-strong);
+}
+
+.setup-steps > li > b {
+  font-weight: 600;
+  line-height: 20px;
+}
+
+.setup-steps > li.todo > b {
+  color: var(--text-2);
+}
+
+.setup-steps > li.now::before {
+  color: var(--accent-ink);
+  box-shadow: inset 0 0 0 1.5px var(--accent);
+}
+
+.setup-steps > li.done::before {
+  content: "✓";
+  color: var(--accent-text);
+  background: var(--accent);
+  box-shadow: none;
+}
+
+.setup-steps > li.error::before {
+  color: var(--red);
+  box-shadow: inset 0 0 0 1.5px var(--red);
+}
+
+.setup-steps .inline-form {
+  margin-top: 0;
+}
+
+.setup-steps pre.command {
+  overflow-x: auto;
+}
+
+.setup-steps > li > .btn {
+  justify-self: start;
+}
+
 p.account {
   display: flex;
   align-items: center;

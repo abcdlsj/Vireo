@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import type { NodeMode } from "@vireo/protocol";
-import { execFileSync, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, renameSync, rmSync } from "node:fs";
 import { homedir, platform } from "node:os";
 import { dirname, join } from "node:path";
@@ -10,6 +10,7 @@ import { loadConfig } from "./config.js";
 import { Identity } from "./identity.js";
 import { connectAgents } from "./connect.js";
 import { linkNode } from "./link.js";
+import { brewInstall, brewPath, cannotDownload, findBinaries, systemRunning } from "./plugins/tailscale/binaries.js";
 import { runNode } from "./server.js";
 import * as service from "./service.js";
 import { VERSION } from "./version.js";
@@ -131,14 +132,6 @@ if (command === "unlink" || command === "link") {
 }
 
 const interactive = process.stdin.isTTY && !values.yes;
-const has = (bin: string) => {
-  try {
-    execFileSync(bin, ["version"], { stdio: "ignore" });
-    return true;
-  } catch {
-    return false;
-  }
-};
 
 /** Asks how the app should reach this node, the first time only. */
 async function chooseMode(): Promise<NodeMode> {
@@ -221,10 +214,38 @@ if (command === "service") {
   }
 }
 config.mode = mode;
-// On a machine that already runs Tailscale, use it; otherwise Vireo runs its own tailscaled.
-const tailscale = mode === "tailscale" ? { mode: has("tailscale") ? "system" : "managed" } : undefined;
-if (tailscale?.mode === "managed" && !has("tailscaled")) {
-  console.error("  Tailscale is not installed here. Install it (https://tailscale.com/download) or choose the cloud relay.");
+const tailscale = mode === "tailscale" ? await chooseTailscale() : undefined;
+
+/**
+ * On a machine that already runs Tailscale (Tailscale.app on a Mac
+ * included), use it; otherwise Vireo runs its own tailscaled, which the
+ * Tailscale plugin downloads on Linux. A Mac with neither can get it from
+ * Homebrew.
+ */
+async function chooseTailscale(): Promise<{ mode: "system" | "managed" }> {
+  const found = findBinaries("");
+  if (found && (await systemRunning(found.cli))) return { mode: "system" };
+  if (found?.daemon || !cannotDownload()) return { mode: "managed" };
+  const brew = brewPath();
+  if (brew && interactive) {
+    const rl = createInterface({ input: process.stdin, output: process.stdout });
+    const answer = (await rl.question("  Tailscale isn't on this Mac. Install it with Homebrew (brew install tailscale)? [Y/n]: ")).trim().toLowerCase();
+    rl.close();
+    if (answer === "" || answer.startsWith("y")) {
+      console.log("  Installing Tailscale with Homebrew…");
+      try {
+        await brewInstall();
+        return { mode: "managed" };
+      } catch (err) {
+        console.error(`  ${err instanceof Error ? err.message : err}`);
+      }
+    }
+  }
+  console.error(
+    platform() === "darwin"
+      ? `  Tailscale isn't on this Mac. Install Tailscale from https://tailscale.com/download/mac${brew ? " (or run: brew install tailscale)" : ""} and start this again, or choose the cloud relay (npx @abcdlsj/vireo-node link).`
+      : `  Tailscale isn't on this machine and Vireo can't download it: ${cannotDownload()} Install it (https://tailscale.com/download) or choose the cloud relay (npx @abcdlsj/vireo-node link).`,
+  );
   process.exit(1);
 }
 

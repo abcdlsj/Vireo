@@ -26,7 +26,7 @@ Everyone signs in to the same app with GitHub and runs their own node. Each acco
    curl -fsSL https://askvireo.com/install.sh | sh
    ```
    That is the whole setup. It uses the Node.js already there when it is 22.13 or newer, else puts its own copy in `~/.config/vireo/runtime` and touches nothing else. Then it:
-   - asks how the app should reach the node: **through the Vireo cloud** (recommended; nothing to open on your network) or **over Tailscale** (the app talks to it at its `https://<machine>.<tailnet>.ts.net` address, from your own devices only);
+   - asks how the app should reach the node: **through the Vireo cloud** (recommended; nothing to open on your network) or **over Tailscale** (the app talks to it at its `https://<machine>.<tailnet>.ts.net` address, from your own devices only). Over Tailscale it uses the Tailscale already on the machine (Tailscale.app on a Mac too); otherwise it runs its own, downloading the official build into its data directory on Linux or installing it with Homebrew on a Mac, and the app walks you through signing in to Tailscale;
    - prints a code and opens the app; check the code matches and approve;
    - runs the node in the background, started at login and restarted if it stops (launchd on macOS, a systemd user service on Linux), and keeps it up to date by itself;
    - connects Claude Code and Codex if they are on the machine (see [Coding agents on this machine](#coding-agents-on-this-machine)).
@@ -114,6 +114,8 @@ Node (`npx @abcdlsj/vireo-node` options override these):
 | `VIREO_CHROMIUM_PATH` | Playwright's | Chromium executable for browser actions |
 | `VIREO_BROWSER_HEADLESS` | `true` | Set to `false` to watch the browser |
 | `VIREO_AUTO_UPDATE` | on, for the background service | Set to `off` to keep the installed version |
+| `VIREO_TAILSCALE_DOWNLOAD` | on, on Linux | Set to `off` to never download Tailscale when it is missing |
+| `VIREO_TAILSCALE_MIRROR` | `https://pkgs.tailscale.com/stable` | Where to download Tailscale from |
 | `VIREO_SCHEDULER` | on | Set to `off` to disable reminders and inbox and calendar checks |
 | `VIREO_FAKE_MODEL` | – | Use the scripted model, for demos and tests |
 | `VIREO_FAKE_GOOGLE` | – | Use an in-memory calendar and mailbox |

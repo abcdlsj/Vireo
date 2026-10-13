@@ -1,7 +1,7 @@
 import type { CloudInfo, LinkRequest, NodeSummary } from "@vireo/protocol";
 import { useEffect, useState, type ReactNode } from "react";
 import { cloud, devSignIn, resumePendingLink, signInWithGitHub } from "../cloud";
-import { nodes, switchNode } from "../nodes";
+import { loadNodes, nodes, switchNode } from "../nodes";
 import { NodeSwitcher, StartNode } from "./Nodes";
 
 function Page({ title, children }: { title: string; children: ReactNode }) {
@@ -87,9 +87,13 @@ export function ApproveNode({ code }: { code: string }) {
   if (linked) {
     return (
       <Page title="Node linked">
-        <p className="muted">{linked.name} is now yours. It finishes setting up on its own in a moment.</p>
+        <p className="muted">
+          {linked.mode === "tailscale"
+            ? `${linked.name} is now yours. Next, put it on your tailnet; the next page walks you through it.`
+            : `${linked.name} is now yours. It finishes setting up on its own in a moment.`}
+        </p>
         <button className="btn primary" onClick={() => switchNode(linked.id)} data-testid="open-node">
-          Open Vireo
+          {linked.mode === "tailscale" ? "Continue" : "Open Vireo"}
         </button>
       </Page>
     );
@@ -164,6 +168,106 @@ export function NoNodes() {
   );
 }
 
+const TAILSCALE_DOWNLOAD = "https://tailscale.com/download";
+
+/**
+ * A node reached over Tailscale that isn't on the tailnet yet: what it waits
+ * for, one step at a time, from what the node tells the cloud. Moves on by
+ * itself once the node has its tailnet address.
+ */
+export function TailnetSetup({ node: first, onReady }: { node: NodeSummary; onReady: () => void }) {
+  const [node, setNode] = useState(first);
+  useEffect(() => {
+    let stopped = false;
+    const tick = async () => {
+      const n = (await loadNodes().catch(() => undefined))?.find((x) => x.id === first.id);
+      if (stopped || !n) return;
+      setNode(n);
+      if (n.directUrl) onReady();
+    };
+    const timer = window.setInterval(() => void tick(), 3000);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+    };
+  }, [first.id, onReady]);
+
+  const setup = node.setup;
+  // Which step the node is on: 1 getting Tailscale running, 2 signing in, 3 allowing HTTPS.
+  const at = !node.online ? 1 : setup?.step === "signin" || setup?.step === "approve" ? 2 : setup?.step === "https" ? 3 : 1;
+  const mark = (i: number) => (i < at ? "done" : i === at ? (setup?.step === "error" && i === 1 ? "error" : "now") : "todo");
+  const others = nodes().filter((n) => n.id !== node.id);
+
+  return (
+    <Page title={`Put ${node.name} on your tailnet`}>
+      <p className="muted">The app reaches this node straight over Tailscale, so it needs to join your tailnet first. This page moves on by itself.</p>
+      <ol className="setup-steps" data-testid="tailnet-setup">
+        <li className="done">
+          <b>Linked to your account</b>
+        </li>
+        <li className={mark(1)} data-testid="setup-step-tailscale">
+          <b>Tailscale running on {node.name}</b>
+          {at === 1 ? (
+            !node.online ? (
+              <span className="muted small">
+                Waiting for {node.name} to come online. Keep <code>npx @abcdlsj/vireo-node</code> running there.
+              </span>
+            ) : setup?.step === "error" ? (
+              <span className="error small">{setup.message}</span>
+            ) : (
+              <span className="muted small">{setup?.message || "Starting Tailscale…"}</span>
+            )
+          ) : null}
+        </li>
+        <li className={mark(2)} data-testid="setup-step-signin">
+          <b>Sign in to Tailscale</b>
+          {at === 2 && setup ? (
+            <>
+              <span className="muted small">
+                {setup.message}
+                {setup.step === "signin" ? " No account yet? The same page creates one for free. Press Connect when it asks about this machine." : ""}
+              </span>
+              {setup.link ? (
+                <a className="btn primary" href={setup.link} target="_blank" rel="noreferrer" data-testid="setup-link">
+                  {setup.step === "approve" ? "Open the admin console" : "Sign in to Tailscale"}
+                </a>
+              ) : null}
+            </>
+          ) : null}
+        </li>
+        <li className={mark(3)} data-testid="setup-step-https">
+          <b>Allow HTTPS on your tailnet</b>
+          {at === 3 && setup ? (
+            <>
+              <span className="muted small">{setup.message} It's one switch, once per tailnet.</span>
+              {setup.link ? (
+                <a className="btn primary" href={setup.link} target="_blank" rel="noreferrer" data-testid="setup-link">
+                  Allow HTTPS
+                </a>
+              ) : null}
+            </>
+          ) : null}
+        </li>
+        <li className="todo">
+          <b>This device on the same tailnet</b>
+          <span className="muted small">
+            Install <a href={TAILSCALE_DOWNLOAD} target="_blank" rel="noreferrer">Tailscale</a> on this phone or computer too, and sign in with the same account.
+          </span>
+        </li>
+      </ol>
+      {others.length ? (
+        <div className="row-buttons center">
+          {others.map((n) => (
+            <button key={n.id} className="btn" onClick={() => switchNode(n.id)}>
+              Use {n.name} meanwhile
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </Page>
+  );
+}
+
 /** The current node can't be reached. */
 export function Unreachable({ node, message, onRetry }: { node: NodeSummary; message: string; onRetry: () => void }) {
   const others = nodes().filter((n) => n.id !== node.id);
@@ -174,9 +278,17 @@ export function Unreachable({ node, message, onRetry }: { node: NodeSummary; mes
       </div>
       <p className="muted">{message}</p>
       <p className="muted small">
-        {node.mode === "tailscale"
-          ? `This node is reached over Tailscale${node.directUrl ? ` at ${node.directUrl}` : ""}. Check that it is running and that this device is on the same tailnet.`
-          : "Check that it is running (npx @abcdlsj/vireo-node) and online."}
+        {node.mode === "tailscale" ? (
+          <>
+            This node is reached over Tailscale{node.directUrl ? ` at ${node.directUrl}` : ""}. Check that it is running, and that this device has{" "}
+            <a href={TAILSCALE_DOWNLOAD} target="_blank" rel="noreferrer">
+              Tailscale
+            </a>{" "}
+            on and is signed in to the same tailnet.
+          </>
+        ) : (
+          "Check that it is running (npx @abcdlsj/vireo-node) and online."
+        )}
       </p>
       <div className="row-buttons center">
         <button className="btn primary" onClick={onRetry}>

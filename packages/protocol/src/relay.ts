@@ -1,3 +1,5 @@
+import type { NodeSetup } from "./cloud.js";
+
 /**
  * Frames on the relay socket between the cloud and a node. The node opens the
  * socket at /api/nodes/:nodeId/connect and says hello with its secret. The
@@ -16,12 +18,15 @@ export interface RelayHello {
   platform: string;
   mode: "relay" | "tailscale";
   directUrl: string | null;
+  /** Older nodes leave it out. */
+  setup?: NodeSetup | null;
 }
 
 /** The node reports a change (e.g. its tailnet address became known). */
 export interface RelayUpdate {
   t: "update";
   directUrl: string | null;
+  setup?: NodeSetup | null;
 }
 
 export interface RelayRequest {

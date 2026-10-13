@@ -78,6 +78,7 @@ export class Plugins {
       publicUrl: (req) => app.address.publicUrl(req),
       localUrl: () => app.address.localUrl(),
       setDirectUrl: (url) => app.address.setDirectUrl(url),
+      setSetup: (setup) => app.address.setSetup(setup),
       demo: app.config.fakeGoogle,
       threads: app.threads,
       send: (threadId, text) => void app.runner.send(threadId, text),

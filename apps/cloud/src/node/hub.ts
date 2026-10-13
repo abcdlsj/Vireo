@@ -70,10 +70,10 @@ export class MemoryHub implements NodeHub {
         this.conns.get(nodeId)?.ws.close(4000, "Replaced by a newer connection");
         conn = { ws, channel: new Channel(send), alive: true };
         this.conns.set(nodeId, conn);
-        await this.nodes.seen(nodeId, { version: frame.version, platform: frame.platform, mode: frame.mode, directUrl: frame.directUrl });
+        await this.nodes.seen(nodeId, { version: frame.version, platform: frame.platform, mode: frame.mode, directUrl: frame.directUrl, setup: frame.setup });
         return send({ t: "welcome", nodeId });
       }
-      if (frame.t === "update") return void (await this.nodes.seen(nodeId, { directUrl: frame.directUrl }));
+      if (frame.t === "update") return void (await this.nodes.seen(nodeId, { directUrl: frame.directUrl, setup: frame.setup }));
       conn.channel.receive(frame);
     };
     // In order: frames that arrive while the hello is checked wait for it.

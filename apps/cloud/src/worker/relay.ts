@@ -84,9 +84,9 @@ export class NodeRelay extends DurableObject<WorkerEnv> {
       for (const other of this.ctx.getWebSockets()) if (other !== ws) other.close(4000, "Replaced by a newer connection");
       ws.serializeAttachment({ ...att, authed: true } satisfies Attachment);
       ws.send(JSON.stringify({ t: "welcome", nodeId: att.nodeId } satisfies CloudToNode));
-      return nodes.seen(att.nodeId, { version: frame.version, platform: frame.platform, mode: frame.mode, directUrl: frame.directUrl });
+      return nodes.seen(att.nodeId, { version: frame.version, platform: frame.platform, mode: frame.mode, directUrl: frame.directUrl, setup: frame.setup });
     }
-    if (frame.t === "update") return nodes.seen(att.nodeId, { directUrl: frame.directUrl });
+    if (frame.t === "update") return nodes.seen(att.nodeId, { directUrl: frame.directUrl, setup: frame.setup });
     this.channel(ws).receive(frame);
   }
 

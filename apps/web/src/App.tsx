@@ -3,7 +3,7 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react"
 import { api, ApiError, closeEvents, onEvent, type Me, type Thread } from "./api";
 import { cloud, SIGNED_OUT, signedIn } from "./cloud";
 import { NodeSwitcher } from "./components/Nodes";
-import { ApproveNode, NoNodes, SignIn, Unreachable } from "./components/SignIn";
+import { ApproveNode, NoNodes, SignIn, TailnetSetup, Unreachable } from "./components/SignIn";
 import { currentNode, loadNodes, nodeAccess, restoreNodes } from "./nodes";
 import { cacheGet, cacheSet } from "./local-cache";
 import { Home } from "./components/Home";
@@ -24,6 +24,7 @@ type State =
   | { name: "signed-out" }
   | { name: "no-nodes" }
   | { name: "unreachable"; node: NodeSummary; message: string }
+  | { name: "tailnet-setup"; node: NodeSummary }
   | { name: "ready"; node: NodeSummary };
 
 /**
@@ -53,6 +54,8 @@ export function App({ signInError }: { signInError?: string }) {
     }
     const node = currentNode();
     if (!node) return setState({ name: "no-nodes" });
+    // Over Tailscale, the node has no address until it is on the tailnet: walk the owner there.
+    if (node.mode === "tailscale" && !node.directUrl) return setState({ name: "tailnet-setup", node });
     if (kept && kept.id !== node.id) setState({ name: "loading" });
     try {
       await nodeAccess(!kept || kept.id !== node.id);
@@ -62,6 +65,8 @@ export function App({ signInError }: { signInError?: string }) {
       setState({ name: "unreachable", node, message: err instanceof Error ? err.message : String(err) });
     }
   }, []);
+
+  const reconnect = useCallback(() => void connect(), [connect]);
 
   useEffect(() => {
     void connect(true);
@@ -77,6 +82,7 @@ export function App({ signInError }: { signInError?: string }) {
   if (route.name === "link") return <ApproveNode code={route.code} />;
   if (state.name === "loading") return <div className="splash" aria-busy="true" />;
   if (state.name === "no-nodes") return <NoNodes />;
+  if (state.name === "tailnet-setup") return <TailnetSetup node={state.node} onReady={reconnect} />;
   if (state.name === "unreachable") return <Unreachable node={state.node} message={state.message} onRetry={() => void connect()} />;
   return <Shell key={state.node.id} user={user} />;
 }

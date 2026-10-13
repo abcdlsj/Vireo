@@ -2,6 +2,7 @@ import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { Duplex } from "node:stream";
+import { brewPath, cannotDownload, downloadBinaries, findBinaries, systemRunning, TAILSCALE_VERSION, type Binaries, type Progress } from "./binaries.js";
 
 /**
  * Talks to tailscaled through the tailscale CLI. In "managed" mode Vireo runs
@@ -10,7 +11,8 @@ import { Duplex } from "node:stream";
  * device or anything installed on the host besides the two binaries — the
  * same shape as Memoh's per-bot sidecar, but as a child process so it works
  * on a bare VPS and inside the Docker image alike. In "system" mode it uses
- * the tailscaled already running on the machine.
+ * the tailscaled already running on the machine. Missing binaries are
+ * downloaded on Linux (see binaries.ts).
  */
 
 export interface DaemonOptions {
@@ -55,17 +57,31 @@ export class TailscaleDaemon {
   private login?: ChildProcess;
   private serving?: ChildProcess;
   private lastError = "";
+  private found?: Binaries;
+  /** Managed was asked for, but this machine's own Tailscale is used (e.g. Tailscale.app on a Mac with no tailscaled). */
+  private usingSystem = false;
+  /** Set while Tailscale is being downloaded. */
+  installing?: Progress;
 
   constructor(private readonly opts: () => DaemonOptions) {}
 
+  private binaries(): Binaries {
+    this.found ??= findBinaries(this.opts().binDir, this.opts().dir);
+    return this.found ?? { cli: "tailscale" };
+  }
+
   private bin(name: "tailscale" | "tailscaled"): string {
-    const dir = this.opts().binDir;
-    return dir ? join(dir, name) : name;
+    const b = this.binaries();
+    return name === "tailscale" ? b.cli : (b.daemon ?? "tailscaled");
+  }
+
+  /** The mode in effect: managed falls back to this machine's Tailscale when that is all there is. */
+  get mode(): "managed" | "system" {
+    return this.usingSystem ? "system" : this.opts().mode;
   }
 
   get socket(): string | undefined {
-    const o = this.opts();
-    return o.mode === "managed" ? join(o.dir, "tailscaled.sock") : undefined;
+    return this.mode === "managed" ? join(this.opts().dir, "tailscaled.sock") : undefined;
   }
 
   /** Arguments that point the CLI at the right tailscaled. */
@@ -87,7 +103,7 @@ export class TailscaleDaemon {
       execFile(this.bin("tailscale"), [...this.cliPrefix(), ...args], { timeout: timeoutMs, maxBuffer: 8 << 20 }, (err, stdout, stderr) => {
         if (err) {
           const missing = (err as NodeJS.ErrnoException).code === "ENOENT";
-          reject(new Error(missing ? `tailscale CLI not found (${this.bin("tailscale")}). Install Tailscale or set the binaries directory.` : (stderr || stdout || err.message).trim()));
+          reject(new Error(missing ? `tailscale CLI not found (${this.bin("tailscale")}). Install Tailscale (https://tailscale.com/download) or set the binaries directory.` : (stderr || stdout || err.message).trim()));
         } else resolve(stdout);
       });
     });
@@ -98,10 +114,54 @@ export class TailscaleDaemon {
   }
 
   async start(): Promise<void> {
-    const o = this.opts();
     this.lastError = "";
-    if (o.mode === "managed") await this.startDaemon();
+    this.found = undefined;
+    this.usingSystem = false;
+    if (this.opts().mode === "managed") {
+      await this.ensureDaemonBinary();
+      if (!this.usingSystem) await this.startDaemon();
+    }
     await this.ensureUp();
+  }
+
+  /**
+   * Managed mode needs tailscaled: found on the machine, else downloaded
+   * (Linux), else this machine's running Tailscale is used instead (a Mac
+   * with Tailscale.app), else a clear way forward.
+   */
+  private async ensureDaemonBinary(): Promise<void> {
+    const b = findBinaries(this.opts().binDir, this.opts().dir);
+    this.found = b;
+    if (b?.daemon) return;
+    if (b && (await systemRunning(b.cli))) {
+      this.usingSystem = true;
+      return;
+    }
+    const why = this.opts().binDir ? `tailscaled is not in ${this.opts().binDir}.` : cannotDownload();
+    if (why) {
+      const mac = process.platform === "darwin";
+      throw new Error(
+        mac
+          ? `Tailscale isn't on this Mac. ${brewPath() ? "Press Install with Homebrew, or install" : "Install"} Tailscale from https://tailscale.com/download/mac and sign in, then press Reconnect.`
+          : `tailscaled not found. ${why} Install Tailscale (https://tailscale.com/download) or set the binaries directory.`,
+      );
+    }
+    this.installing = { received: 0, total: 0 };
+    console.log(`  [tailscale] Tailscale isn't on this machine. Downloading Tailscale ${TAILSCALE_VERSION} into Vireo's data directory…`);
+    let shown = 0;
+    try {
+      this.found = await downloadBinaries(this.opts().dir, (p) => {
+        this.installing = p;
+        const pct = p.total ? Math.floor((p.received / p.total) * 100) : 0;
+        if (pct >= shown + 25) {
+          shown = pct - (pct % 25);
+          console.log(`  [tailscale] Downloading… ${shown}%`);
+        }
+      });
+      console.log("  [tailscale] Downloaded and verified. Vireo runs its own Tailscale node; nothing was installed system-wide.");
+    } finally {
+      this.installing = undefined;
+    }
   }
 
   private async startDaemon(): Promise<void> {
@@ -141,10 +201,10 @@ export class TailscaleDaemon {
     const o = this.opts();
     const st = await this.status();
     if (st.BackendState === "Running") {
-      if (o.mode === "managed" && o.hostname && st.Self?.HostName !== o.hostname) await this.cli(["set", `--hostname=${o.hostname}`]).catch(() => undefined);
+      if (this.mode === "managed" && o.hostname && st.Self?.HostName !== o.hostname) await this.cli(["set", `--hostname=${o.hostname}`]).catch(() => undefined);
       return;
     }
-    if (o.mode === "system") return;
+    if (this.mode === "system") return;
     const args = ["up", `--hostname=${o.hostname || "vireo"}`, "--accept-dns=false"];
     if (o.controlUrl) args.push(`--login-server=${o.controlUrl}`);
     if (o.authKey) {

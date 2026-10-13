@@ -1,4 +1,4 @@
-import type { PluginField, PluginStatus } from "@vireo/protocol";
+import type { NodeSetup, PluginField, PluginStatus } from "@vireo/protocol";
 import type { Hono } from "hono";
 import type { AgentDef } from "../agents.js";
 import type { Actions } from "../actions.js";
@@ -61,6 +61,8 @@ export interface PluginHost {
   localUrl(): string;
   /** A plugin made this node reachable at a direct address (Tailscale), or no longer is. */
   setDirectUrl(url: string | undefined): void;
+  /** What the node still needs before it can be reached at that address, so the app can guide the owner; undefined once nothing. */
+  setSetup(setup: NodeSetup | undefined): void;
   /** Demo mode: in-memory calendar, mailbox and Drive instead of real accounts. */
   demo: boolean;
   threads: Pick<ThreadStore, "get" | "list" | "create" | "transcript" | "search">;

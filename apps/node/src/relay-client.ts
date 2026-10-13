@@ -1,4 +1,4 @@
-import type { CloudToNode, NodeToCloud, RelayRequest } from "@vireo/protocol";
+import type { CloudToNode, NodeSetup, NodeToCloud, RelayRequest } from "@vireo/protocol";
 import type { NodeIdentity } from "./identity.js";
 import { errorMessage } from "./util.js";
 
@@ -35,6 +35,7 @@ export class RelayClient {
       version: string;
       platform: string;
       directUrl: () => string | undefined;
+      setup: () => NodeSetup | undefined;
       handle: (req: Request) => Promise<Response>;
       /** The cloud no longer knows this node (removed from the account). */
       onRevoked: () => void;
@@ -57,7 +58,7 @@ export class RelayClient {
 
   /** Tells the cloud the node's direct address changed. */
   update(): void {
-    this.send({ t: "update", directUrl: this.opts.directUrl() ?? null });
+    this.send({ t: "update", directUrl: this.opts.directUrl() ?? null, setup: this.opts.setup() ?? null });
   }
 
   private connect(): void {
@@ -72,6 +73,7 @@ export class RelayClient {
         platform: this.opts.platform,
         mode: identity.mode,
         directUrl: this.opts.directUrl() ?? null,
+        setup: this.opts.setup() ?? null,
       });
     };
     ws.onmessage = (ev) => {

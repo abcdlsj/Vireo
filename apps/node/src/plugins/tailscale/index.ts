@@ -9,6 +9,7 @@ import { defineTool } from "../../tools/types.js";
 import { truncate } from "../../util.js";
 import type { PluginDef, PluginStatus } from "../types.js";
 import { TailscaleApi, type ApiDevice } from "./api.js";
+import { brewInstall, brewPath, findBinaries } from "./binaries.js";
 import { TailscaleDaemon, type TsPeer, type TsStatus } from "./daemon.js";
 
 /**
@@ -108,7 +109,7 @@ export const tailscalePlugin: PluginDef = {
     { key: "tailnet", label: "Tailnet", type: "text", default: "-", help: "“-” means the token's default tailnet." },
     { key: "ssh_user", label: "SSH user", type: "text", default: "root" },
     { key: "ssh_key", label: "SSH private key", type: "secret", multiline: true, help: "Optional. Not needed for machines with Tailscale SSH enabled." },
-    { key: "bin_dir", label: "Tailscale binaries directory", type: "text", placeholder: "/usr/local/bin", help: "Where tailscale and tailscaled are; empty uses PATH." },
+    { key: "bin_dir", label: "Tailscale binaries directory", type: "text", placeholder: "/usr/local/bin", help: "Where tailscale and tailscaled are. Empty finds them on this machine, and on Linux downloads them when they are missing." },
   ],
   browserSetup: [
     "Join the tailnet. If the status above has a sign-in link, browser_open it and call browser_ask_owner so the owner signs in and presses Connect. Then call plugin_setup again: the state should be ready. With no link and state login, the node is still starting: browser_wait a few seconds and check again.",
@@ -144,14 +145,33 @@ export const tailscalePlugin: PluginDef = {
       announced += `\n${key}`;
       console.log(line);
     };
+    // Until this host is served, the app's onboarding shows the owner what it waits for.
+    const setup = (s: Parameters<typeof ctx.host.setSetup>[0]) => ctx.host.setSetup(cfg().serve ? s : undefined);
     async function syncServe(): Promise<void> {
       if (!cfg().serve || syncing || served.url) return;
+      if (daemon.installing) {
+        setup({ step: "installing", message: installingMessage() });
+        return;
+      }
       syncing = true;
       try {
         const st = await daemon.status().catch(() => undefined);
-        if (!st) return;
+        if (!st) {
+          const err = startError || daemon.error();
+          setup(err ? { step: "error", message: err } : { step: "starting", message: "Starting Tailscale…" });
+          return;
+        }
         if (st.BackendState !== "Running") {
           if (st.AuthURL) announce(st.AuthURL, `  [tailscale] Sign in to put this host on your tailnet: ${st.AuthURL}`);
+          setup(
+            st.AuthURL
+              ? { step: "signin", message: "Sign in to Tailscale to put this node on your tailnet.", link: st.AuthURL }
+              : st.BackendState === "NeedsMachineAuth"
+                ? { step: "approve", message: "An admin needs to approve this machine in the Tailscale admin console.", link: "https://login.tailscale.com/admin/machines" }
+                : daemon.mode === "system" && st.BackendState !== "Starting"
+                  ? { step: "signin", message: "Tailscale on this machine is signed out. Sign it in, then this page moves on by itself." }
+                  : { step: "starting", message: "Starting Tailscale…" },
+          );
           return;
         }
         const name = st.Self?.DNSName?.replace(/\.$/, "");
@@ -160,14 +180,17 @@ export const tailscalePlugin: PluginDef = {
         const r = await daemon.serve(ctx.host.localUrl());
         if ("enableUrl" in r) {
           served = { enableUrl: r.enableUrl };
+          setup({ step: "https", message: "Allow HTTPS certificates on your tailnet, so your devices can open this node securely.", link: r.enableUrl });
           announce(r.enableUrl, `  [tailscale] Allow HTTPS on your tailnet so this host can be reached at ${url}: ${r.enableUrl}`);
           return;
         }
         served = { url };
         ctx.host.setDirectUrl(url);
+        ctx.host.setSetup(undefined);
         announce(url, `  [tailscale] This node is on your tailnet at ${url}`);
       } catch (err) {
         served = { error: (err as Error).message };
+        setup({ step: "error", message: `Couldn't serve this node on the tailnet: ${served.error}` });
       } finally {
         syncing = false;
       }
@@ -184,7 +207,13 @@ export const tailscalePlugin: PluginDef = {
       clearInterval(watch);
       watch = undefined;
       if (served.url) ctx.host.setDirectUrl(undefined);
+      ctx.host.setSetup(undefined);
       served = {};
+    };
+    const installingMessage = () => {
+      const p = daemon.installing;
+      const pct = p?.total ? ` ${Math.floor((p.received / p.total) * 100)}%` : "";
+      return `Downloading Tailscale…${pct}`;
     };
 
     const api = () => {
@@ -441,9 +470,12 @@ export const tailscalePlugin: PluginDef = {
         "- tailnet: the owner's own machines and servers on their Tailscale network: which are online, pinging, calling a service on one, running a command on a server over SSH, authorising, removing or tagging devices, routes and key expiry.",
 
       async start() {
-        await startNode();
-        if (cfg().serve && startError) console.warn(`  [tailscale] ${startError}`);
+        // Serving first, so the app hears about a download or a failed start too.
+        const node = startNode();
         startServing();
+        await node;
+        if (cfg().serve && startError) console.warn(`  [tailscale] ${startError}`);
+        void syncServe();
       },
 
       async stop() {
@@ -452,6 +484,7 @@ export const tailscalePlugin: PluginDef = {
       },
 
       async status(): Promise<PluginStatus> {
+        if (daemon.installing) return { state: "starting", message: `${installingMessage()} It goes into Vireo's data directory; nothing is installed system-wide.` };
         await starting;
         const c = cfg();
         const st = await daemon.status().catch((e: Error) => e);
@@ -459,13 +492,13 @@ export const tailscalePlugin: PluginDef = {
           return { state: "error", message: startError || daemon.error() || st.message };
         }
         const details = [
-          { label: "Mode", value: c.mode === "system" ? "This machine's Tailscale" : "Vireo's own node (userspace)" },
+          { label: "Mode", value: daemon.mode === "system" ? "This machine's Tailscale" : "Vireo's own node (userspace)" },
           { label: "API token", value: c.api_key ? "set — devices can be managed" : "not set — read-only" },
         ];
         if (st.BackendState === "NeedsLogin" || st.BackendState === "NoState" || st.BackendState === "Stopped") {
           return {
             state: "login",
-            message: st.AuthURL ? "Sign in to add Vireo to your tailnet." : c.mode === "system" ? "Tailscale on this machine is logged out or stopped." : "Waiting for a sign-in link… add an auth key or press Reconnect.",
+            message: st.AuthURL ? "Sign in to add Vireo to your tailnet." : daemon.mode === "system" ? "Tailscale on this machine is logged out or stopped." : "Waiting for a sign-in link… add an auth key or press Reconnect.",
             link: st.AuthURL ? { label: "Sign in to Tailscale", href: st.AuthURL } : undefined,
             details,
           };
@@ -489,13 +522,21 @@ export const tailscalePlugin: PluginDef = {
       },
 
       actions() {
+        const c = cfg();
+        // A Mac with neither Tailscale.app nor tailscaled: Homebrew's build is one press away.
+        const brew = c.mode !== "system" && !c.bin_dir && brewPath() && !findBinaries("", ctx.dir);
         return [
+          ...(brew ? [{ id: "install_brew", label: "Install with Homebrew", primary: true }] : []),
           { id: "reconnect", label: "Reconnect" },
-          ...(cfg().mode === "system" ? [] : [{ id: "logout", label: "Log out" }]),
+          ...(daemon.mode === "system" ? [] : [{ id: "logout", label: "Log out" }]),
         ];
       },
 
       async runAction(id) {
+        if (id === "install_brew") {
+          await brewInstall();
+          id = "reconnect";
+        }
         if (id === "reconnect") {
           stopServing();
           await daemon.stop();

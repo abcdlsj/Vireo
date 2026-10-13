@@ -1,4 +1,4 @@
-import type { LinkPoll, LinkRequest, LinkStart, LinkStartRequest, NodeAccess, NodeMode, NodePeers, NodeSummary, User } from "@vireo/protocol";
+import type { LinkPoll, LinkRequest, LinkStart, LinkStartRequest, NodeAccess, NodeMode, NodePeers, NodeSetup, NodeSummary, User } from "@vireo/protocol";
 import type { Accounts } from "./accounts.js";
 import type { CloudConfig } from "./config.js";
 import type { Sql } from "./sql.js";
@@ -6,6 +6,26 @@ import type { SigningKey } from "./keys.js";
 import { hash, newId, normalizeCode, now, secret, userCode } from "./util.js";
 
 const LINK_TTL = 15 * 60_000;
+const SETUP_STEPS = new Set(["installing", "starting", "signin", "approve", "https", "error"]);
+
+/** Only what the app shows, from what a node sent: a known step, short text, an https link. */
+function cleanSetup(s: unknown): NodeSetup | null {
+  if (!s || typeof s !== "object") return null;
+  const { step, message, link } = s as Record<string, unknown>;
+  if (typeof step !== "string" || !SETUP_STEPS.has(step)) return null;
+  const out: NodeSetup = { step: step as NodeSetup["step"], message: String(message ?? "").slice(0, 500) };
+  if (typeof link === "string" && /^https:\/\//.test(link) && link.length <= 500) out.link = link;
+  return out;
+}
+
+function parseSetup(raw: string | null | undefined): NodeSetup | null {
+  if (!raw) return null;
+  try {
+    return cleanSetup(JSON.parse(raw));
+  } catch {
+    return null;
+  }
+}
 const POLL_INTERVAL = 2;
 
 interface NodeRow {
@@ -15,6 +35,7 @@ interface NodeRow {
   secret_hash: string;
   mode: NodeMode;
   direct_url: string | null;
+  setup?: string | null;
   version: string | null;
   platform: string | null;
   created_at: number;
@@ -64,6 +85,7 @@ export class Nodes {
       mode: r.mode,
       online: await this.online(r.id),
       directUrl: r.direct_url,
+      setup: r.mode === "tailscale" && !r.direct_url ? parseSetup(r.setup) : null,
       version: r.version,
       platform: r.platform,
       createdAt: r.created_at,
@@ -102,7 +124,7 @@ export class Nodes {
   }
 
   /** What a connected node reports about itself. */
-  async seen(nodeId: string, info: { version?: string; platform?: string; mode?: NodeMode; directUrl?: string | null }): Promise<void> {
+  async seen(nodeId: string, info: { version?: string; platform?: string; mode?: NodeMode; directUrl?: string | null; setup?: NodeSetup | null }): Promise<void> {
     const cur = await this.sql.first<NodeRow>("SELECT * FROM nodes WHERE id = ?", nodeId);
     if (!cur) return;
     await this.sql.run(
@@ -114,6 +136,10 @@ export class Nodes {
       now(),
       nodeId,
     );
+    if (info.setup !== undefined) {
+      const setup = cleanSetup(info.setup);
+      await this.sql.run("UPDATE nodes SET setup = ? WHERE id = ?", setup ? JSON.stringify(setup) : null, nodeId).catch(() => undefined);
+    }
   }
 
   /** A short-lived token for one node, and where the app should send it. */

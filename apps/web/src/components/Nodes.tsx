@@ -73,13 +73,26 @@ export function NodeSwitcher() {
 export function StartNode() {
   return (
     <div className="stack">
-      <p className="muted small">On the machine Vireo should run on (your laptop, a home server, a VPS), run:</p>
-      <pre className="command">npx @abcdlsj/vireo-node</pre>
-      <p className="muted small">
-        It asks whether to connect through the Vireo cloud or over Tailscale, then shows a code and opens this app to approve it. Each node keeps its own threads,
-        memory and plugins on that machine.
-      </p>
-      <LinkCodeForm />
+      <ol className="setup-steps" data-testid="start-node">
+        <li className="now">
+          <b>Run Vireo on your machine</b>
+          <span className="muted small">On your laptop, a home server or a VPS:</span>
+          <pre className="command">npx @abcdlsj/vireo-node</pre>
+        </li>
+        <li className="todo">
+          <b>Choose how this app reaches it</b>
+          <span className="muted small">
+            Through the Vireo cloud works anywhere with nothing to set up. Over Tailscale keeps it to your own devices; Vireo gets Tailscale onto the machine if it's
+            missing.
+          </span>
+        </li>
+        <li className="todo">
+          <b>Approve its code here</b>
+          <span className="muted small">It opens this app with the code. If it didn't, type the code it shows:</span>
+          <LinkCodeForm />
+        </li>
+      </ol>
+      <p className="muted small">Each node keeps its own threads, memory and plugins on that machine.</p>
     </div>
   );
 }

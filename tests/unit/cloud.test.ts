@@ -1,7 +1,8 @@
 import type { LinkStart, NodeAccess, NodeSummary } from "@vireo/protocol";
 import { spawn } from "node:child_process";
 import { createServer } from "node:net";
-import { resolve } from "node:path";
+import { writeFileSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { loadConfig as cloudConfig } from "../../apps/cloud/src/node/config.js";
 import { runCloud, type RunningCloud } from "../../apps/cloud/src/node/server.js";
@@ -202,6 +203,31 @@ describe.each([
       expect((await json(`/api/nodes/${nasId}`, { method: "DELETE", token: ana })).status).toBe(200);
     } finally {
       await nas.stop();
+    }
+  }, 60_000);
+
+  it("walks the owner through putting a Tailscale node on the tailnet", async () => {
+    const gate = join(tempDir(), "https-allowed");
+    process.env.FAKE_TS_SERVE_GATE = gate;
+    let code: LinkStart | undefined;
+    const box = await runNode(
+      nodeConfig({ VIREO_DATA_DIR: tempDir(), VIREO_PORT: String(await freePort()), VIREO_CLOUD_URL: base, VIREO_NAME: "box", VIREO_MODE: "tailscale", VIREO_FAKE_MODEL: "1", VIREO_FAKE_GOOGLE: "1" }),
+      { onLinkCode: (s) => (code = s), tailscale: { mode: "system", bin_dir: resolve("tests/fixtures/fake-tailscale") } },
+    );
+    try {
+      const start = await until(() => code);
+      const boxId = (await json<{ node: NodeSummary }>(`/api/link/${start.userCode}/approve`, { method: "POST", token: ana, body: JSON.stringify({}) })).body.node.id;
+      const box_ = async () => (await json<{ nodes: NodeSummary[] }>("/api/nodes", { token: ana })).body.nodes.find((n) => n.id === boxId);
+      // HTTPS isn't allowed on the tailnet yet: the app learns the step and the link.
+      const waiting = await until(async () => ((await box_())?.setup?.step === "https" ? box_() : undefined));
+      expect(waiting).toMatchObject({ mode: "tailscale", directUrl: null, setup: { step: "https", link: "https://login.tailscale.com/f/serve?node=n0" } });
+      writeFileSync(gate, "");
+      const ready = await until(async () => ((await box_())?.directUrl ? box_() : undefined));
+      expect(ready).toMatchObject({ directUrl: "https://vireo.tail-test.ts.net", setup: null });
+      await json(`/api/nodes/${boxId}`, { method: "DELETE", token: ana });
+    } finally {
+      delete process.env.FAKE_TS_SERVE_GATE;
+      await box.stop();
     }
   }, 60_000);
 

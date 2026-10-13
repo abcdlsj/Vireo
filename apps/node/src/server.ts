@@ -60,6 +60,7 @@ export async function runNode(config: Config, opts: RunOptions = {}): Promise<Ru
       version: VERSION,
       platform: platform(),
       directUrl: () => app.address.directUrl,
+      setup: () => app.address.setup,
       handle: (req) => Promise.resolve(http.fetch(req)),
       onRevoked: () => {
         app.identity.clear();

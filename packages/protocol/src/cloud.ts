@@ -17,6 +17,18 @@ export interface User {
  */
 export type NodeMode = "relay" | "tailscale";
 
+/**
+ * What a node reached over Tailscale still needs before the app can reach
+ * it, so the app can walk the owner through it. The node reports it over
+ * its socket to the cloud, which only the owner's own app sees.
+ */
+export interface NodeSetup {
+  step: "installing" | "starting" | "signin" | "approve" | "https" | "error";
+  message: string;
+  /** The page the owner opens for this step: Tailscale's sign-in, or allowing HTTPS on the tailnet. */
+  link?: string;
+}
+
 export interface NodeSummary {
   id: string;
   name: string;
@@ -25,6 +37,8 @@ export interface NodeSummary {
   online: boolean;
   /** The node's own address in tailscale mode, e.g. https://box.tailnet.ts.net. */
   directUrl: string | null;
+  /** In tailscale mode, until the node is on the tailnet: what it is waiting for. */
+  setup?: NodeSetup | null;
   version: string | null;
   platform: string | null;
   createdAt: number;

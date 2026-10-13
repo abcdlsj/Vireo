@@ -1,3 +1,4 @@
+import type { NodeSetup } from "@vireo/protocol";
 import type { Config } from "./config.js";
 import type { Identity } from "./identity.js";
 import type { RequestInfo } from "./plugins/types.js";
@@ -6,7 +7,9 @@ import type { RequestInfo } from "./plugins/types.js";
 export class Address {
   /** Set while a plugin serves this node at a direct address (e.g. https://box.tailnet.ts.net). */
   directUrl: string | undefined;
-  /** Called when the direct address changes, so the cloud can be told. */
+  /** What the node still needs before it can be reached directly, for the app's onboarding. */
+  setup: NodeSetup | undefined;
+  /** Called when the direct address or the setup changes, so the cloud can be told. */
   onChange: () => void = () => undefined;
 
   constructor(
@@ -17,6 +20,12 @@ export class Address {
   setDirectUrl(url: string | undefined): void {
     if (url === this.directUrl) return;
     this.directUrl = url;
+    this.onChange();
+  }
+
+  setSetup(setup: NodeSetup | undefined): void {
+    if (JSON.stringify(setup) === JSON.stringify(this.setup)) return;
+    this.setup = setup;
     this.onChange();
   }
 

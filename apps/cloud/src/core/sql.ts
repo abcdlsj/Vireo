@@ -70,3 +70,9 @@ export const SCHEMA = [
     value TEXT NOT NULL
   )`,
 ];
+
+/** Columns added after the first release; each fails harmlessly once it exists. */
+export const MIGRATIONS = [
+  // What a tailscale-mode node still waits for (JSON NodeSetup), for the app's onboarding.
+  `ALTER TABLE nodes ADD COLUMN setup TEXT`,
+];
