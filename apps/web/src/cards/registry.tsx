@@ -8,14 +8,21 @@ import type { Card, CardButton } from "@vireo/protocol";
  * (and its data shape in apps/node/src/cards/kinds.ts); nothing else changes.
  */
 export type CardSize = "s" | "l";
+export type CardHeight = "short" | "medium" | "tall" | "auto";
 
 export interface CardKindView {
   kind: string;
   /**
-   * The card's size on the board: small (one column) or large (two columns),
-   * both one fixed row tall (cards.css). Small by default; a function decides per card.
+   * The card's width on the board: small (one column) or large (two columns).
+   * Small by default; a function decides per card.
    */
   size?: CardSize | ((card: Card) => CardSize);
+  /**
+   * The height the card takes on the board: short, medium or tall (cards.css).
+   * By default the board picks the shortest that holds the content; a kind
+   * whose cards should all match picks one.
+   */
+  height?: CardHeight;
   /** Renders the card. `expanded` is the card's own page, where it can show everything. */
   render: (props: { card: Card; expanded: boolean; refresh: () => void }) => ReactNode;
 }

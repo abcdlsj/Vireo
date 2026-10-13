@@ -3,13 +3,14 @@
  * (radius, padding, head, foot); kinds differ only in their material and
  * body.
  *
- * Sizes. On the board a card comes in one of two fixed sizes, like a widget:
- * small, one column wide, and large, two columns wide; both are one row
- * (--c-h) tall, so every row of the board lines up. Each kind lays out its
- * slots inside that box and the model only fills them: prose is cut to a
- * few lines, lists drop their last items and say how many more, and the
- * buttons always sit on the card's bottom edge. The peek and the thread show
- * the whole card at its natural height.
+ * Sizes. On the board a card is a widget of fixed sizes: small (one column)
+ * or large (two columns) wide, and short, medium or tall (124, 196 or 268
+ * pixels) high. Every edge falls on the board's grid, so the cards line up, and a
+ * card takes the short height when its content fits, so none is left half
+ * empty. Each kind lays out its slots inside that box and the model only
+ * fills them: prose is cut to a few lines, lists drop their last items and
+ * say how many more, and the buttons always sit on the card's bottom edge.
+ * The peek and the thread show the whole card at its natural height.
  */
 :root {
   --c-canvas: #f1f1ec;
@@ -44,10 +45,8 @@
   --c-shadow: 0 0 0 1px rgba(30, 30, 20, 0.055), 0 1px 2px rgba(30, 30, 20, 0.04), 0 6px 18px -8px rgba(30, 30, 20, 0.1);
   --c-shadow-hover: 0 0 0 1px rgba(30, 30, 20, 0.08), 0 2px 4px rgba(30, 30, 20, 0.05), 0 14px 32px -12px rgba(30, 30, 20, 0.18);
   --c-radius: 22px;
-  /* The height of every card on the board, small or large. */
-  --c-h: 272px;
-  /* A large card where the board is one column wide. */
-  --c-h-l: 360px;
+  /* The board's row: a card is two (short), three (medium) or four (tall) rows high, with the gaps between. */
+  --c-row: 52px;
 }
 
 :root[data-theme="dark"] {
@@ -389,11 +388,11 @@
   color: var(--c-ink-3);
 }
 
-/* Rows of fixed height; a small card that comes later fills a hole a large one left. */
+/* Rows of fixed height; Frame sets how many each card spans, and a later card fills a hole an earlier one left. */
 .board {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  grid-auto-rows: var(--c-h);
+  grid-auto-rows: var(--c-row);
   grid-auto-flow: row dense;
   gap: 20px;
 }
@@ -406,9 +405,13 @@
   animation: c-rise 0.32s ease both;
 }
 
+.board > .slot {
+  grid-row-end: span 2;
+}
+
 .board > .slot > .vcard {
   flex: none;
-  height: var(--c-h);
+  height: 100%;
 }
 
 .board > .slot.size-l {
@@ -964,6 +967,17 @@
   border-color: var(--c-accent-hover);
 }
 
+.cbtn.small {
+  height: 28px;
+  padding: 0 12px;
+  font-size: 12px;
+  border-radius: 14px;
+}
+
+.reminder-when .cbtn {
+  align-self: center;
+}
+
 .cbtn.ghost {
   border-color: transparent;
   background: transparent;
@@ -1504,7 +1518,7 @@
 
 /* ---------- the general card: title, a line, and blocks ---------- */
 .vcard.gcard .vcard-body {
-  gap: 12px;
+  gap: 10px;
 }
 
 /* In a small card a row is its name and its number; what tells the rows apart waits in the peek. */
@@ -1580,7 +1594,7 @@
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: baseline;
   column-gap: 14px;
-  padding: 9px 0;
+  padding: 8px 0;
   margin: 0;
   border-radius: 0;
   border-top: 1px solid var(--c-line);
@@ -1748,6 +1762,10 @@
   align-items: flex-end;
   gap: 4px;
   height: 64px;
+}
+
+.vcard:not(.expanded) .g-bars {
+  height: 40px;
 }
 
 .g-bar {
@@ -2508,12 +2526,13 @@
 
 .reminder-time {
   font-size: 40px;
-  line-height: 46px;
+  line-height: 44px;
   font-weight: 600;
   letter-spacing: -0.03em;
 }
 
 .reminder-day {
+  flex: 1;
   min-width: 0;
   font-size: 13px;
   font-weight: 500;
@@ -2615,17 +2634,8 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
-  /* One column: a large card can't be wider, so it is taller instead. */
-  .board {
-    grid-auto-rows: auto;
-  }
-
   .board > .slot.size-l {
     grid-column: auto;
-  }
-
-  .board > .slot.size-l > .vcard {
-    height: var(--c-h-l);
   }
 
   .board .g-facts {
@@ -2734,7 +2744,7 @@
 
 /* ---------- trip (round trip) ---------- */
 .vcard.trip .vcard-body {
-  gap: 8px;
+  gap: 6px;
 }
 
 .trip-head {
@@ -2771,7 +2781,7 @@
   grid-template-columns: 40px 92px minmax(0, 1fr) auto auto;
   align-items: baseline;
   gap: 12px;
-  padding: 8px 14px;
+  padding: 6px 14px;
   border-radius: 14px;
   background: var(--c-soft);
 }
