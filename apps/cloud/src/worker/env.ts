@@ -4,7 +4,7 @@ import { SCHEMA } from "../core/sql.js";
 import { D1Sql } from "./d1.js";
 import { DurableHub } from "./hub.js";
 
-/** Bindings and settings from wrangler.jsonc (vars) and `wrangler secret put` (GITHUB_CLIENT_SECRET). */
+/** Bindings and settings from wrangler.jsonc (vars) and `wrangler secret put` (the client ids and secrets for GitHub and Google). */
 export interface WorkerEnv {
   DB: D1Database;
   RELAY: DurableObjectNamespace;

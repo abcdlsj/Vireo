@@ -28,10 +28,12 @@ The cloud runs as a Worker: the API in the Worker, accounts and nodes in D1, and
 npx wrangler login
 npx wrangler d1 create vireo-cloud              # put the database_id it prints into wrangler.jsonc
 npx wrangler secret put GITHUB_CLIENT_SECRET    # the OAuth app's client secret
+npx wrangler secret put GOOGLE_CLIENT_SECRET    # optional: Vireo's shared Google client,
+                                                # whose id goes in wrangler.jsonc
 npx wrangler deploy
 ```
 
-Before deploying, check `wrangler.jsonc`: `routes` (the cloud's domain, `cloud.askvireo.com`, which must be a zone in your Cloudflare account; Cloudflare makes the DNS record and certificate), and under `vars` the cloud's and the app's addresses and `GITHUB_CLIENT_ID`. Tables are made on first use, and the key that signs node tokens is made once and kept in D1. Deploy again after pulling changes (or push to `main`: see **Automatically, from GitHub** below). `npx wrangler tail` shows its log.
+Before deploying, check `wrangler.jsonc`: `routes` (the cloud's domain, `cloud.askvireo.com`, which must be a zone in your Cloudflare account; Cloudflare makes the DNS record and certificate), and under `vars` the cloud's and the app's addresses, `GITHUB_CLIENT_ID` and the optional `GOOGLE_CLIENT_ID` for the shared Google client. Without `GOOGLE_CLIENT_ID` and its `GOOGLE_CLIENT_SECRET` the Google plugin has no shared client and each node owner creates one of their own. Tables are made on first use, and the key that signs node tokens is made once and kept in D1. Deploy again after pulling changes (or push to `main`: see **Automatically, from GitHub** below). `npx wrangler tail` shows its log.
 
 To try it locally: `npm run dev:worker -w @vireo/cloud` (a local D1 and Durable Objects, on :8700; add `--var VIREO_DEV_LOGIN:1` to sign in by name).
 
@@ -42,7 +44,7 @@ The same cloud also runs as a Node server, for a VPS (Docker with Compose, the c
 ```bash
 git clone https://github.com/abcdlsj/vireo && cd vireo/deploy/vps
 cp .env.example .env              # VIREO_DOMAIN=cloud.askvireo.com
-cp cloud.env.example cloud.env    # VIREO_WEB_URL (the app), GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET
+cp cloud.env.example cloud.env    # VIREO_WEB_URL (the app), GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET
 docker compose up -d              # the cloud behind Caddy, with HTTPS for VIREO_DOMAIN
 ```
 
@@ -94,6 +96,11 @@ than to the code, and so are not in the repository:
 
 - `VIREO_D1_DATABASE_ID`: the id of the cloud's D1 database.
 - `VIREO_GITHUB_CLIENT_ID`: the GitHub OAuth app's client id.
+
+A third is optional: `VIREO_GOOGLE_CLIENT_ID`, the shared Google OAuth client's
+id, which `cloud-config.mjs` fills into `GOOGLE_CLIENT_ID`; its secret
+(`GOOGLE_CLIENT_SECRET`) is a Worker secret. Leave the id unset to switch the
+shared client off.
 
 Neither is a credential, and they would be easier to keep as repository
 *variables* — except that GitHub prints every step's environment in the log and

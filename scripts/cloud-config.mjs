@@ -4,14 +4,17 @@
 //   VIREO_D1_DATABASE_ID=... VIREO_GITHUB_CLIENT_ID=... node scripts/cloud-config.mjs
 //   scripts/deploy-cf.sh apps/cloud --config wrangler.deploy.jsonc
 //
+// VIREO_GOOGLE_CLIENT_ID, for the Google plugin's shared client, is optional:
+// without it the plugin asks each node owner for a client of their own.
+//
 // The ids belong to the deployment, not to the repository, and wrangler gives
 // them no way to be told otherwise: it has no flag for the D1 database id and
 // does not interpolate ${VARIABLES} in a config. So the tracked
 // apps/cloud/wrangler.jsonc keeps placeholders and this writes a copy with the
 // real values — git-ignored, so a checkout never carries them.
 //
-// The deployment pipeline passes both from repository variables; without either
-// one this fails rather than deploying a placeholder.
+// The deployment pipeline passes the required ones from repository secrets;
+// without either this fails rather than deploying a placeholder.
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -20,12 +23,17 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const source = join(root, "apps/cloud/wrangler.jsonc");
 const target = join(root, "apps/cloud/wrangler.deploy.jsonc");
 
-const replace = {
+const required = {
   PASTE_YOUR_D1_DATABASE_ID: process.env.VIREO_D1_DATABASE_ID,
   PASTE_YOUR_GITHUB_CLIENT_ID: process.env.VIREO_GITHUB_CLIENT_ID,
 };
+const replace = {
+  ...required,
+  // Optional; empty turns the shared Google client off.
+  PASTE_YOUR_GOOGLE_CLIENT_ID: process.env.VIREO_GOOGLE_CLIENT_ID ?? "",
+};
 
-const unset = Object.entries(replace).filter(([, value]) => !value).map(([what]) => what);
+const unset = Object.entries(required).filter(([, value]) => !value).map(([what]) => what);
 if (unset.length) {
   const names = { PASTE_YOUR_D1_DATABASE_ID: "VIREO_D1_DATABASE_ID", PASTE_YOUR_GITHUB_CLIENT_ID: "VIREO_GITHUB_CLIENT_ID" };
   console.error(`${unset.map((what) => names[what]).join(" and ")} must be set; see .local/deploy.md.`);

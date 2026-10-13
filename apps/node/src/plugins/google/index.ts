@@ -23,6 +23,8 @@ interface Pending {
   redirectUri: string;
   /** The Vireo app to return to; none when the agent opened it in Vireo's browser. */
   returnTo?: string;
+  /** Started on Vireo's shared client: the cloud trades the code. */
+  shared?: boolean;
   at: number;
 }
 const PENDING_TTL = 30 * 60_000;
@@ -64,15 +66,23 @@ const driveTools = [
 export const googlePlugin: PluginDef = {
   id: "google",
   name: "Google",
-  description: "Google Calendar, Gmail and Drive. Uses an OAuth client you create in Google Cloud Console.",
+  description: "Google Calendar, Gmail and Drive. Connect your Google account; you can use your own OAuth client from Google Cloud Console instead of Vireo's.",
   author: "Vireo",
   homepage: "https://console.cloud.google.com/apis/credentials",
   fields: [
-    { key: "client_id", label: "Client ID", type: "text", placeholder: "….apps.googleusercontent.com", pattern: "[0-9]+-[a-z0-9]+\\.apps\\.googleusercontent\\.com" },
+    {
+      key: "client_id",
+      label: "Client ID",
+      type: "text",
+      placeholder: "….apps.googleusercontent.com",
+      pattern: "[0-9]+-[a-z0-9]+\\.apps\\.googleusercontent\\.com",
+      help: "Optional. Your own OAuth client (type “Web application”, with the redirect URI above); leave empty to use Vireo's.",
+    },
     { key: "client_secret", label: "Client secret", type: "secret", placeholder: "GOCSPX-…", pattern: "GOCSPX-[A-Za-z0-9_-]{20,}" },
   ],
   // The owner signs in to Google Cloud and to their account; Vireo does the clicking in between.
   browserSetup: [
+    `If the state above is login with a sign-in link, Vireo's shared client is ready: skip to the sign-in step (the one that says "browser_open it"). Create a client only when the state is setup, or the owner asks for their own.`,
     `Check the Redirect URI above. Google only accepts https addresses or http://localhost. If it is plain http on any other host, stop and tell the owner Google needs Vireo on HTTPS first (Tailscale's "Reach this host over the tailnet" gives it one), then wait for them.`,
     `Open ${CONSOLE}/projectcreate. If a sign-in page shows, call browser_ask_owner so the owner signs in to Google. Name the project "Vireo" and press Create (if the owner already has a project they want to use, select it instead). Wait until it is created and make sure it is the selected project at the top of the console.`,
     `Turn on the three APIs, one page each, pressing Enable when it shows (Manage means it is already on): ${CONSOLE}/apis/library/calendar-json.googleapis.com, ${CONSOLE}/apis/library/gmail.googleapis.com and ${CONSOLE}/apis/library/drive.googleapis.com. Check the project selector still shows the right project on each.`,
@@ -84,10 +94,14 @@ export const googlePlugin: PluginDef = {
   ],
   create(ctx) {
     const { host } = ctx;
-    const auth = new GoogleAuth(ctx.state, () => {
-      const c = ctx.config<GoogleConfig>();
-      return c.client_id && c.client_secret ? { clientId: c.client_id, clientSecret: c.client_secret } : undefined;
-    });
+    const auth = new GoogleAuth(
+      ctx.state,
+      () => {
+        const c = ctx.config<GoogleConfig>();
+        return c.client_id && c.client_secret ? { clientId: c.client_id, clientSecret: c.client_secret } : undefined;
+      },
+      (path, init) => host.cloud(path, init),
+    );
     const redirectUri = (req?: RequestInfo) => `${host.publicUrl(req)}${CALLBACK}`;
     const live = () => !host.demo && auth.connected();
     // Several sign-ins can be under way (the owner's button, Vireo's browser); each keeps its own state.
@@ -95,10 +109,19 @@ export const googlePlugin: PluginDef = {
       const p = ctx.state.get<Pending[] | Pending>("pending");
       return (Array.isArray(p) ? p : p ? [p] : []).filter((x) => now() - (x.at ?? 0) < PENDING_TTL);
     };
-    const begin = (redirectUri: string, returnTo?: string) => {
+    // The owner's own client when they made one, else Vireo's shared one, which sends Google's answer back through the cloud.
+    const begin = async (callback: string, returnTo?: string) => {
       const state = newId("g");
-      ctx.state.set("pending", [...pending().slice(-4), { state, redirectUri, returnTo, at: now() }]);
-      return auth.authUrl(redirectUri, state);
+      const own = auth.own();
+      const shared = own ? undefined : await auth.shared();
+      if (!own && !shared) throw new Error("Google OAuth client is not configured");
+      if (shared) {
+        const res = await host.cloud("/api/node/google/begin", { method: "POST", body: JSON.stringify({ state, callback }) });
+        if (!res?.ok) throw new Error(`The Vireo cloud did not start the Google sign-in${res ? ` (${res.status})` : ""}. Try again.`);
+      }
+      const redirectUri = shared?.redirectUri ?? callback;
+      ctx.state.set("pending", [...pending().slice(-4), { state, redirectUri, returnTo, shared: shared ? true : undefined, at: now() }]);
+      return auth.authUrl(shared?.clientId ?? own!.clientId, redirectUri, state);
     };
 
     return {
@@ -111,9 +134,12 @@ export const googlePlugin: PluginDef = {
       grants: { general: ["drive_search", "drive_read"], research: ["drive_search", "drive_read"], email: ["drive_search", "drive_read"] },
 
       async status(req): Promise<PluginStatus> {
-        const details = [{ label: "Redirect URI", value: redirectUri(req) }];
         if (host.demo) return { state: "ready", message: "Demo mode: in-memory calendar, mailbox and Drive." };
-        if (!auth.client()) {
+        const own = auth.own();
+        const shared = own ? undefined : await auth.shared();
+        // The redirect URI only matters to an owner making their own client.
+        const details = shared ? [] : [{ label: "Redirect URI", value: redirectUri(req) }];
+        if (!own && !shared) {
           return {
             state: "setup",
             message: "Create an OAuth client (type “Web application”) in Google Cloud Console, enable the Calendar, Gmail and Drive APIs, add the redirect URI below, then save the client ID and secret.",
@@ -135,7 +161,7 @@ export const googlePlugin: PluginDef = {
       },
 
       actions() {
-        if (host.demo || !auth.client()) return [];
+        if (host.demo || !auth.available()) return [];
         return auth.connected()
           ? [
               { id: "connect", label: "Reconnect" },
@@ -149,12 +175,12 @@ export const googlePlugin: PluginDef = {
           auth.disconnect();
           return { message: "Disconnected." };
         }
-        if (id === "connect") return { redirect: begin(redirectUri(req), req.appOrigin ?? "") };
+        if (id === "connect") return { redirect: await begin(redirectUri(req), req.appOrigin ?? "") };
         throw new Error(`Unknown action: ${id}`);
       },
 
       async signInLink() {
-        return host.demo || !auth.client() ? undefined : begin(redirectUri());
+        return host.demo || !(auth.own() ?? (await auth.shared())) ? undefined : begin(redirectUri());
       },
 
       // Google redirects here; the state parameter ties it to an authenticated request.
@@ -169,14 +195,14 @@ export const googlePlugin: PluginDef = {
           // Started in Vireo's browser: say so on the page the owner is looking at, then hand back.
           if (expected.returnTo === undefined) {
             if (error) return c.text(`Google sign-in did not finish (${error}). Hand the browser back to Vireo.`, 400);
-            await auth.exchange(c.req.query("code") ?? "", expected.redirectUri);
+            await auth.exchange(c.req.query("code") ?? "", expected.redirectUri, expected.shared ? expected.state : undefined);
             ctx.changed();
             return c.text("Google is connected to Vireo. Hand the browser back to Vireo.");
           }
           // Back to the Vireo app that started the sign-in.
           const back = `${expected.returnTo}/#settings/plugins`;
           if (error) return c.redirect(`${back}?google=${encodeURIComponent(error)}`);
-          await auth.exchange(c.req.query("code") ?? "", expected.redirectUri);
+          await auth.exchange(c.req.query("code") ?? "", expected.redirectUri, expected.shared ? expected.state : undefined);
           ctx.changed();
           return c.redirect(`${back}?google=connected`);
         });

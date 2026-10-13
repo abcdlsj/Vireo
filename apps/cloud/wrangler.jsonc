@@ -3,6 +3,8 @@
 //   npx wrangler login
 //   npx wrangler d1 create vireo-cloud          # paste its database_id below
 //   npx wrangler secret put GITHUB_CLIENT_SECRET
+//   npx wrangler secret put GOOGLE_CLIENT_SECRET   # for the shared Google client,
+//                                                  # whose id goes in vars below
 //   npx wrangler deploy
 //
 // Tables are made on first use, and the key that signs node tokens is made
@@ -25,7 +27,13 @@
     // This repository's own are kept out of it — scripts/cloud-config.mjs
     // writes them from the environment into wrangler.deploy.jsonc, which is
     // git-ignored and is what the deployment pipeline deploys.
-    "GITHUB_CLIENT_ID": "PASTE_YOUR_GITHUB_CLIENT_ID"
+    "GITHUB_CLIENT_ID": "PASTE_YOUR_GITHUB_CLIENT_ID",
+    // Vireo's shared Google OAuth client, for the Google plugin when a node
+    // owner has none of their own; empty switches it off. Its secret is set
+    // with `wrangler secret put GOOGLE_CLIENT_SECRET`. Like the GitHub id, a
+    // deployment of your own can keep the id out of the repository:
+    // scripts/cloud-config.mjs fills it from VIREO_GOOGLE_CLIENT_ID.
+    "GOOGLE_CLIENT_ID": "PASTE_YOUR_GOOGLE_CLIENT_ID"
   },
   "d1_databases": [{ "binding": "DB", "database_name": "vireo-cloud", "database_id": "PASTE_YOUR_D1_DATABASE_ID" }],
   "durable_objects": { "bindings": [{ "name": "RELAY", "class_name": "NodeRelay" }] },

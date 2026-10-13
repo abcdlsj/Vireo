@@ -78,6 +78,15 @@ export class Plugins {
       publicUrl: (req) => app.address.publicUrl(req),
       localUrl: () => app.address.localUrl(),
       setDirectUrl: (url) => app.address.setDirectUrl(url),
+      cloud: (path, init) => {
+        const id = app.identity.get();
+        if (!id) return undefined;
+        return fetch(`${id.cloudUrl}${path}`, {
+          ...init,
+          headers: { authorization: `Bearer ${id.nodeId}:${id.nodeSecret}`, "content-type": "application/json", ...(init?.headers ?? {}) },
+          signal: init?.signal ?? AbortSignal.timeout(15_000),
+        });
+      },
       demo: app.config.fakeGoogle,
       threads: app.threads,
       send: (threadId, text) => void app.runner.send(threadId, text),

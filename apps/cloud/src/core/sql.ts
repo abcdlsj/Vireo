@@ -64,6 +64,13 @@ export const SCHEMA = [
     node_secret TEXT,
     expires_at INTEGER NOT NULL
   )`,
+  // Google sign-ins under way on the shared client: where to send the browser back, and which node may redeem the code.
+  `CREATE TABLE IF NOT EXISTS google_sign_ins (
+    state TEXT PRIMARY KEY,
+    node_id TEXT NOT NULL,
+    callback TEXT NOT NULL,
+    expires_at INTEGER NOT NULL
+  )`,
   // The cloud's own settings, such as the key that signs node tokens.
   `CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,

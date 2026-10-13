@@ -7,6 +7,10 @@ export interface CloudConfig {
   /** Other app origins allowed to call this service (e.g. preview deployments). */
   extraOrigins: string[];
   github?: { clientId: string; clientSecret: string };
+  /** Vireo's shared Google OAuth client, for nodes without their own. */
+  google?: { clientId: string; clientSecret: string };
+  /** Google's token endpoint, overridable for tests. */
+  googleTokenUrl: string;
   /** GitHub's endpoints, overridable for tests. */
   githubUrls: { authorize: string; token: string; api: string };
   /** Sign in by name without GitHub. Development and tests only. */
@@ -26,6 +30,7 @@ const strip = (u: string) => u.replace(/\/+$/, "");
 export function parseConfig(env: Env, fallbackUrl: string): CloudConfig {
   const publicUrl = strip(env.VIREO_CLOUD_URL || fallbackUrl);
   const github = env.GITHUB_CLIENT_ID && env.GITHUB_CLIENT_SECRET ? { clientId: env.GITHUB_CLIENT_ID, clientSecret: env.GITHUB_CLIENT_SECRET } : undefined;
+  const google = env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET ? { clientId: env.GOOGLE_CLIENT_ID, clientSecret: env.GOOGLE_CLIENT_SECRET } : undefined;
   return {
     publicUrl,
     webUrl: strip(env.VIREO_WEB_URL || publicUrl),
@@ -34,6 +39,8 @@ export function parseConfig(env: Env, fallbackUrl: string): CloudConfig {
       .map((o) => strip(o.trim()))
       .filter(Boolean),
     github,
+    google,
+    googleTokenUrl: env.VIREO_GOOGLE_TOKEN_URL ?? "https://oauth2.googleapis.com/token",
     githubUrls: {
       authorize: env.VIREO_GITHUB_AUTHORIZE_URL ?? "https://github.com/login/oauth/authorize",
       token: env.VIREO_GITHUB_TOKEN_URL ?? "https://github.com/login/oauth/access_token",

@@ -1,6 +1,8 @@
 import type { CloudInfo, LinkStartRequest, User } from "@vireo/protocol";
 import { Hono, type Context } from "hono";
+import type { ContentfulStatusCode } from "hono/utils/http-status";
 import type { Cloud } from "./cloud.js";
+import type { GoogleAnswer } from "./google.js";
 import { errorMessage } from "./util.js";
 
 type Env = { Variables: { user: User } };
@@ -28,7 +30,7 @@ function limiter(max: number, windowMs: number) {
 
 /** The cloud's HTTP API; the same on every runtime. */
 export function createHttp(cloud: Cloud): Hono<Env> {
-  const { config, accounts, nodes, hub, key } = cloud;
+  const { config, accounts, nodes, hub, key, google } = cloud;
   const app = new Hono<Env>();
   const origins = new Set([new URL(config.webUrl).origin, new URL(config.publicUrl).origin, ...config.extraOrigins.map((o) => new URL(o).origin)]);
   const allowed = (origin: string | undefined) => Boolean(origin && origins.has(origin));
@@ -135,11 +137,67 @@ export function createHttp(cloud: Cloud): Hono<Env> {
   });
 
   // ---- what a linked node calls, with its secret ----
-  app.post("/api/node/peers", async (c) => {
+  const node = async (c: Context) => {
     const [nodeId, nodeSecret] = (bearer(c) ?? "").split(":");
-    const node = nodeId && nodeSecret ? await nodes.authenticate(nodeId, nodeSecret) : undefined;
-    if (!node) return c.json({ error: "Unknown node" }, 401);
-    return c.json(await nodes.peers(node));
+    return nodeId && nodeSecret ? nodes.authenticate(nodeId, nodeSecret) : undefined;
+  };
+  app.post("/api/node/peers", async (c) => {
+    const n = await node(c);
+    if (!n) return c.json({ error: "Unknown node" }, 401);
+    return c.json(await nodes.peers(n));
+  });
+
+  // ---- Google sign-in on Vireo's shared client ----
+  const answer = (c: Context, a: GoogleAnswer) => c.json(a.body as object, a.status as ContentfulStatusCode);
+  const googleNode = async (c: Context) => {
+    const n = await node(c);
+    if (!n) return { error: c.json({ error: "Unknown node" }, 401) };
+    if (!google.configured) return { error: c.json({ error: "This Vireo cloud has no shared Google client." }, 404) };
+    return { node: n };
+  };
+  app.get("/api/node/google", async (c) => {
+    const g = await googleNode(c);
+    return g.error ?? c.json(google.info()!);
+  });
+  app.post("/api/node/google/begin", async (c) => {
+    const g = await googleNode(c);
+    if (g.error) return g.error;
+    const { state, callback } = await c.req.json<{ state?: string; callback?: string }>();
+    let url: URL | undefined;
+    try {
+      url = new URL(callback ?? "");
+    } catch {
+      url = undefined;
+    }
+    if (!state || state.length < 8 || state.length > 200 || !url || !/^https?:$/.test(url.protocol)) return c.json({ error: "Bad sign-in request" }, 400);
+    await google.begin(g.node.id, state, url.toString());
+    return c.json({ ok: true });
+  });
+  app.post("/api/node/google/token", async (c) => {
+    const g = await googleNode(c);
+    if (g.error) return g.error;
+    const { state, code } = await c.req.json<{ state?: string; code?: string }>();
+    const a = state && code ? await google.exchange(g.node.id, state, code) : undefined;
+    return a ? answer(c, a) : c.json({ error: "This sign-in has expired. Connect Google again." }, 400);
+  });
+  app.post("/api/node/google/refresh", async (c) => {
+    const g = await googleNode(c);
+    if (g.error) return g.error;
+    const { refresh_token } = await c.req.json<{ refresh_token?: string }>();
+    return refresh_token ? answer(c, await google.refresh(refresh_token)) : c.json({ error: "No refresh token" }, 400);
+  });
+  // Google comes back here; the node that started the sign-in checks the state again.
+  app.get("/oauth/google/callback", async (c) => {
+    const state = c.req.query("state") ?? "";
+    const back = state ? await google.callback(state) : undefined;
+    if (!back) return c.text("This Google sign-in has expired. Start again from Vireo.", 400);
+    const url = new URL(back);
+    url.searchParams.set("state", state);
+    for (const k of ["code", "error"]) {
+      const v = c.req.query(k);
+      if (v) url.searchParams.set(k, v);
+    }
+    return c.redirect(url.toString());
   });
 
   // ---- signed-in ----

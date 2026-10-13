@@ -61,6 +61,8 @@ export interface PluginHost {
   localUrl(): string;
   /** A plugin made this node reachable at a direct address (Tailscale), or no longer is. */
   setDirectUrl(url: string | undefined): void;
+  /** Calls the Vireo cloud this node is linked to, proving itself with its secret; undefined when not linked. */
+  cloud(path: string, init?: RequestInit): Promise<Response> | undefined;
   /** Demo mode: in-memory calendar, mailbox and Drive instead of real accounts. */
   demo: boolean;
   threads: Pick<ThreadStore, "get" | "list" | "create" | "transcript" | "search">;

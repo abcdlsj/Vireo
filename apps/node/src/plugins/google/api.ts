@@ -13,9 +13,11 @@ import type {
 } from "../../integrations/types.js";
 
 /**
- * Google Calendar, Gmail and Drive over Google's REST APIs, using an OAuth
- * client the owner creates once in Google Cloud Console. Tokens stay in
- * Vireo's database and are never passed to a model.
+ * Google Calendar, Gmail and Drive over Google's REST APIs. The OAuth client
+ * is the owner's own when they created one in Google Cloud Console, else
+ * Vireo's shared client, whose secret only the cloud holds: the cloud then
+ * makes the token requests for this node. Tokens stay in this node's
+ * database and are never passed to a model.
  */
 
 export const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.readonly";
@@ -28,10 +30,23 @@ const SCOPES = [
   DRIVE_SCOPE,
 ];
 
+const TOKEN_URL = "https://oauth2.googleapis.com/token";
+/** How long the cloud's answer about its shared client is trusted. */
+const SHARED_FRESH = 10 * 60_000;
+
 export interface GoogleClient {
   clientId: string;
   clientSecret: string;
 }
+
+/** Vireo's shared client, as the cloud describes it: Google redirects to the cloud. */
+export interface SharedClient {
+  clientId: string;
+  redirectUri: string;
+}
+
+/** Calls the cloud this node is linked to; undefined when it is not linked. */
+export type CloudCall = (path: string, init?: RequestInit) => Promise<Response> | undefined;
 
 interface GoogleTokens {
   access_token: string;
@@ -40,21 +55,57 @@ interface GoogleTokens {
   email?: string;
   /** Space-separated scopes Google granted. */
   scope?: string;
+  /** Issued to the shared client, so refreshed through the cloud. */
+  shared?: boolean;
+}
+
+interface TokenAnswer {
+  access_token: string;
+  refresh_token?: string;
+  expires_in: number;
+  id_token?: string;
+  scope?: string;
 }
 
 export class GoogleAuth {
+  private sharedCache: { at: number; client?: SharedClient } | undefined;
+
   constructor(
     private readonly state: PluginState,
     /** The OAuth client from the Google plugin's settings. */
     private readonly stored: () => GoogleClient | undefined,
+    private readonly cloud: CloudCall = () => undefined,
   ) {}
 
-  client(): GoogleClient | undefined {
+  /** The owner's own client: from the plugin's settings, else the environment. */
+  own(): GoogleClient | undefined {
     const stored = this.stored();
     if (stored?.clientId && stored.clientSecret) return stored;
     const id = process.env.GOOGLE_CLIENT_ID;
     const secret = process.env.GOOGLE_CLIENT_SECRET;
     return id && secret ? { clientId: id, clientSecret: secret } : undefined;
+  }
+
+  /** The cloud's shared client; undefined when this node is not linked or its cloud has none. */
+  async shared(): Promise<SharedClient | undefined> {
+    const c = this.sharedCache;
+    if (c && now() - c.at < SHARED_FRESH) return c.client;
+    const call = this.cloud("/api/node/google");
+    if (!call) {
+      this.sharedCache = { at: now() };
+      return undefined;
+    }
+    const res = await call.catch(() => undefined);
+    // An unreachable cloud changes nothing; ask again next time.
+    if (!res || res.status >= 500) return c?.client;
+    const client = res.ok ? ((await res.json()) as SharedClient) : undefined;
+    this.sharedCache = { at: now(), client };
+    return client;
+  }
+
+  /** Whether a sign-in can start, as last known (status() checks the cloud). */
+  available(): boolean {
+    return Boolean(this.own() ?? this.sharedCache?.client);
   }
 
   granted(scope: string): boolean {
@@ -74,11 +125,9 @@ export class GoogleAuth {
     this.state.delete("tokens");
   }
 
-  authUrl(redirectUri: string, state: string): string {
-    const client = this.client();
-    if (!client) throw new Error("Google OAuth client is not configured");
+  authUrl(clientId: string, redirectUri: string, state: string): string {
     const params = new URLSearchParams({
-      client_id: client.clientId,
+      client_id: clientId,
       redirect_uri: redirectUri,
       response_type: "code",
       scope: SCOPES.join(" "),
@@ -89,22 +138,11 @@ export class GoogleAuth {
     return `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
   }
 
-  async exchange(code: string, redirectUri: string): Promise<void> {
-    const client = this.client();
-    if (!client) throw new Error("Google OAuth client is not configured");
-    const res = await fetch("https://oauth2.googleapis.com/token", {
-      method: "POST",
-      headers: { "content-type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        code,
-        client_id: client.clientId,
-        client_secret: client.clientSecret,
-        redirect_uri: redirectUri,
-        grant_type: "authorization_code",
-      }),
-    });
-    if (!res.ok) throw new Error(`Google token exchange failed: ${res.status} ${await res.text()}`);
-    const body = (await res.json()) as { access_token: string; refresh_token?: string; expires_in: number; id_token?: string; scope?: string };
+  /** Trades Google's code for tokens; `sharedState` when the sign-in used the shared client. */
+  async exchange(code: string, redirectUri: string, sharedState?: string): Promise<void> {
+    const body = sharedState
+      ? await this.viaCloud("/api/node/google/token", { state: sharedState, code }, "token exchange")
+      : await this.direct({ grant_type: "authorization_code", code, redirect_uri: redirectUri }, "token exchange");
     let email: string | undefined;
     if (body.id_token) {
       try {
@@ -119,6 +157,7 @@ export class GoogleAuth {
       expires_at: now() + body.expires_in * 1000,
       email,
       scope: body.scope,
+      shared: sharedState ? true : undefined,
     } satisfies GoogleTokens);
   }
 
@@ -126,22 +165,34 @@ export class GoogleAuth {
     const tokens = this.tokens();
     if (!tokens) throw new Error("Google is not connected. Connect it in Settings.");
     if (tokens.expires_at - 60_000 > now()) return tokens.access_token;
-    const client = this.client();
-    if (!client || !tokens.refresh_token) throw new Error("Google session expired. Reconnect Google in Settings.");
-    const res = await fetch("https://oauth2.googleapis.com/token", {
-      method: "POST",
-      headers: { "content-type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        client_id: client.clientId,
-        client_secret: client.clientSecret,
-        refresh_token: tokens.refresh_token,
-        grant_type: "refresh_token",
-      }),
-    });
-    if (!res.ok) throw new Error(`Google token refresh failed: ${res.status}`);
-    const body = (await res.json()) as { access_token: string; expires_in: number };
+    if (!tokens.refresh_token || (!tokens.shared && !this.own())) throw new Error("Google session expired. Reconnect Google in Settings.");
+    const body = tokens.shared
+      ? await this.viaCloud("/api/node/google/refresh", { refresh_token: tokens.refresh_token }, "token refresh")
+      : await this.direct({ grant_type: "refresh_token", refresh_token: tokens.refresh_token }, "token refresh");
     this.state.set("tokens", { ...tokens, access_token: body.access_token, expires_at: now() + body.expires_in * 1000 });
     return body.access_token;
+  }
+
+  /** A token request to Google with the owner's own client. */
+  private async direct(params: Record<string, string>, what: string): Promise<TokenAnswer> {
+    const client = this.own();
+    if (!client) throw new Error("Google OAuth client is not configured");
+    const res = await fetch(TOKEN_URL, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ ...params, client_id: client.clientId, client_secret: client.clientSecret }),
+    });
+    if (!res.ok) throw new Error(`Google ${what} failed: ${res.status} ${await res.text()}`);
+    return (await res.json()) as TokenAnswer;
+  }
+
+  /** A token request the cloud makes with the shared client. */
+  private async viaCloud(path: string, body: Record<string, string>, what: string): Promise<TokenAnswer> {
+    const call = this.cloud(path, { method: "POST", body: JSON.stringify(body) });
+    if (!call) throw new Error("This node is no longer linked to a Vireo cloud. Reconnect Google in Settings.");
+    const res = await call;
+    if (!res.ok) throw new Error(`Google ${what} failed: ${res.status} ${await res.text()}`);
+    return (await res.json()) as TokenAnswer;
   }
 
   async api<T>(url: string, init: RequestInit = {}): Promise<T> {

@@ -1,5 +1,6 @@
 import { Accounts } from "./accounts.js";
 import type { CloudConfig } from "./config.js";
+import { GoogleBroker } from "./google.js";
 import type { NodeHub } from "./hub.js";
 import { SigningKey } from "./keys.js";
 import { Nodes } from "./nodes.js";
@@ -12,6 +13,7 @@ export interface Cloud {
   nodes: Nodes;
   key: SigningKey;
   hub: NodeHub;
+  google: GoogleBroker;
 }
 
 /** Makes sure the tables exist; cheap when they already do. */
@@ -24,5 +26,5 @@ export async function createCloud(config: CloudConfig, sql: Sql, hub: NodeHub): 
   const key = await SigningKey.load(sql);
   const accounts = new Accounts(sql, config);
   const nodes = new Nodes(sql, config, accounts, key, (id) => hub.online(id));
-  return { config, sql, accounts, nodes, key, hub };
+  return { config, sql, accounts, nodes, key, hub, google: new GoogleBroker(sql, config) };
 }
