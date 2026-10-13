@@ -20,6 +20,11 @@ export function NodeName({ node, children }: { node: NodeSummary; children?: Rea
   );
 }
 
+/** Whether the app can reach a node now; a Tailscale node is reached directly, not through the cloud socket. */
+function reachable(n: NodeSummary): boolean {
+  return n.online || n.mode === "tailscale";
+}
+
 export function NodeDot({ node }: { node: NodeSummary }) {
   return <span className={`dot ${node.online ? "online" : "offline"}`} title={node.online ? "Online" : "Offline"} />;
 }
@@ -52,7 +57,14 @@ export function NodeSwitcher() {
       {open ? (
         <div className="menu node-menu" role="menu">
           {nodes().map((n) => (
-            <button key={n.id} role="menuitemradio" aria-checked={n.id === cur?.id} className={`menu-item ${n.id === cur?.id ? "active" : ""}`} onClick={() => (n.id === cur?.id ? setOpen(false) : switchNode(n.id))}>
+            <button
+              key={n.id}
+              role="menuitemradio"
+              aria-checked={n.id === cur?.id}
+              disabled={n.id !== cur?.id && !reachable(n)}
+              className={`menu-item ${n.id === cur?.id ? "active" : ""}`}
+              onClick={() => (n.id === cur?.id ? setOpen(false) : switchNode(n.id))}
+            >
               <span className="with-icon">
                 <NodeDot node={n} /> <NodeName node={n} />
               </span>
@@ -116,7 +128,7 @@ export function NodesSettings() {
         <p className="muted small">Each node runs its own Vireo, with its own threads, memory and plugins. This app talks to one at a time.</p>
         <ul className="rows">
           {list.map((n) => (
-            <li key={n.id} className="row" data-testid="node-row">
+            <li key={n.id} className="row node-row" data-testid="node-row">
               <div className="row-main">
                 {renaming === n.id ? (
                   <RenameNode
@@ -140,7 +152,7 @@ export function NodesSettings() {
               </div>
               <div className="row-buttons">
                 {n.id !== cur?.id ? (
-                  <button className="btn small" onClick={() => switchNode(n.id)}>
+                  <button className="btn small" onClick={() => switchNode(n.id)} disabled={!reachable(n)} title={reachable(n) ? undefined : "Offline"}>
                     Switch
                   </button>
                 ) : null}

@@ -2720,6 +2720,15 @@ table.usage th {
   background: var(--hover);
 }
 
+.menu-item:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.menu-item:disabled:hover {
+  background: none;
+}
+
 .menu-item.active {
   background: var(--active);
   font-weight: 500;
@@ -2740,6 +2749,11 @@ table.usage th {
 .node-menu .link-form {
   padding: 4px 6px 6px;
   margin: 0;
+}
+
+/* The switcher sits on the node's wash already, so its chip stays fainter than elsewhere. */
+.node-switch-btn .node-chip {
+  background: hsl(var(--hue) 65% 50% / calc(var(--node-chip-a) * 0.55));
 }
 
 .login-node .node-switch-btn {
@@ -2798,6 +2812,17 @@ ul.rows {
   display: flex;
   flex-direction: column;
   min-width: 0;
+}
+
+/* Buttons stay on one line at the right, so every node's Rename and Remove line up. */
+.node-row .row-main {
+  flex: 1;
+}
+
+.node-row .row-buttons {
+  flex-shrink: 0;
+  flex-wrap: nowrap;
+  justify-content: flex-end;
 }
 
 .row-main .muted {
