@@ -80,7 +80,7 @@ npm run deploy   # build, then deploy to askvireo.com and www.askvireo.com
 
 Each person signs in to the app and runs `npx askvireo` on their machine (see the README). A node uses the official cloud unless told otherwise: `npx askvireo --cloud https://cloud.example.com`, or `VIREO_CLOUD_URL`.
 
-To publish `askvireo` to npm, add an `NPM_TOKEN` repository secret and push a `v*` tag; `.github/workflows/npm.yml` builds and publishes it.
+To publish `askvireo` to npm, push a `v*` tag whose version is the one in `apps/node/package.json`; `.github/workflows/npm.yml` runs the unit suite, builds and publishes it, with provenance. No token is involved: register this repository and the workflow filename `npm.yml` under the package's **Trusted publishing** settings on npmjs.com, and npm accepts the release through GitHub's OIDC identity alone. A tag also deploys the three pieces and publishes the images.
 
 ## Automatically, from GitHub
 
