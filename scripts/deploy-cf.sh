@@ -5,18 +5,20 @@
 # fail one attempt and pass the next.
 #
 #   scripts/deploy-cf.sh apps/cloud
+#   scripts/deploy-cf.sh apps/cloud --config wrangler.deploy.jsonc   # the ids wrangler.deploy.jsonc carries
 #
 # CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID come from the environment
 # (repository secrets in .github/workflows/deploy.yml); without them wrangler
-# falls back to a local `wrangler login`.
+# falls back to a local `wrangler login`. Extra arguments go to wrangler.
 set -uo pipefail
 
-dir="${1:?usage: scripts/deploy-cf.sh <directory>}"
+dir="${1:?usage: scripts/deploy-cf.sh <directory> [wrangler arguments]}"
+shift
 cd "$dir"
 
 attempts=5
 for attempt in $(seq 1 "$attempts"); do
-  if output=$(npx wrangler deploy 2>&1); then
+  if output=$(npx wrangler deploy "$@" 2>&1); then
     printf '%s\n' "$output"
     exit 0
   fi

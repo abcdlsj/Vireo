@@ -89,6 +89,17 @@ To publish `askvireo` to npm, push a `v*` tag whose version is the one in `apps/
 - `CLOUDFLARE_ACCOUNT_ID`: the Cloudflare account id.
 - `CLOUDFLARE_API_TOKEN`: an API token with **Workers Scripts: Edit**, **D1: Edit** and **Workers Routes: Edit** (the *Edit Cloudflare Workers* template covers them).
 
+Plus two repository variables, for the two ids that belong to a deployment
+rather than to the code, and so are not in the repository:
+
+- `VIREO_D1_DATABASE_ID`: the id of the cloud's D1 database.
+- `VIREO_GITHUB_CLIENT_ID`: the GitHub OAuth app's client id.
+
+`scripts/cloud-config.mjs` writes them into `apps/cloud/wrangler.deploy.jsonc`
+(git-ignored) just before the cloud deploys, which is why the tracked
+`wrangler.jsonc` holds placeholders in those two places instead — wrangler has
+no flag for the D1 id and does not interpolate variables in a config.
+
 With those set, a push to `main` replaces the manual `npx wrangler deploy` steps above; the cloud job checks `https://cloud.askvireo.com/api/health` after deploying. Deploys are serialized per ref, so a deploy is never interrupted halfway, and each one goes through `scripts/deploy-cf.sh`, which retries the transient failures Cloudflare's API returns (504s from the assets-upload, subdomain and custom-domain endpoints). The app is built with `VITE_VIREO_CLOUD=https://cloud.askvireo.com`, set in the workflow's `env`.
 
 ## Everything on one machine

@@ -77,8 +77,13 @@ jobs:
       - run: npm ci
         env:
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+      - name: Fill in this deployment's Cloudflare ids
+        run: node scripts/cloud-config.mjs
+        env:
+          VIREO_D1_DATABASE_ID: ${{ vars.VIREO_D1_DATABASE_ID }}
+          VIREO_GITHUB_CLIENT_ID: ${{ vars.VIREO_GITHUB_CLIENT_ID }}
       - name: Deploy to Cloudflare
-        run: scripts/deploy-cf.sh apps/cloud
+        run: scripts/deploy-cf.sh apps/cloud --config wrangler.deploy.jsonc
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

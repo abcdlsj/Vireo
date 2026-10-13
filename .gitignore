@@ -2,6 +2,7 @@ node_modules/
 dist/
 data/
 .local/
+*.deploy.jsonc
 test-results/
 playwright-report/
 .vireo-test/
