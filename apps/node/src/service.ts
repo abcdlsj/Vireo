@@ -11,9 +11,9 @@ import { dirname, join } from "node:path";
  * swaps that copy and restarts it.
  */
 
-const PACKAGE = "@abcdlsj/vireo-node";
+const PACKAGE = "askvireo";
 const LABEL = "com.askvireo.node";
-const UNIT = "vireo-node.service";
+const UNIT = "askvireo.service";
 
 /** Environment the service keeps from the shell it was installed from: where tools are, and Vireo's own settings. */
 const KEEP = /^(PATH|HOME|LANG|LC_ALL|VIREO_\w+|OPENAI_\w+|BRAVE_API_KEY|GOOGLE_CLIENT_\w+|HTTPS?_PROXY|NO_PROXY|NODE_EXTRA_CA_CERTS|CLAUDE_\w+|CODEX_\w+)$/;

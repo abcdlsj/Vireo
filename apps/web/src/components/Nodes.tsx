@@ -74,7 +74,7 @@ export function StartNode() {
   return (
     <div className="stack">
       <p className="muted small">On the machine Vireo should run on (your laptop, a home server, a VPS), run:</p>
-      <pre className="command">npx @abcdlsj/vireo-node</pre>
+      <pre className="command">npx askvireo</pre>
       <p className="muted small">
         It asks whether to connect through the Vireo cloud or over Tailscale, then shows a code and opens this app to approve it. Each node keeps its own threads,
         memory and plugins on that machine.

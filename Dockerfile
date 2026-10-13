@@ -3,7 +3,7 @@
 #   docker build --target cloud -t vireo-cloud .   # sign-in, nodes, relay; serves the app (:8700)
 #   docker build --target node  -t vireo-node  .   # a node: the agent and its API (:8787)
 #
-# Most people run a node with `npx @abcdlsj/vireo-node` instead; the node image is for
+# Most people run a node with `npx askvireo` instead; the node image is for
 # a server that should run one around the clock.
 
 # Build stages run on the builder's platform: their output is plain JS (the
@@ -46,10 +46,10 @@ CMD ["node", "--disable-warning=ExperimentalWarning", "dist/node/index.js"]
 
 # ---- node ----
 FROM base AS node-build
-RUN npm ci --workspace @abcdlsj/vireo-node --include-workspace-root=false --no-audit --no-fund
+RUN npm ci --workspace askvireo --include-workspace-root=false --no-audit --no-fund
 COPY apps/node apps/node
-RUN npm run build -w @abcdlsj/vireo-node \
- && npm ci --omit=dev --workspace @abcdlsj/vireo-node --include-workspace-root=false --no-audit --no-fund
+RUN npm run build -w askvireo \
+ && npm ci --omit=dev --workspace askvireo --include-workspace-root=false --no-audit --no-fund
 
 # The Playwright base image ships Node and a Chromium that matches the
 # playwright package, so browser actions work without extra setup.

@@ -16,7 +16,7 @@ import { VERSION } from "./version.js";
 
 const HELP = `Vireo node ${VERSION}: your own Vireo agent, on this machine.
 
-Usage: npx @abcdlsj/vireo-node [command] [options]
+Usage: npx askvireo [command] [options]
 
 Commands:
   start     Start the node (default). Links it to your account first if needed.
@@ -109,7 +109,7 @@ if (command === "connect") {
   try {
     const lines = connect();
     console.log(lines.length ? lines.map((l) => `  ${l}`).join("\n") : "  No Claude Code or Codex found on this machine.");
-    if (!service.installedCli(service.servicePaths(config.dataDir))) console.log("  Tip: npx @abcdlsj/vireo-node service install keeps Vireo running for them.");
+    if (!service.installedCli(service.servicePaths(config.dataDir))) console.log("  Tip: npx askvireo service install keeps Vireo running for them.");
     process.exit(0);
   } catch (err) {
     console.error(`  ${err instanceof Error ? err.message : err}`);
@@ -179,7 +179,7 @@ if (command === "service") {
     if (action === "status") {
       console.log(`  Service: ${service.status()}\n  Data: ${config.dataDir}\n  Log: ${paths.logFile}`);
     } else if (action === "install" || action === "upgrade") {
-      if (action === "upgrade" && !service.installed()) throw new Error("The service is not installed yet. Run: npx @abcdlsj/vireo-node service install");
+      if (action === "upgrade" && !service.installed()) throw new Error("The service is not installed yet. Run: npx askvireo service install");
       // A node running in a terminal holds the port; the service would fail to start next to it.
       const running = await fetch(`http://127.0.0.1:${config.port}/api/health`, { signal: AbortSignal.timeout(2000) }).then(
         (r) => r.ok,
@@ -203,7 +203,7 @@ if (command === "service") {
   Vireo runs in the background now, and starts again at login.
   Data: ${config.dataDir}
   Log:  ${paths.logFile}
-  Update later with: npx @abcdlsj/vireo-node service upgrade`);
+  Update later with: npx askvireo service upgrade`);
       for (const line of agents) console.log(`  ${line}`);
       const hint = service.lingerHint();
       if (hint) console.log(`  ${hint}`);

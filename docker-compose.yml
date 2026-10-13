@@ -7,7 +7,7 @@
 #   docker compose logs node  # shows the link and its code
 #
 # The usual setup is different: the official cloud and app, and a node per
-# person started with `npx @abcdlsj/vireo-node`. See README.md and deploy/README.md.
+# person started with `npx askvireo`. See README.md and deploy/README.md.
 #
 # Using OpenAI (or any compatible endpoint) directly? Set VIREO_LLM_BASE_URL
 # and VIREO_LLM_API_KEY in .env and skip LiteLLM: docker compose up -d cloud node

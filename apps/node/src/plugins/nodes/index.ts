@@ -92,7 +92,7 @@ export const nodesPlugin: PluginDef = {
 
     async function peer(named: string): Promise<Peer> {
       const all = await peers();
-      if (!all.length) throw new Error("This is the only node on the owner's account. Run `npx @abcdlsj/vireo-node` on another machine to add one.");
+      if (!all.length) throw new Error("This is the only node on the owner's account. Run `npx askvireo` on another machine to add one.");
       const wanted = named.trim().toLowerCase();
       const found = all.find((p) => p.name.toLowerCase() === wanted || p.id === named.trim());
       if (!found) throw new Error(`No node named “${named}”. The owner's other nodes: ${all.map((p) => p.name).join(", ")}.`);
@@ -140,7 +140,7 @@ export const nodesPlugin: PluginDef = {
         parameters: Type.Object({}),
         async run(_args, tctx: ToolContext) {
           const all = await peers();
-          if (!all.length) return { text: "This is the only node on the owner's account. Run `npx @abcdlsj/vireo-node` on another machine to add one." };
+          if (!all.length) return { text: "This is the only node on the owner's account. Run `npx askvireo` on another machine to add one." };
           const parts = await Promise.all(
             all.map(async (p) => {
               const head = `## ${p.name}${p.online ? "" : " (offline)"}${p.about ? `\nThe owner says: ${p.about}` : ""}`;
@@ -237,7 +237,7 @@ export const nodesPlugin: PluginDef = {
         } catch (err) {
           return { state: "error", message: `Couldn't ask the Vireo cloud for your other nodes: ${errorMessage(err)}` };
         }
-        if (!all.length) return { state: "ready", message: "This is your only node. Run `npx @abcdlsj/vireo-node` on another machine and it shows up here by itself." };
+        if (!all.length) return { state: "ready", message: "This is your only node. Run `npx askvireo` on another machine and it shows up here by itself." };
         const checks = await Promise.all(
           all.map(async (p) => {
             if (!p.online) return { p, note: "offline" };

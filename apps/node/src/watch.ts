@@ -88,13 +88,13 @@ export class AutoUpdate {
 
   async check(): Promise<void> {
     try {
-      const res = await fetch("https://registry.npmjs.org/@abcdlsj/vireo-node/latest", { signal: AbortSignal.timeout(20_000) });
+      const res = await fetch("https://registry.npmjs.org/askvireo/latest", { signal: AbortSignal.timeout(20_000) });
       const { version } = (await res.json()) as { version?: string };
       if (!version || !newer(version, VERSION)) return;
       const appDir = join(this.app.config.dataDir, "app");
       const npm = join(dirname(process.execPath), "npm");
       await new Promise<void>((ok, fail) =>
-        execFile(npm, ["install", "--prefix", appDir, "--no-audit", "--no-fund", "--loglevel=error", "--omit=dev", `@abcdlsj/vireo-node@${version}`], { timeout: 10 * 60_000 }, (err) => (err ? fail(err) : ok())),
+        execFile(npm, ["install", "--prefix", appDir, "--no-audit", "--no-fund", "--loglevel=error", "--omit=dev", `askvireo@${version}`], { timeout: 10 * 60_000 }, (err) => (err ? fail(err) : ok())),
       );
       console.log(`[update] Installed ${version}; restarting once running work is done.`);
       await this.app.runner.idle();

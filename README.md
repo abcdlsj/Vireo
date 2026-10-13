@@ -10,7 +10,7 @@ Vireo is three pieces:
 
 | Piece | Code | What it is | Where it runs |
 |---|---|---|---|
-| **node** | `apps/node` (npm: `@abcdlsj/vireo-node`) | Your agent: threads, memory, plugins, model settings and the browser it drives. Everything you tell Vireo stays here. | Your own machine: a laptop, a home server, a VPS |
+| **node** | `apps/node` (npm: `askvireo`) | Your agent: threads, memory, plugins, model settings and the browser it drives. Everything you tell Vireo stays here. | Your own machine: a laptop, a home server, a VPS |
 | **app** | `apps/web` | The UI, a static React PWA. Holds no data. | app.askvireo.com, on Cloudflare or Vercel (or the cloud serves it) |
 | **cloud** | `apps/cloud` | Signs people in with GitHub, keeps which nodes belong to whom, issues short-lived tokens for them, and relays the app's requests to nodes. Stores none of your conversations. | Cloudflare Workers, with D1 and Durable Objects (or a server, in Docker) |
 
@@ -31,24 +31,24 @@ Everyone signs in to the same app with GitHub and runs their own node. Each acco
    - runs the node in the background, started at login and restarted if it stops (launchd on macOS, a systemd user service on Linux), and keeps it up to date by itself;
    - connects Claude Code and Codex if they are on the machine (see [Coding agents on this machine](#coding-agents-on-this-machine)).
 
-   Running it again upgrades the node. Prefer a terminal you watch? `npx @abcdlsj/vireo-node` runs the same node in the foreground.
+   Running it again upgrades the node. Prefer a terminal you watch? `npx askvireo` runs the same node in the foreground.
 
 Everything the node keeps (its link, database, files, browser profile and logs) lives in `~/.config/vireo` (`$XDG_CONFIG_HOME/vireo`; `--data` to change); a `~/.vireo` from an older version moves there by itself.
 
 The background service, by hand:
 
 ```bash
-npx @abcdlsj/vireo-node service install    # what install.sh runs; links first if needed
-npx @abcdlsj/vireo-node service upgrade    # the latest version now, without waiting for the automatic update
-npx @abcdlsj/vireo-node service status     # running? where it logs (~/.config/vireo/logs/node.log)
-npx @abcdlsj/vireo-node service uninstall  # your data stays
+npx askvireo service install    # what install.sh runs; links first if needed
+npx askvireo service upgrade    # the latest version now, without waiting for the automatic update
+npx askvireo service status     # running? where it logs (~/.config/vireo/logs/node.log)
+npx askvireo service uninstall  # your data stays
 ```
 
 The service checks npm for a new version every few hours and moves to it once nothing is running; set `VIREO_AUTO_UPDATE=off` before installing to keep the version you have.
 
- `npx @abcdlsj/vireo-node status`, `link` and `unlink` manage the link; `npx @abcdlsj/vireo-node --help` lists the options. Run several nodes (laptop, home server) and switch between them from the menu at the top of the sidebar; **Settings → Nodes** renames and removes them.
+ `npx askvireo status`, `link` and `unlink` manage the link; `npx askvireo --help` lists the options. Run several nodes (laptop, home server) and switch between them from the menu at the top of the sidebar; **Settings → Nodes** renames and removes them.
 
-Then set a model in **Settings → Model**, or start the node with `OPENAI_API_KEY=sk-... npx @abcdlsj/vireo-node`.
+Then set a model in **Settings → Model**, or start the node with `OPENAI_API_KEY=sk-... npx askvireo`.
 
 - **Model:** with only an OpenAI key, Vireo lists the endpoint's models and picks a strong one for conversations and a cheaper one for routine work such as titles and memory upkeep. You can change both in **Settings → Model**.
 - **Another provider or endpoint?** Enter a base URL, API key and model in **Settings → Model** (no restart needed), or set `VIREO_LLM_BASE_URL`, `VIREO_LLM_API_KEY` and `VIREO_MODEL`. **Test connection** checks it. The Docker setup below includes LiteLLM for providers that don't speak the OpenAI API.
@@ -61,7 +61,7 @@ Requires Node 22.13 or newer. Vireo uses the built-in `node:sqlite`, so there ar
 
 ### Coding agents on this machine
 
-`service install` (and so `install.sh`) connects the coding agents it finds; run `npx @abcdlsj/vireo-node connect` to do it again, say after installing one. Each agent gets its own key, and:
+`service install` (and so `install.sh`) connects the coding agents it finds; run `npx askvireo connect` to do it again, say after installing one. Each agent gets its own key, and:
 
 - **Claude Code** gets Vireo as an MCP server (`claude mcp add --scope user`) and hooks in `~/.claude/settings.json`: you get a notification when a task that ran over two minutes finishes or when it waits on you, and a risky shell command (`rm -rf`, `git push --force`, `terraform apply`, `npm publish`, `DROP TABLE`, deploys and the like) waits for your confirmation in Vireo. If you don't answer, or the node can't be reached, Claude Code asks in the terminal as usual.
 - **Codex** gets Vireo as an MCP server in `~/.codex/config.toml`, and a `notify` command that tells you when a turn finishes (unless you already have a `notify` of your own).
@@ -92,7 +92,7 @@ Installing the PWA, push notifications, and Google sign-in need the app on HTTPS
 
 Only model access needs setting up, either here or in **Settings → Model**, where saved values take precedence. Everything else has a working default.
 
-Node (`npx @abcdlsj/vireo-node` options override these):
+Node (`npx askvireo` options override these):
 
 | Variable | Default | Purpose |
 |---|---|---|
@@ -154,7 +154,7 @@ Preferences such as time zone, working hours and which proactive checks run are 
 
 ```
 packages/protocol      @vireo/protocol: types shared by the node, the cloud and the app
-apps/node              @abcdlsj/vireo-node: the CLI, Hono HTTP + SSE, runner, agents, memory, scheduler, tools
+apps/node              askvireo: the CLI, Hono HTTP + SSE, runner, agents, memory, scheduler, tools
 apps/node/src/plugins  Community plugins (Google, Tailscale, ...): tools, agents, settings
 apps/cloud             @vireo/cloud: GitHub sign-in, nodes, linking, access tokens, the relay
                        src/core shared; src/worker for Cloudflare; src/node for a Node server

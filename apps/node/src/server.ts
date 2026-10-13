@@ -63,7 +63,7 @@ export async function runNode(config: Config, opts: RunOptions = {}): Promise<Ru
       handle: (req) => Promise.resolve(http.fetch(req)),
       onRevoked: () => {
         app.identity.clear();
-        say("This node was removed from its account. Run `npx @abcdlsj/vireo-node` again to link it.");
+        say("This node was removed from its account. Run `npx askvireo` again to link it.");
       },
     });
     app.address.onChange = () => relay?.update();

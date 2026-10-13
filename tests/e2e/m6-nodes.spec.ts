@@ -3,7 +3,7 @@ import { expect, linked, NODE, test } from "./helpers";
 
 test.describe("Milestone 6 — Accounts and nodes", () => {
   test("[M6.1] a new node joins the account once its owner approves the code it shows", async ({ page, baseURL }) => {
-    // A node that is not linked yet asks the cloud for a code, like `npx @abcdlsj/vireo-node` does.
+    // A node that is not linked yet asks the cloud for a code, like `npx askvireo` does.
     const cloud = await http.newContext({ baseURL });
     const start = await (await cloud.post("/api/link/start", { data: { name: "Laptop", platform: "darwin arm64", version: "0.1.0", mode: "relay" } })).json();
     expect(start.userCode).toMatch(/^\w{4}-\w{4}$/);

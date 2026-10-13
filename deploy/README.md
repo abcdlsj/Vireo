@@ -6,7 +6,7 @@ Vireo is three pieces that deploy separately, plus the website:
 |---|---|---|---|
 | **cloud** | `apps/cloud` | GitHub sign-in, which nodes belong to whom, short-lived node tokens, and the relay between the app and nodes. Holds no conversations. | Cloudflare Workers (or a server, in Docker) |
 | **app** | `apps/web` | The UI, a static React PWA. Holds no data. | Vercel, Cloudflare, or the cloud itself |
-| **node** | `apps/node` | Each person's agent and data. | Each person's own machine: `npx @abcdlsj/vireo-node` |
+| **node** | `apps/node` | Each person's agent and data. | Each person's own machine: `npx askvireo` |
 | **site** | `apps/site` | The website, in English and Chinese. Static pages. | Cloudflare Workers, on askvireo.com |
 
 You deploy the cloud and the app once; everyone who signs in runs their own node.
@@ -78,9 +78,9 @@ npm run deploy   # build, then deploy to askvireo.com and www.askvireo.com
 
 ## 5. Nodes
 
-Each person signs in to the app and runs `npx @abcdlsj/vireo-node` on their machine (see the README). A node uses the official cloud unless told otherwise: `npx @abcdlsj/vireo-node --cloud https://cloud.example.com`, or `VIREO_CLOUD_URL`.
+Each person signs in to the app and runs `npx askvireo` on their machine (see the README). A node uses the official cloud unless told otherwise: `npx askvireo --cloud https://cloud.example.com`, or `VIREO_CLOUD_URL`.
 
-To publish `@abcdlsj/vireo-node` to npm, add an `NPM_TOKEN` repository secret and push a `v*` tag; `.github/workflows/npm.yml` builds and publishes it.
+To publish `askvireo` to npm, add an `NPM_TOKEN` repository secret and push a `v*` tag; `.github/workflows/npm.yml` builds and publishes it.
 
 ## Automatically, from GitHub
 

@@ -79,14 +79,14 @@ function connectCodex(url: string, key: string, hookArgs: string[]): string {
   const file = join(process.env.CODEX_HOME || join(homedir(), ".codex"), "config.toml");
   let toml = existsSync(file) ? readFileSync(file, "utf8") : "";
   // Our own block from before, from its marker to the next table or the end.
-  toml = toml.replace(/\n?# Added by Vireo \(vireo-node connect\)\n\[mcp_servers\.vireo\][\s\S]*?(?=\n\[|$)/, "");
+  toml = toml.replace(/\n?# Added by Vireo \(askvireo connect\)\n\[mcp_servers\.vireo\][\s\S]*?(?=\n\[|$)/, "");
   const notes: string[] = ["Codex: Vireo added as an MCP server"];
   const notify = /^notify\s*=/m.test(toml);
   if (!notify) {
     toml = `notify = ${JSON.stringify([...hookArgs, "hook", "codex"])}\n${toml}`;
     notes.push("you hear when a turn finishes");
   } else if (!/^notify\s*=.*hook", "codex"/m.test(toml)) notes.push("its notify setting was yours already, so it is left alone");
-  toml = `${toml.replace(/\s*$/, "")}\n\n# Added by Vireo (vireo-node connect)\n[mcp_servers.vireo]\nurl = ${JSON.stringify(url)}\nhttp_headers = { "Authorization" = ${JSON.stringify(`Bearer ${key}`)} }\n`;
+  toml = `${toml.replace(/\s*$/, "")}\n\n# Added by Vireo (askvireo connect)\n[mcp_servers.vireo]\nurl = ${JSON.stringify(url)}\nhttp_headers = { "Authorization" = ${JSON.stringify(`Bearer ${key}`)} }\n`;
   writePrivate(file, toml.replace(/^\n+/, ""));
   return `${notes.join("; ")}.`;
 }

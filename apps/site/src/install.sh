@@ -5,12 +5,12 @@
 #
 # Uses the Node.js already here when it is new enough (22.13 or later), else
 # puts its own copy in ~/.config/vireo/runtime, touching nothing else. Then it
-# runs `vireo-node service install`, which links the node to your account,
+# runs `askvireo service install`, which links the node to your account,
 # starts it at login, and connects Claude Code and Codex if they are here.
 # Running it again upgrades the node.
 set -eu
 
-PACKAGE="@abcdlsj/vireo-node"
+PACKAGE="askvireo"
 NODE_MAJOR=22
 NODE_MIN="22.13.0"
 DATA="${VIREO_DATA_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/vireo}"

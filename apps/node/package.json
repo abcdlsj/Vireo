@@ -1,7 +1,7 @@
 {
-  "name": "@abcdlsj/vireo-node",
+  "name": "askvireo",
   "version": "0.1.2",
-  "description": "Your own Vireo node: the agent, its threads and memory, on your machine. Sign in at the Vireo app and run `npx @abcdlsj/vireo-node`.",
+  "description": "Your own Vireo node: the agent, its threads and memory, on your machine. Sign in at the Vireo app and run `npx askvireo`.",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/abcdlsj/Vireo.git",
@@ -13,7 +13,7 @@
     "node": ">=22.13"
   },
   "bin": {
-    "vireo-node": "dist/cli.js"
+    "askvireo": "dist/cli.js"
   },
   "files": [
     "dist"

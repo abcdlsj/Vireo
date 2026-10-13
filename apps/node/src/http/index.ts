@@ -75,7 +75,7 @@ export function createHttp(app: App): Hono<Env> {
 
   http.use("/api/*", async (c, next) => {
     const identity = app.identity.get();
-    if (!identity) return c.json({ error: "This node is not linked to an account yet. Run `npx @abcdlsj/vireo-node` on it." }, 503);
+    if (!identity) return c.json({ error: "This node is not linked to an account yet. Run `npx askvireo` on it." }, 503);
     const claims = verifyAccess(tokenOf(c), identity);
     if (!claims) return c.json({ error: "Not signed in" }, 401);
     c.set("claims", claims);
