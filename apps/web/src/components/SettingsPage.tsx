@@ -3,6 +3,7 @@ import { useGlide } from "../glide";
 import { ChevronLeft } from "../icons";
 import type { Credential, UsageByPurpose, User } from "@vireo/protocol";
 import { AccountSettings, NodesSettings } from "./Nodes";
+import { CodingAgents } from "./CodingAgents";
 import { Models } from "./ModelSettings";
 import { PluginsCard } from "./PluginsCard";
 import { api, type Me, type OwnerSettings } from "../api";
@@ -11,6 +12,7 @@ import { setThemeChoice, themeChoice, type ThemeChoice } from "../theme";
 const SECTIONS = [
   { id: "general", label: "General" },
   { id: "model", label: "Model" },
+  { id: "agents", label: "Coding agents" },
   { id: "plugins", label: "Plugins" },
   { id: "nodes", label: "Nodes" },
   { id: "notifications", label: "Notifications" },
@@ -38,7 +40,8 @@ function SettingsNav({ cur, modelMissing }: { cur: string; modelMissing: boolean
 export function SettingsPage({ section, me, user, reload }: { section: string; me: Me | null; user: User | null; reload: () => Promise<void> }) {
   if (!me) return <div className="page" />;
   // A section can name one item in it, e.g. plugins/google.
-  const [base, item] = section.split("/");
+  // Coding agents were a plugin once; old links to them land on their own page.
+  const [base, item] = section === "plugins/agents" ? ["agents"] : section.split("/");
   const cur = SECTIONS.find((s) => s.id === base) ?? SECTIONS[0]!;
   return (
     <div className="page" data-testid="settings-page">
@@ -63,6 +66,8 @@ export function SettingsPage({ section, me, user, reload }: { section: string; m
             </>
           ) : cur.id === "model" ? (
             <Models reload={reload} />
+          ) : cur.id === "agents" ? (
+            <CodingAgents reload={reload} />
           ) : cur.id === "plugins" ? (
             <PluginsCard reload={reload} focus={item} />
           ) : cur.id === "nodes" ? (

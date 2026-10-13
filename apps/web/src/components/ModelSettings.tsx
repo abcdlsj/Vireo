@@ -184,7 +184,7 @@ function CliGuide({ st, onSaved }: { st: ModelStatus; onSaved: (s: ModelStatus) 
           {busy === "detect" ? "Looking…" : "Look again"}
         </button>
       </div>
-      <p className="muted small">Vireo asks the CLI for each reply with its own tools switched off, so Vireo's tools, memory and confirmations work as usual. It is not the Coding agents plugin, which hands whole tasks to an agent.</p>
+      <p className="muted small">Vireo asks the CLI for each reply with its own tools switched off, so Vireo's tools, memory and confirmations work as usual. That is separate from Coding agents, which hand whole tasks to an agent.</p>
 
       <ol className="guide">
         <li className="guide-step done">

@@ -135,7 +135,9 @@ export class Plugins {
   }
 
   installed(id: string): boolean {
-    return this.all()[id]?.enabled ?? Boolean(CATALOG.find((d) => d.id === id)?.defaultOn);
+    const def = CATALOG.find((d) => d.id === id);
+    if (def?.builtin) return true;
+    return this.all()[id]?.enabled ?? Boolean(def?.defaultOn);
   }
 
   /** An MCP request the owner's own node or app made, served by Vireo over MCP whether or not it is added. */
@@ -251,7 +253,7 @@ export class Plugins {
   }
 
   async uninstall(id: string): Promise<void> {
-    this.def(id);
+    if (this.def(id).builtin) throw new Error(`${this.def(id).name} is part of Vireo and can't be removed.`);
     await this.runtimes.get(id)?.stop?.().catch(() => undefined);
     const all = this.all();
     // A plugin that starts added stays removed once the owner removes it.
@@ -309,6 +311,7 @@ export class Plugins {
       author: def.author,
       homepage: def.homepage,
       installed,
+      builtin: def.builtin || undefined,
       fields: def.fields.map((f) => (f.type === "secret" ? { ...f, set: Boolean(config[f.key]) } : f)),
       // Secrets never leave the server.
       config: Object.fromEntries(
@@ -376,7 +379,7 @@ export class Plugins {
   capabilities(): Capability[] {
     if (now() - this.checkedAt > STATUS_TTL) void this.refreshStatuses();
     return CATALOG.map((def) => {
-      const base = { id: def.id, name: def.name, description: def.description, browserSetup: Boolean(def.browserSetup?.length) };
+      const base = { id: def.id, name: def.name, description: def.description, browserSetup: Boolean(def.browserSetup?.length), builtin: def.builtin || undefined };
       if (!this.installed(def.id)) return { ...base, state: "not_added" as const };
       const st = this.statuses.get(def.id);
       // Not checked yet: an added plugin is assumed to work until its status says otherwise.

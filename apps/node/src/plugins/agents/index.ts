@@ -1,4 +1,5 @@
 import { existsSync, statSync } from "node:fs";
+import { homedir } from "node:os";
 import type { PluginRow } from "@vireo/protocol";
 import { Type } from "typebox";
 import {
@@ -15,12 +16,13 @@ import {
   TurnReader,
 } from "../../acp.js";
 import type { AgentDef } from "../../agents.js";
+import { CLI_ORDER, findCli } from "../../cli-model.js";
 import { defineTool, type ToolContext } from "../../tools/types.js";
 import { truncate } from "../../util.js";
 import type { ConfigField, PluginDef, PluginRuntime, PluginStatus } from "../types.js";
 
 /**
- * Coding agents: Vireo hands work in a repository to Claude Code, Codex,
+ * Coding agents, built into Vireo: Vireo hands work in a repository to Claude Code, Codex,
  * opencode, pi or any other agent the ACP client knows, running on this
  * machine, and reports what it did.
  *
@@ -76,13 +78,24 @@ const PROFILE_FIELDS: ConfigField[] = [
   { key: "timeout", label: "Turn limit (s)", type: "text", default: "1800", pattern: "^[0-9]{1,5}$", help: "How long one turn may take. Up to 24 hours." },
 ];
 
+/**
+ * Until the owner saves setups of their own, one per agent found on this
+ * machine (Claude Code, Codex, pi), working in their home directory. Read
+ * each time, so an agent installed later shows up by itself.
+ */
+export function detectedSetups(): PluginRow[] {
+  return CLI_ORDER.filter((id) => findCli(id)).map((id) => ({ name: id, command: id, directory: homedir(), mode: "edits", timeout: "1800" }));
+}
+
 const FIELDS: ConfigField[] = [
   {
     key: "agents",
     label: "Coding agents",
     type: "list",
     items: PROFILE_FIELDS,
-    default: [{ name: "claude", command: "claude", mode: "edits", timeout: "1800" }],
+    get default() {
+      return detectedSetups();
+    },
     help: "One row per agent setup: a project, a provider, or both.",
   },
 ];
@@ -168,7 +181,7 @@ function report(p: Profile, o: RunOptions, session: string | undefined, turn: Tu
   if (run.aborted) trouble.push("The owner stopped this run.");
   if (run.code !== 0 && !run.timedOut && !run.aborted) trouble.push(`The agent ended with code ${run.code}.`);
   for (const err of turn.errors.slice(0, 4)) trouble.push(err);
-  for (const refusal of [...new Set(turn.refused)].slice(0, 4)) trouble.push(`${refusal}; the owner must allow it (Settings → Plugins → Coding agents) or run it themselves.`);
+  for (const refusal of [...new Set(turn.refused)].slice(0, 4)) trouble.push(`${refusal}; the owner must allow it (Settings → Coding agents) or run it themselves.`);
   if (trouble.length) parts.push(`Trouble:\n${trouble.map((t) => `- ${t}`).join("\n")}`);
   if (run.stderr.trim()) parts.push(`Agent log:\n${run.stderr.trim().slice(-1200)}`);
 
@@ -183,6 +196,7 @@ export const agentsPlugin: PluginDef = {
     "Let Vireo hand work in a repository on this machine to a coding agent — Claude Code, Codex, opencode, pi — and report back: fix a bug, make a change, review a diff, answer a question about the code. Add one row per agent, project or provider.",
   author: "Vireo",
   homepage: "https://github.com/abcdlsj/Vireo",
+  builtin: true,
   fields: FIELDS,
   create(ctx): PluginRuntime {
     const profiles = (): Profile[] => (ctx.config<AgentsConfig>().agents ?? []).map((row, i) => readProfile(row, i));
@@ -190,7 +204,7 @@ export const agentsPlugin: PluginDef = {
     /** The setup a call named, or the only one there is. */
     function profile(named?: string): Profile {
       const all = profiles();
-      if (!all.length) throw new Error("No coding agent is set up yet. Add one in Settings → Plugins → Coding agents.");
+      if (!all.length) throw new Error("No coding agent is set up yet. Add one in Settings → Coding agents.");
       if (!named) {
         if (all.length === 1) return all[0]!;
         throw new Error(`Which agent? Set up: ${all.map((p) => p.name).join(", ")}.`);
@@ -204,7 +218,7 @@ export const agentsPlugin: PluginDef = {
     /** Where a setup's runs happen: the directory the owner configured, and only that. */
     function workdir(p: Profile): string {
       const dir = p.directory;
-      if (!dir) throw new Error(`No directory for “${p.name}” yet. Set it in Settings → Plugins → Coding agents.`);
+      if (!dir) throw new Error(`No directory for “${p.name}” yet. Set it in Settings → Coding agents.`);
       if (!existsSync(dir)) throw new Error(`${dir} does not exist.`);
       if (!statSync(dir).isDirectory()) throw new Error(`${dir} is not a directory.`);
       return dir;
@@ -213,7 +227,7 @@ export const agentsPlugin: PluginDef = {
     /** A call may narrow the setup's mode, never widen it: only the owner raises it, in Settings. */
     function mode(p: Profile, asked?: PermissionMode): PermissionMode {
       if (!asked || asked === p.mode) return p.mode;
-      if (RANK[asked] > RANK[p.mode]) throw new Error(`“${p.name}” is set to ${MODE_LABEL[p.mode]}; a call cannot ask for ${asked}. The owner can raise it in Settings → Plugins → Coding agents.`);
+      if (RANK[asked] > RANK[p.mode]) throw new Error(`“${p.name}” is set to ${MODE_LABEL[p.mode]}; a call cannot ask for ${asked}. The owner can raise it in Settings → Coding agents.`);
       return asked;
     }
 
@@ -339,7 +353,7 @@ export const agentsPlugin: PluginDef = {
         parameters: Type.Object({ agent: agentArg }),
         async run(args, toolCtx) {
           const chosen = args.agent ? [profile(args.agent)] : profiles();
-          if (!chosen.length) return { text: "No coding agent is set up yet. Add one in Settings → Plugins → Coding agents." };
+          if (!chosen.length) return { text: "No coding agent is set up yet. Add one in Settings → Coding agents." };
           const parts: string[] = [];
           for (const p of chosen) {
             if (!p.directory) {
@@ -387,7 +401,7 @@ export const agentsPlugin: PluginDef = {
       async status(): Promise<PluginStatus> {
         const all = profiles();
         const details = all.map((p) => ({ label: p.name, value: `${p.command} in ${p.directory || "(no directory)"} · ${MODE_LABEL[p.mode]}` }));
-        if (!all.length) return { state: "setup", message: "Add a coding agent: its name, the agent to run and the repository.", details };
+        if (!all.length) return { state: "setup", message: "No coding agent found on this machine. Install Claude Code, Codex or pi, or add one of your own.", details };
         const names = all.map((p) => p.name.toLowerCase());
         const twice = all.filter((p, i) => names.indexOf(p.name.toLowerCase()) !== i);
         if (twice.length) return { state: "error", message: `Two setups are named ${[...new Set(twice.map((p) => p.name))].join(", ")}; give each its own name.`, details };

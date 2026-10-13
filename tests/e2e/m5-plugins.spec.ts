@@ -9,7 +9,7 @@ test.describe("Milestone 5 — Plugins", () => {
     await page.goto("/#settings/plugins");
     const card = page.getByTestId("plugins-card");
     await card.getByTestId("community-plugins").click();
-    for (const name of ["Tailscale", "Telegram", "Feishu / Lark", "MCP servers", "Coding agents", "Search providers"]) await expect(page.getByTestId("plugin-catalog")).toContainText(name);
+    for (const name of ["Tailscale", "Telegram", "Feishu / Lark", "MCP servers", "Search providers"]) await expect(page.getByTestId("plugin-catalog")).toContainText(name);
     await page.getByTestId("add-plugin-tailscale").click();
     const ts = page.getByTestId("plugin-tailscale");
     await expect(ts).toBeVisible();
@@ -51,16 +51,23 @@ test.describe("Milestone 5 — Plugins", () => {
 
   test("[M5.4] coding agents hold several setups, each with its own command and repository", async ({ page }) => {
     const repo = resolve("tests/fixtures");
+    // Built in: not in the plugin catalog, a Settings page of its own, which old plugin links open.
     await page.goto("/#settings/plugins");
     await page.getByTestId("community-plugins").click();
-    await page.getByTestId("add-plugin-agents").click();
+    await expect(page.getByTestId("add-plugin-agents")).toHaveCount(0);
+    await page.goto("/#settings/plugins/agents");
+    await expect(page.getByTestId("agents-found")).toBeVisible();
     const card = page.getByTestId("plugin-agents");
     await expect(page.getByTestId("plugin-agents-status")).toBeVisible();
-    const first = card.getByTestId("pf-agents-0-directory");
-    if (!(await first.isVisible())) await card.getByTestId("plugin-agents-settings").click();
+    await expect(card.getByText("Remove plugin")).toHaveCount(0);
 
-    // One setup is there to begin with, pointed at Claude.
-    await first.fill(repo);
+    // A first setup, pointed at Claude.
+    if (!(await card.getByTestId("pf-agents-0-name").isVisible())) await card.getByTestId("pf-agents-add").click();
+    await card.getByTestId("pf-agents-0-name").fill("claude");
+    await card.getByTestId("pf-agents-0-command").fill("claude");
+    await card.getByTestId("pf-agents-0-directory").fill(repo);
+    await card.getByRole("button", { name: "Save" }).click();
+    await expect(card.getByText("Saved.")).toBeVisible();
     await expect(page.getByTestId("plugin-agents-status")).toContainText("claude");
 
     // A second setup, on another agent and another command of the owner's.

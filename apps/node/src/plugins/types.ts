@@ -153,6 +153,11 @@ export interface PluginDef {
   homepage?: string;
   /** Added from the start; the owner can still remove it. */
   defaultOn?: boolean;
+  /**
+   * Part of Vireo rather than a plugin: always on, never removed, not in the
+   * community catalog, and set up on a Settings page of its own.
+   */
+  builtin?: boolean;
   fields: ConfigField[];
   /**
    * Steps for setting the plugin up in Vireo's browser: the agent opens the

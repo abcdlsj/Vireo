@@ -36,8 +36,9 @@ export function PluginsCard({ reload, focus }: { reload: () => Promise<void>; fo
     await reload();
   };
 
-  const installed = plugins?.filter((p) => p.installed) ?? [];
-  const available = plugins?.filter((p) => !p.installed) ?? [];
+  // Built-in parts of Vireo (coding agents) have Settings pages of their own.
+  const installed = plugins?.filter((p) => p.installed && !p.builtin) ?? [];
+  const available = plugins?.filter((p) => !p.installed && !p.builtin) ?? [];
   // One plugin opens its settings by itself: the one a link pointed at, else
   // the first that needs setup or is failing. Opening every such plugin at
   // once buried the rest of the page under forms.
@@ -113,7 +114,7 @@ function SetUpWithVireo({ plugin, run, primary }: { plugin: PluginView; run: (fn
 
 const STATE_LABEL: Record<string, string> = { ready: "Ready", setup: "Needs setup", login: "Sign in needed", starting: "Starting", error: "Error" };
 
-function Plugin({ plugin: p, run, focused, autoOpen }: { plugin: PluginView; run: (fn: () => Promise<unknown>) => Promise<void>; focused: boolean; autoOpen: boolean }) {
+export function Plugin({ plugin: p, run, focused, autoOpen }: { plugin: PluginView; run: (fn: () => Promise<unknown>) => Promise<void>; focused: boolean; autoOpen: boolean }) {
   const st = p.status;
   const needsAttention = st?.state === "setup" || st?.state === "error";
   // The plugin that needs setup or is failing opens its settings, so the field
@@ -207,20 +208,22 @@ function Plugin({ plugin: p, run, focused, autoOpen }: { plugin: PluginView; run
             <button className="btn primary small" disabled={Object.keys(form).length === 0}>
               Save
             </button>
-            {p.homepage ? (
+            {p.homepage && !p.builtin ? (
               <a className="muted small" href={p.homepage} target="_blank" rel="noreferrer">
                 Open {p.name} console
               </a>
             ) : null}
-            <button
-              type="button"
-              className="link danger small plugin-remove"
-              onClick={() => {
-                if (confirm(`Remove the ${p.name} plugin? Its settings are deleted.`)) void run(() => api.del(`/api/plugins/${p.id}`));
-              }}
-            >
-              Remove plugin
-            </button>
+            {p.builtin ? null : (
+              <button
+                type="button"
+                className="link danger small plugin-remove"
+                onClick={() => {
+                  if (confirm(`Remove the ${p.name} plugin? Its settings are deleted.`)) void run(() => api.del(`/api/plugins/${p.id}`));
+                }}
+              >
+                Remove plugin
+              </button>
+            )}
           </div>
         </form>
       ) : null}

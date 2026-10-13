@@ -128,7 +128,6 @@ export class ModelService {
 
   /** Looks for the CLIs again (at most once a minute unless forced). */
   async detect(force = false): Promise<LocalCli[]> {
-    if (this.config.fakeModel && !force) return this.clis;
     if (!force && this.detectedAt && Date.now() - this.detectedAt < DETECT_TTL_MS) return this.clis;
     this.detecting ??= detectClis(this.saved().cliPaths)
       .then((list) => {

@@ -355,7 +355,8 @@ function Setup({ me }: { me: Me }) {
     { done: me.push.subscriptions > 0, label: "Turn on notifications", why: "Hear about what needs you without opening Vireo.", href: "#settings/notifications" },
     // Plugins the owner added but did not finish; Google is already a step above.
     ...(me.capabilities ?? [])
-      .filter((c) => c.state === "needs_setup" && c.id !== "google")
+      // Built-in parts (coding agents) have nothing to finish when nothing is installed to use.
+      .filter((c) => c.state === "needs_setup" && c.id !== "google" && !c.builtin)
       .map((c) => ({ done: false, label: `Finish setting up ${c.name}`, why: c.message ?? "", href: `#settings/plugins/${c.id}`, plugin: true })),
   ];
   const left = steps.filter((s) => !s.done).length;

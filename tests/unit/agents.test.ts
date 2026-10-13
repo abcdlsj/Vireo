@@ -1,13 +1,13 @@
 import { afterEach, describe, expect, it } from "vitest";
 import type { App } from "../../apps/node/src/app.js";
 import { agentEnv, execArgs, parseTurn, sessionPromptArgs, type RunOptions } from "../../apps/node/src/acp.js";
-import { readProfile } from "../../apps/node/src/plugins/agents/index.js";
+import { detectedSetups, readProfile } from "../../apps/node/src/plugins/agents/index.js";
 import type { ToolContext } from "../../apps/node/src/tools/types.js";
 import { tempDir, testApp } from "./helpers.js";
 
 /**
- * The coding-agents plugin: installing it adds its tools and its specialist,
- * it holds several agent setups at once, and it refuses to run until a setup
+ * Coding agents, built into Vireo: its tools and specialist are always there,
+ * it starts from the agents found on this machine, holds several setups at once, and it refuses to run until a setup
  * names a directory that exists. The agents themselves are separate programs,
  * so nothing here starts one.
  */
@@ -34,18 +34,18 @@ function open(): App {
 const view = async (app: App) => (await app.plugins.list({ origin: "http://localhost" })).find((p) => p.id === "agents")!;
 
 describe("coding agents plugin", () => {
-  it("adds its tools and specialist only while it is installed", async () => {
+  it("is built in: its tools and specialist are there from the start, and it can't be removed", async () => {
     const app = open();
-    expect(app.tools.has("coding_agent_run")).toBe(false);
-
-    await app.plugins.install("agents", { agents: [{ name: "work", command: "claude", directory: tempDir() }] });
     expect(app.tools.has("coding_agent_run")).toBe(true);
     expect(app.plugins.agents().map((a) => a.name)).toContain("coder");
+    expect(await view(app)).toMatchObject({ installed: true, builtin: true });
+    expect(app.plugins.capabilities().find((c) => c.id === "agents")).toMatchObject({ builtin: true });
+
+    await app.plugins.configure("agents", { agents: [{ name: "work", command: "claude", directory: tempDir() }] });
     expect((await view(app)).status).toMatchObject({ state: "ready" });
 
-    await app.plugins.uninstall("agents");
-    expect(app.tools.has("coding_agent_run")).toBe(false);
-    expect(app.plugins.agents().map((a) => a.name)).not.toContain("coder");
+    await expect(app.plugins.uninstall("agents")).rejects.toThrow(/part of Vireo/);
+    expect(app.tools.has("coding_agent_run")).toBe(true);
   });
 
   it("holds several setups, each with its own agent and repository", async () => {
@@ -64,12 +64,14 @@ describe("coding agents plugin", () => {
     expect(status.details?.[1]?.value).toContain("opencode");
   });
 
-  it("starts from one Claude setup, and asks for a directory", async () => {
+  it("starts from the agents found on this machine, in the home directory", async () => {
     const app = open();
-    await app.plugins.install("agents", {});
+    const found = detectedSetups();
+    const rows = (await view(app)).config.agents as { command: string; directory: string }[];
+    expect(rows.map((r) => r.command)).toEqual(found.map((r) => r.command));
+    for (const r of rows) expect(r.directory).toBeTruthy();
     const status = (await view(app)).status!;
-    expect(status).toMatchObject({ state: "setup" });
-    expect(status.message).toContain("claude");
+    expect(status.state).toBe(found.length ? "ready" : "setup");
   });
 
   it("says which setup has the wrong directory", async () => {

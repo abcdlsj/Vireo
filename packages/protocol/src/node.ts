@@ -345,6 +345,8 @@ export interface Capability {
   message?: string;
   /** Vireo can set this plugin up in its browser while the owner signs in. */
   browserSetup: boolean;
+  /** Built into Vireo: always on, with a Settings page of its own (#settings/<id>). */
+  builtin?: boolean;
 }
 
 export interface PluginField {
@@ -384,6 +386,8 @@ export interface PluginView {
   author: string;
   homepage?: string;
   installed: boolean;
+  /** Built into Vireo: always on, set up on its own Settings page, not in the catalog. */
+  builtin?: boolean;
   fields: PluginField[];
   config: Record<string, unknown>;
   status?: PluginStatus;

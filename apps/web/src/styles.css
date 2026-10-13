@@ -3291,3 +3291,16 @@ ol.guide {
 .guide-body button.link {
   font-size: 13px;
 }
+
+/* Settings → Coding agents: what is installed, not a choice. */
+.cli-option.static {
+  cursor: default;
+}
+
+.cli-option.static:hover {
+  background: var(--bg);
+}
+
+.cli-option.static code {
+  overflow-wrap: anywhere;
+}

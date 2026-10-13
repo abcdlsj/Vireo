@@ -22,7 +22,7 @@ export const setupTools = [
       const plugins = ctx.app.plugins;
       const def = plugins.definition(args.plugin);
       if (!def.browserSetup?.length) {
-        return { text: `${def.name} cannot be set up in the browser. Send the owner to its settings instead: [${def.name}](#settings/plugins/${def.id})` };
+        return { text: `${def.name} cannot be set up in the browser. Send the owner to its settings instead: [${def.name}](${def.builtin ? `#settings/${def.id}` : `#settings/plugins/${def.id}`})` };
       }
       if (!plugins.installed(def.id)) {
         ctx.app.threads.setStatus(ctx.thread.id, `Adding ${def.name}…`);
@@ -76,7 +76,7 @@ export const setupTools = [
       }
       if (cap.state === "ready") return { text: `${cap.name} is already set up and ready. Go ahead with the request.` };
       ctx.app.plugins.waitForSetup(ctx.thread.id, cap.id);
-      const link = `[${cap.name}](#settings/plugins/${cap.id})`;
+      const link = `[${cap.name}](${cap.builtin ? `#settings/${cap.id}` : `#settings/plugins/${cap.id}`})`;
       return {
         text: [
           cap.state === "not_added"
