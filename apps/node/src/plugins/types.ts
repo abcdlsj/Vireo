@@ -126,6 +126,11 @@ export interface PluginRuntime {
   status(req?: RequestInfo): Promise<PluginStatus>;
   actions?(): PluginAction[];
   runAction?(id: string, req: RequestInfo): Promise<ActionResult>;
+  /**
+   * A fresh sign-in link for Vireo's own browser, for plugins whose sign-in is
+   * an OAuth redirect: the agent opens it and the owner signs in there.
+   */
+  signInLink?(): Promise<string | undefined>;
   /** Routes under /public/ reachable without signing in (OAuth callbacks, webhooks); they must check their own state. */
   publicRoutes?(api: Hono): void;
   /** Plaintext secrets to scrub from tool output and logs. */

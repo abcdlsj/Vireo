@@ -30,6 +30,8 @@ export const setupTools = [
       }
       const st = await plugins.statusOf(def.id);
       const cfg = plugins.config(def.id);
+      // An OAuth sign-in has no standing link; the plugin makes one for Vireo's browser.
+      const signIn = st?.state === "login" && !st.link ? await plugins.runtime(def.id)?.signInLink?.() : undefined;
       const fields = def.fields.map((f) => {
         const v = cfg[f.key];
         const shown = f.type === "secret" ? (v ? "set" : "not set") : v === "" || v == null ? "empty" : JSON.stringify(v);
@@ -38,7 +40,7 @@ export const setupTools = [
       return {
         text: [
           `${def.name}: ${st?.state ?? "unknown"}${st?.message ? ` — ${st.message}` : ""}`,
-          st?.link ? `Sign-in link: ${st.link.href}` : "",
+          st?.link || signIn ? `Sign-in link: ${st?.link?.href ?? signIn}` : "",
           ...(st?.details ?? []).map((d) => `${d.label}: ${d.value}`),
           "",
           "Settings:",

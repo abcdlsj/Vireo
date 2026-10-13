@@ -6,6 +6,9 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { App } from "../../apps/node/src/app.js";
 import { AGENTS } from "../../apps/node/src/agents.js";
 import { Db } from "../../apps/node/src/db.js";
+import { createApp } from "../../apps/node/src/app.js";
+import { loadConfig } from "../../apps/node/src/config.js";
+import { createHttp } from "../../apps/node/src/http/index.js";
 import { buildSystemPrompt } from "../../apps/node/src/prompt.js";
 import { messageText } from "../../apps/node/src/threads.js";
 import { tempDir, testApp } from "./helpers.js";
@@ -213,6 +216,47 @@ describe("tailscale plugin", () => {
 });
 
 describe("google plugin", () => {
+  it("walks the owner through creating their own OAuth client, then signs in in Vireo's browser", async () => {
+    // A real (not demo) Google plugin, so it needs a client and a sign-in.
+    const app = createApp(loadConfig({ VIREO_DATA_DIR: tempDir(), VIREO_FAKE_MODEL: "1", VIREO_PUBLIC_URL: "https://vireo.example.com" }));
+    apps.push(app);
+    const thread = app.threads.get(app.threads.create({}).id)!;
+    const setup = () => app.tools.get("plugin_setup")!.run({ plugin: "google" }, { app, thread, agent: "browser" });
+
+    let out = await setup();
+    expect(out.text).toContain("Google: setup");
+    expect(out.text).toContain("Redirect URI: https://vireo.example.com/public/google/callback");
+    expect(out.text).toContain("console.cloud.google.com/projectcreate");
+    expect(out.text).toContain("plugin_save_from_page with field client_id, then with field client_secret");
+    expect(out.text).not.toContain("Sign-in link");
+
+    // The client secret is hidden on pages and only ever saved straight from them.
+    // Made up, and assembled so secret scanners do not take it for a real one.
+    const secret = ["GOCSPX", "test".repeat(7)].join("-");
+    expect(app.plugins.redact(`Client secret ${secret}`)).not.toContain(secret);
+    await expect(app.plugins.saveValue("google", "client_id", "not-a-client")).rejects.toThrow(/does not look like/);
+    await app.plugins.saveValue("google", "client_id", ["1234567890-abc123def456", "apps.googleusercontent.com"].join("."));
+    await app.plugins.saveValue("google", "client_secret", secret);
+
+    out = await setup();
+    expect(out.text).toContain("Google: login");
+    const link = new URL(out.text.match(/Sign-in link: (\S+)/)![1]!);
+    expect(link.origin).toBe("https://accounts.google.com");
+    expect(link.searchParams.get("redirect_uri")).toBe("https://vireo.example.com/public/google/callback");
+
+    // The owner's own Connect button does not cancel the sign-in under way in Vireo's browser.
+    const button = new URL((await app.plugins.action("google", "connect", { origin: "https://vireo.example.com", appOrigin: "https://app.example.com" })).redirect!);
+    expect(button.searchParams.get("state")).not.toBe(link.searchParams.get("state"));
+    const http = createHttp(app);
+    const denied = await http.request(`/public/google/callback?state=${link.searchParams.get("state")}&error=access_denied`);
+    expect(denied.status).toBe(400);
+    expect(await denied.text()).toContain("Hand the browser back");
+    const back = await http.request(`/public/google/callback?state=${button.searchParams.get("state")}&error=access_denied`);
+    expect(back.headers.get("location")).toBe("https://app.example.com/#settings/plugins?google=access_denied");
+    // Each state works once.
+    expect((await http.request(`/public/google/callback?state=${button.searchParams.get("state")}`)).status).toBe(400);
+  });
+
   it("reads Google Drive once the plugin is added", async () => {
     const app = open();
     const t = app.threads.create({});

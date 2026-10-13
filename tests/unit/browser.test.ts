@@ -172,8 +172,8 @@ describe("browser-assisted setup", () => {
       expect(out.text).toContain("- api_key (API access token): not set");
       expect(out.text).toContain("Generate access token");
       expect(out.text).toContain("plugin_save_from_page");
-      const google = await app.tools.get("plugin_setup")!.run({ plugin: "google" }, { app, thread, agent: "browser" });
-      expect(google.text).toContain("#settings/plugins/google");
+      const search = await app.tools.get("plugin_setup")!.run({ plugin: "search" }, { app, thread, agent: "browser" });
+      expect(search.text).toContain("#settings/plugins/search");
     } finally {
       await app.plugins.uninstall("tailscale");
     }

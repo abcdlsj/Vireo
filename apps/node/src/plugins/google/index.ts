@@ -1,6 +1,6 @@
 import { Type } from "typebox";
 import { defineTool, type ToolContext } from "../../tools/types.js";
-import { newId, truncate } from "../../util.js";
+import { newId, now, truncate } from "../../util.js";
 import type { PluginDef, PluginStatus, RequestInfo } from "../types.js";
 import { DRIVE_SCOPE, GoogleAuth, GoogleCalendar, GoogleDrive, GoogleMail } from "./api.js";
 
@@ -15,6 +15,17 @@ interface GoogleConfig {
 }
 
 const CALLBACK = "/public/google/callback";
+const CONSOLE = "https://console.cloud.google.com";
+
+/** A sign-in Vireo started and waits for Google to redirect back from. */
+interface Pending {
+  state: string;
+  redirectUri: string;
+  /** The Vireo app to return to; none when the agent opened it in Vireo's browser. */
+  returnTo?: string;
+  at: number;
+}
+const PENDING_TTL = 30 * 60_000;
 
 function drive(ctx: ToolContext) {
   const d = ctx.app.integrations.drive();
@@ -57,8 +68,19 @@ export const googlePlugin: PluginDef = {
   author: "Vireo",
   homepage: "https://console.cloud.google.com/apis/credentials",
   fields: [
-    { key: "client_id", label: "Client ID", type: "text", placeholder: "….apps.googleusercontent.com" },
-    { key: "client_secret", label: "Client secret", type: "secret" },
+    { key: "client_id", label: "Client ID", type: "text", placeholder: "….apps.googleusercontent.com", pattern: "[0-9]+-[a-z0-9]+\\.apps\\.googleusercontent\\.com" },
+    { key: "client_secret", label: "Client secret", type: "secret", placeholder: "GOCSPX-…", pattern: "GOCSPX-[A-Za-z0-9_-]{20,}" },
+  ],
+  // The owner signs in to Google Cloud and to their account; Vireo does the clicking in between.
+  browserSetup: [
+    `Check the Redirect URI above. Google only accepts https addresses or http://localhost. If it is plain http on any other host, stop and tell the owner Google needs Vireo on HTTPS first (Tailscale's "Reach this host over the tailnet" gives it one), then wait for them.`,
+    `Open ${CONSOLE}/projectcreate. If a sign-in page shows, call browser_ask_owner so the owner signs in to Google. Name the project "Vireo" and press Create (if the owner already has a project they want to use, select it instead). Wait until it is created and make sure it is the selected project at the top of the console.`,
+    `Turn on the three APIs, one page each, pressing Enable when it shows (Manage means it is already on): ${CONSOLE}/apis/library/calendar-json.googleapis.com, ${CONSOLE}/apis/library/gmail.googleapis.com and ${CONSOLE}/apis/library/drive.googleapis.com. Check the project selector still shows the right project on each.`,
+    `Set up the consent screen at ${CONSOLE}/auth/overview (Get started): app name "Vireo", the owner's Google address as support and contact email. For Audience pick Internal if it is offered (a Google Workspace account), otherwise External. Agree to the policy and press Create.`,
+    `With External, open ${CONSOLE}/auth/audience. Ask the owner (in the thread, one short question) whether to publish the app: published, their sign-in keeps working but Google warns it is unverified when they connect; left in Testing, it needs no warning but the sign-in expires every 7 days. Publishing is the usual choice for a personal Vireo. If they pick Testing, add their Google address under Test users.`,
+    `Create the client at ${CONSOLE}/auth/clients/create: Application type "Web application", name "Vireo", add the Redirect URI above exactly under Authorized redirect URIs, press Create. The dialog that follows shows the client ID and the client secret, and Google shows the secret only this once: call plugin_save_from_page with field client_id, then with field client_secret, before closing the dialog.`,
+    `Call plugin_setup again: the state is now login with a sign-in link. browser_open it and call browser_ask_owner so the owner picks their account and allows Calendar, Gmail and Drive (on an unverified app they choose Advanced, then Go to Vireo). Call plugin_setup once more: it should be ready.`,
+    `Tell the owner Google is connected and with which account; if the app stayed in Testing, say the sign-in lasts 7 days at a time.`,
   ],
   create(ctx) {
     const { host } = ctx;
@@ -68,6 +90,16 @@ export const googlePlugin: PluginDef = {
     });
     const redirectUri = (req?: RequestInfo) => `${host.publicUrl(req)}${CALLBACK}`;
     const live = () => !host.demo && auth.connected();
+    // Several sign-ins can be under way (the owner's button, Vireo's browser); each keeps its own state.
+    const pending = (): Pending[] => {
+      const p = ctx.state.get<Pending[] | Pending>("pending");
+      return (Array.isArray(p) ? p : p ? [p] : []).filter((x) => now() - (x.at ?? 0) < PENDING_TTL);
+    };
+    const begin = (redirectUri: string, returnTo?: string) => {
+      const state = newId("g");
+      ctx.state.set("pending", [...pending().slice(-4), { state, redirectUri, returnTo, at: now() }]);
+      return auth.authUrl(redirectUri, state);
+    };
 
     return {
       tools: driveTools,
@@ -79,7 +111,7 @@ export const googlePlugin: PluginDef = {
       grants: { general: ["drive_search", "drive_read"], research: ["drive_search", "drive_read"], email: ["drive_search", "drive_read"] },
 
       async status(req): Promise<PluginStatus> {
-        const details = req ? [{ label: "Redirect URI", value: redirectUri(req) }] : [];
+        const details = [{ label: "Redirect URI", value: redirectUri(req) }];
         if (host.demo) return { state: "ready", message: "Demo mode: in-memory calendar, mailbox and Drive." };
         if (!auth.client()) {
           return {
@@ -117,27 +149,35 @@ export const googlePlugin: PluginDef = {
           auth.disconnect();
           return { message: "Disconnected." };
         }
-        if (id === "connect") {
-          const state = newId("g");
-          const uri = redirectUri(req);
-          ctx.state.set("pending", { state, redirectUri: uri, returnTo: req.appOrigin ?? "" });
-          return { redirect: auth.authUrl(uri, state) };
-        }
+        if (id === "connect") return { redirect: begin(redirectUri(req), req.appOrigin ?? "") };
         throw new Error(`Unknown action: ${id}`);
+      },
+
+      async signInLink() {
+        return host.demo || !auth.client() ? undefined : begin(redirectUri());
       },
 
       // Google redirects here; the state parameter ties it to an authenticated request.
       publicRoutes(api) {
         api.get(CALLBACK, async (c) => {
           const state = c.req.query("state");
-          const expected = ctx.state.get<{ state: string; redirectUri: string; returnTo?: string }>("pending");
-          if (!state || !expected || expected.state !== state) return c.text("Invalid or expired sign-in request.", 400);
-          ctx.state.delete("pending");
+          const all = pending();
+          const expected = state ? all.find((p) => p.state === state) : undefined;
+          if (!expected) return c.text("Invalid or expired sign-in request.", 400);
+          ctx.state.set("pending", all.filter((p) => p !== expected));
           const error = c.req.query("error");
+          // Started in Vireo's browser: say so on the page the owner is looking at, then hand back.
+          if (expected.returnTo === undefined) {
+            if (error) return c.text(`Google sign-in did not finish (${error}). Hand the browser back to Vireo.`, 400);
+            await auth.exchange(c.req.query("code") ?? "", expected.redirectUri);
+            ctx.changed();
+            return c.text("Google is connected to Vireo. Hand the browser back to Vireo.");
+          }
           // Back to the Vireo app that started the sign-in.
-          const back = `${expected.returnTo ?? ""}/#settings/plugins`;
+          const back = `${expected.returnTo}/#settings/plugins`;
           if (error) return c.redirect(`${back}?google=${encodeURIComponent(error)}`);
           await auth.exchange(c.req.query("code") ?? "", expected.redirectUri);
+          ctx.changed();
           return c.redirect(`${back}?google=connected`);
         });
       },
