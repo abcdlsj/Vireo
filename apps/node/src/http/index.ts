@@ -54,7 +54,7 @@ export function createHttp(app: App): Hono<Env> {
     }
     await next();
     c.res.headers.set("access-control-allow-origin", origin);
-    c.res.headers.set("access-control-expose-headers", "content-disposition");
+    c.res.headers.set("access-control-expose-headers", "content-disposition, x-frame-seq");
     c.res.headers.append("vary", "origin");
   });
 

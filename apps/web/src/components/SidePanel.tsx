@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ClipboardEvent, type CSSProperties, type RefObject, type DragEvent, type FormEvent, type KeyboardEvent, type MouseEvent, type PointerEvent } from "react";
-import { api, fileUrl, type FileInfo, type LlmCallRecord, type ThreadAudit, type ThreadDetail, type ThreadUsage, type ModelUsage, type ToolCallRecord } from "../api";
+import { api, ApiError, fileUrl, type FileInfo, type LlmCallRecord, type ThreadAudit, type ThreadDetail, type ThreadUsage, type ModelUsage, type ToolCallRecord } from "../api";
 import { authedUrl } from "../nodes";
 import { bytes, compact, dateTime, duration, purposeLabel, shortTime, stepOutcome, stepSubject, tokens, toolLabel, usd } from "../format";
 import { AttachIcon, CalendarIcon, CloseIcon, FullscreenIcon, GlobeIcon, KeyboardIcon, MailIcon, NarrowIcon, WidenIcon } from "../icons";
@@ -474,6 +474,21 @@ function sinkEdit(value: string): { deleted: number; text: string } {
   return { deleted: SINK.length - pre - post, text: value.slice(pre, value.length - post).replaceAll(SINK, "") };
 }
 
+type OwnerEvent =
+  | { type: "move" | "down" | "up"; x: number; y: number; button?: string }
+  | { type: "wheel"; x: number; y: number; dx: number; dy: number }
+  | { type: "key"; key: string }
+  | { type: "text"; text: string };
+
+/** Adds an input to those waiting to go: a move replaces a move before it, and typing and scrolling join up. */
+function queueEvent(events: OwnerEvent[], ev: OwnerEvent): void {
+  const last = events.at(-1);
+  if (last?.type === "move" && ev.type === "move") events[events.length - 1] = ev;
+  else if (last?.type === "text" && ev.type === "text" && last.text.length + ev.text.length <= 10_000) events[events.length - 1] = { type: "text", text: last.text + ev.text };
+  else if (last?.type === "wheel" && ev.type === "wheel") events[events.length - 1] = { ...ev, dx: last.dx + ev.dx, dy: last.dy + ev.dy };
+  else events.push(ev);
+}
+
 const coarse = () => typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches;
 
 const BUTTONS = ["left", "middle", "right"] as const;
@@ -486,7 +501,7 @@ const BUTTONS = ["left", "middle", "right"] as const;
  * when Vireo asks the owner to do something in the browser.
  */
 export function BrowserView({ threadId, running, asking, overlay, onClose }: { threadId: string; running: boolean; asking?: string; overlay?: boolean; onClose?: () => void }) {
-  const [tick, setTick] = useState(0);
+  const [src, setSrc] = useState<string>();
   const [state, setState] = useState<"loading" | "shown" | "none">("loading");
   const [full, setFullState] = useState(Boolean(overlay));
   const setFull = (on: boolean) => {
@@ -495,19 +510,56 @@ export function BrowserView({ threadId, running, asking, overlay, onClose }: { t
   };
   const [control, setControl] = useState<Control>({ page: false, controlled: false });
   const [error, setError] = useState("");
-  const timer = useRef<number | undefined>(undefined);
+  const shownUrl = useRef<string | undefined>(undefined);
   const img = useRef<HTMLImageElement>(null);
   const stage = useRef<HTMLDivElement>(null);
   const sink = useRef<HTMLTextAreaElement>(null);
   const [composing, setComposing] = useState(false);
   const [caret, setCaret] = useState<{ x: number; y: number } | null>(null);
-  const queue = useRef<Promise<unknown>>(Promise.resolve());
   const pendingMove = useRef<{ x: number; y: number } | null>(null);
   const live = running || control.controlled;
 
-  // Fetch a fresh frame when the run starts or stops; while live, the next frame is requested after each load.
-  useEffect(() => setTick((n) => n + 1), [running, control.controlled]);
-  useEffect(() => () => window.clearTimeout(timer.current), []);
+  // The page, frame by frame. While live, each request names the frame the view has and the node answers
+  // with the next one as soon as the page paints it, so frames arrive as fast as the connection allows and
+  // nothing is sent while the page is still. A node from before that answers at once; it is asked again
+  // after a short pause, as before.
+  useEffect(() => {
+    const stop = new AbortController();
+    const pause = (ms: number) => new Promise((r) => window.setTimeout(r, ms));
+    void (async () => {
+      let seq: string | null = null;
+      for (;;) {
+        let waited = false;
+        try {
+          const after = live && seq ? `?after=${seq}` : "";
+          const res = await fetch(authedUrl(`/api/threads/${threadId}/browser${after}`), { signal: stop.signal, cache: "no-store" });
+          if (res.ok) {
+            const next = res.headers.get("x-frame-seq");
+            const blob = await res.blob();
+            if (!next || next !== seq) {
+              const url = URL.createObjectURL(blob);
+              // A frame overtaken before it showed is let go of at once.
+              setSrc((prev) => {
+                if (prev && prev !== shownUrl.current) URL.revokeObjectURL(prev);
+                return url;
+              });
+            }
+            waited = Boolean(next);
+            seq = next;
+          } else {
+            setState((s) => (s === "shown" ? s : "none"));
+          }
+        } catch {
+          if (stop.signal.aborted) return;
+          await pause(1000);
+        }
+        if (!live || stop.signal.aborted) return;
+        if (!waited) await pause(control.controlled ? 120 : 250);
+      }
+    })();
+    return () => stop.abort();
+  }, [threadId, live, control.controlled]);
+  useEffect(() => () => (shownUrl.current ? URL.revokeObjectURL(shownUrl.current) : undefined), []);
   useEffect(() => {
     void api
       .get<Control>(`/api/threads/${threadId}/browser/control`)
@@ -517,11 +569,6 @@ export function BrowserView({ threadId, running, asking, overlay, onClose }: { t
       })
       .catch(() => undefined);
   }, [threadId, running, state, asking, overlay]);
-
-  const next = () => {
-    window.clearTimeout(timer.current);
-    if (live) timer.current = window.setTimeout(() => setTick((n) => n + 1), control.controlled ? 120 : 250);
-  };
 
   const setControlled = async (on: boolean) => {
     setError("");
@@ -563,19 +610,48 @@ export function BrowserView({ threadId, running, asking, overlay, onClose }: { t
   }, [full, control.controlled]);
 
   /**
-   * Sends inputs one after another so the page sees them in order. When one is refused, the
-   * browser was handed back meanwhile (Vireo stopped waiting), so the view catches up.
+   * Sends inputs in order. Whatever piles up while one request is on its way goes in the next, as one
+   * batch with mouse moves folded into the latest and typing joined up, so a slow connection to the node
+   * delays the page by a round trip rather than by one per event. When the browser was handed back
+   * meanwhile (Vireo stopped waiting), the input is refused and the view catches up.
    */
-  const send = (ev: Record<string, unknown>, then?: (res: { editable?: boolean }) => void) => {
-    queue.current = queue.current
-      .then(() => api.post<{ editable?: boolean }>(`/api/threads/${threadId}/browser/input`, ev))
-      .then((res) => then?.(res))
-      .catch(() =>
-        api
+  const outbox = useRef<{ events: OwnerEvent[]; then: ((res: { editable?: boolean }) => void)[]; busy: boolean; single: boolean }>({ events: [], then: [], busy: false, single: false });
+  const send = (ev: OwnerEvent, then?: (res: { editable?: boolean }) => void) => {
+    const box = outbox.current;
+    queueEvent(box.events, ev);
+    if (then) box.then.push(then);
+    if (!box.busy) void drain();
+  };
+  const drain = async () => {
+    const box = outbox.current;
+    box.busy = true;
+    while (box.events.length) {
+      const events = box.events.splice(0);
+      const thens = box.then.splice(0);
+      const path = `/api/threads/${threadId}/browser/input`;
+      try {
+        let res: { editable?: boolean } = {};
+        if (!box.single) {
+          try {
+            res = await api.post<{ editable?: boolean }>(path, { events });
+          } catch (err) {
+            // A node from before batches takes one input at a time.
+            if (!(err instanceof ApiError && err.status === 400)) throw err;
+            box.single = true;
+          }
+        }
+        if (box.single) for (const ev of events) res = await api.post<{ editable?: boolean }>(path, ev);
+        for (const t of thens) t(res);
+      } catch {
+        box.events.length = 0;
+        box.then.length = 0;
+        await api
           .get<Control>(`/api/threads/${threadId}/browser/control`)
           .then(setControl)
-          .catch(() => undefined),
-      );
+          .catch(() => undefined);
+      }
+    }
+    box.busy = false;
   };
 
   /** Puts keyboard focus in the keyboard field; on a phone, from a tap, that brings up the keyboard. */
@@ -714,19 +790,18 @@ export function BrowserView({ threadId, running, asking, overlay, onClose }: { t
         <img
           key={threadId}
           ref={img}
-          src={authedUrl(`/api/threads/${threadId}/browser?t=${tick}`)}
+          src={src}
           alt="The page Vireo is looking at"
           hidden={state !== "shown"}
           draggable={false}
           onClick={!full && !control.controlled ? () => setFull(true) : undefined}
           onLoad={() => {
             setState("shown");
-            next();
+            // The frame it replaced is on screen no more.
+            if (shownUrl.current && shownUrl.current !== src) URL.revokeObjectURL(shownUrl.current);
+            shownUrl.current = src;
           }}
-          onError={() => {
-            setState((s) => (s === "shown" ? s : "none"));
-            next();
-          }}
+          onError={() => setState((s) => (s === "shown" ? s : "none"))}
           {...input}
         />
         {control.controlled ? (

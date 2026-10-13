@@ -44,9 +44,11 @@ export function browserRoutes(app: App): Hono {
   });
 
   r.get("/threads/:id/browser", async (c) => {
-    const frame = await app.browser.frame(c.req.param("id"));
+    // `after`: the frame the view has; the answer waits for a newer one rather than sending the same again.
+    const after = Number(c.req.query("after"));
+    const frame = await app.browser.frame(c.req.param("id"), Number.isFinite(after) && c.req.query("after") ? { after, waitMs: 20_000, signal: c.req.raw.signal } : {});
     if (!frame) return c.json({ error: "No browser activity" }, 404);
-    return new Response(new Uint8Array(frame), { headers: { "content-type": "image/jpeg", "cache-control": "no-store" } });
+    return new Response(new Uint8Array(frame.data), { headers: { "content-type": "image/jpeg", "cache-control": "no-store", "x-frame-seq": String(frame.seq) } });
   });
 
   r.get("/threads/:id/browser/control", (c) => {
@@ -65,24 +67,33 @@ export function browserRoutes(app: App): Hono {
     return c.json({ page: app.browser.hasPage(id), controlled: app.browser.isControlled(id) });
   });
 
+  // One input, or a batch of them: a view far from the node sends what piled up during the last round trip at once.
   r.post("/threads/:id/browser/input", async (c) => {
     const id = c.req.param("id");
     if (!app.browser.isControlled(id)) return c.json({ error: "Take over the browser first" }, 409);
-    const ev = await c.req.json<OwnerInput>().catch(() => null);
-    const ok =
-      ev &&
-      (((ev.type === "move" || ev.type === "down" || ev.type === "up") && typeof ev.x === "number" && typeof ev.y === "number") ||
-        (ev.type === "wheel" && typeof ev.dx === "number" && typeof ev.dy === "number") ||
-        (ev.type === "key" && typeof ev.key === "string" && ev.key.length <= 40) ||
-        (ev.type === "text" && typeof ev.text === "string" && ev.text.length <= 10_000));
-    if (!ok) return c.json({ error: "Unknown input" }, 400);
-    if ((ev.type === "down" || ev.type === "up") && ev.button && !["left", "middle", "right"].includes(ev.button)) return c.json({ error: "Unknown button" }, 400);
+    const body = await c.req.json<OwnerInput | { events?: unknown }>().catch(() => null);
+    const events = body && "events" in body ? body.events : [body];
+    if (!Array.isArray(events) || !events.length || events.length > 500 || !events.every(validInput)) return c.json({ error: "Unknown input" }, 400);
     try {
-      return c.json({ ok: true, ...(await app.browser.input(id, ev)) });
+      const results = await Promise.all(events.map((ev) => app.browser.input(id, ev)));
+      const editable = results.filter((r) => r.editable !== undefined).at(-1)?.editable;
+      return c.json({ ok: true, ...(editable === undefined ? {} : { editable }) });
     } catch (err) {
       return c.json({ error: err instanceof Error ? err.message : String(err) }, 409);
     }
   });
 
   return r;
+}
+
+function validInput(ev: unknown): ev is OwnerInput {
+  if (!ev || typeof ev !== "object") return false;
+  const e = ev as Record<string, unknown>;
+  if (e.type === "move" || e.type === "down" || e.type === "up") {
+    return typeof e.x === "number" && typeof e.y === "number" && (e.button === undefined || ["left", "middle", "right"].includes(e.button as string));
+  }
+  if (e.type === "wheel") return typeof e.x === "number" && typeof e.y === "number" && typeof e.dx === "number" && typeof e.dy === "number";
+  if (e.type === "key") return typeof e.key === "string" && e.key.length <= 40;
+  if (e.type === "text") return typeof e.text === "string" && e.text.length <= 10_000;
+  return false;
 }

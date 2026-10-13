@@ -80,7 +80,15 @@ describe("browser", () => {
     const t = app.threads.create({});
     await app.browser.open(t.id, `${base}/second`);
     const frame = await app.browser.frame(t.id);
-    expect(frame?.subarray(0, 2)).toEqual(Buffer.from([0xff, 0xd8]));
+    expect(frame?.data.subarray(0, 2)).toEqual(Buffer.from([0xff, 0xd8]));
+    // A view that has this frame waits for the next one instead of getting it again.
+    const started = Date.now();
+    const same = await app.browser.frame(t.id, { after: frame!.seq, waitMs: 300 });
+    expect(same?.seq).toBe(frame!.seq);
+    expect(Date.now() - started).toBeGreaterThanOrEqual(250);
+    const next = app.browser.frame(t.id, { after: frame!.seq, waitMs: 10_000 });
+    await app.browser.open(t.id, `${base}/`);
+    expect((await next)!.seq).toBeGreaterThan(frame!.seq);
   });
 
   it("lets the owner take over by hand while the agent's browser steps wait", async () => {

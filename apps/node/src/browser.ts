@@ -41,6 +41,12 @@ const TREE_LIMIT = 24_000;
 type AiSnapshotPage = Page & { _snapshotForAI(options?: { timeout?: number }): Promise<string> };
 
 /** One input from the owner while they control the browser; x and y are fractions of the viewport. */
+export interface Frame {
+  data: Buffer;
+  /** Rises with every frame, across threads. */
+  seq: number;
+}
+
 export type OwnerInput =
   | { type: "move" | "down" | "up"; x: number; y: number; button?: "left" | "middle" | "right" }
   | { type: "wheel"; x: number; y: number; dx: number; dy: number }
@@ -60,7 +66,10 @@ export class BrowserService {
   private threads = new Map<string, ThreadTabs>();
   private screencasts = new WeakMap<Page, CDPSession>();
   /** Latest frame per thread, kept after the tab closes so the owner can still see where the browser ended up. */
-  private frames = new Map<string, Buffer>();
+  private frames = new Map<string, Frame>();
+  private frameSeq = 0;
+  /** Live views waiting for a thread's next frame. */
+  private frameWaiters = new Map<string, Set<() => void>>();
   /** Threads whose browser the owner has taken over; the agent's browser tools wait until it is handed back. */
   private control = new Map<string, { released: Promise<void>; release: () => void; queue: Promise<void>; request?: string; since: number }>();
 
@@ -178,7 +187,7 @@ export class BrowserService {
       const cdp = await page.context().newCDPSession(page);
       this.screencasts.set(page, cdp);
       cdp.on("Page.screencastFrame", (f: { data: string; sessionId: number }) => {
-        if (this.threads.get(threadId)?.current === page) this.frames.set(threadId, Buffer.from(f.data, "base64"));
+        if (this.threads.get(threadId)?.current === page) this.setFrame(threadId, Buffer.from(f.data, "base64"));
         void cdp.send("Page.screencastFrameAck", { sessionId: f.sessionId }).catch(() => undefined);
       });
       await cdp.send("Page.startScreencast", { format: "jpeg", quality: 60, maxWidth: 1280, maxHeight: 900 });
@@ -457,13 +466,40 @@ export class BrowserService {
     return page.screenshot({ type: "png", fullPage: false });
   }
 
-  /** The latest JPEG of the thread's current tab for the live view; the last frame once the tab is gone. */
-  async frame(threadId: string): Promise<Buffer | null> {
+  private setFrame(threadId: string, data: Buffer): void {
+    this.frames.set(threadId, { data, seq: ++this.frameSeq });
+    const waiters = this.frameWaiters.get(threadId);
+    this.frameWaiters.delete(threadId);
+    for (const w of waiters ?? []) w();
+  }
+
+  /**
+   * The latest JPEG of the thread's current tab for the live view; the last frame once the tab is gone.
+   * Given the frame the view already has, it waits (up to `waitMs`) for a newer one, so a live view gets
+   * each frame as the page paints it, and nothing while the page is still.
+   */
+  async frame(threadId: string, opts: { after?: number; waitMs?: number; signal?: AbortSignal } = {}): Promise<Frame | null> {
     const t = this.threads.get(threadId);
     const page = t?.current && !t.current.isClosed() ? t.current : undefined;
     if (page && (!this.screencasts.has(page) || !this.frames.has(threadId))) {
       const shot = await page.screenshot({ type: "jpeg", quality: 60, fullPage: false, timeout: 5000 }).catch(() => null);
-      if (shot) this.frames.set(threadId, shot);
+      if (shot) this.setFrame(threadId, shot);
+    }
+    const latest = this.frames.get(threadId);
+    if (latest && opts.after !== undefined && latest.seq <= opts.after && opts.waitMs && !opts.signal?.aborted) {
+      await new Promise<void>((resolve) => {
+        const waiters = this.frameWaiters.get(threadId) ?? new Set<() => void>();
+        this.frameWaiters.set(threadId, waiters);
+        const done = () => {
+          clearTimeout(timer);
+          waiters.delete(done);
+          opts.signal?.removeEventListener("abort", done);
+          resolve();
+        };
+        const timer = setTimeout(done, opts.waitMs);
+        waiters.add(done);
+        opts.signal?.addEventListener("abort", done, { once: true });
+      });
     }
     return this.frames.get(threadId) ?? null;
   }

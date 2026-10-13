@@ -61,7 +61,7 @@ export function createHttp(cloud: Cloud): Hono<Env> {
       const res = c.res;
       const headers = new Headers(res.headers);
       headers.set("access-control-allow-origin", origin!);
-      headers.set("access-control-expose-headers", "content-disposition");
+      headers.set("access-control-expose-headers", "content-disposition, x-frame-seq");
       headers.append("vary", "origin");
       c.res = new Response(res.body, { status: res.status, statusText: res.statusText, headers });
     }
