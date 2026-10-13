@@ -1,6 +1,6 @@
 {
   "name": "vireo",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "A personal agent that runs every matter in its own thread and remembers its owner. Each person runs their own node; the app and the cloud sign them in and reach it.",
   "private": true,
   "type": "module",
