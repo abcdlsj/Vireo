@@ -1,90 +1,44 @@
-import { spawn } from "node:child_process";
-import { createRequire } from "node:module";
-import { dirname, join } from "node:path";
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import {
+  createAcpRuntime,
+  createAgentRegistry,
+  createFileSessionStore,
+  type AcpPermissionDecision,
+  type AcpPermissionRequest,
+  type AcpRuntime,
+  type AcpRuntimeEvent,
+  type AcpRuntimeHandle,
+  type AcpRuntimeTurnResult,
+} from "acpx/runtime";
 
 /**
  * Coding agents over the Agent Client Protocol.
  *
- * `acpx` (openclaw/acpx) is a headless ACP client: it starts a coding agent,
- * keeps its session, and mediates permission requests. Vireo drives it as a
- * child process and reads its JSON-RPC stream, so every agent acpx knows
- * (Claude Code, Codex, opencode, pi, …) works without more code.
+ * `acpx` (openclaw/acpx) is an ACP client: it starts a coding agent, keeps its
+ * session, and passes every permission request the agent makes to Vireo.
+ * Vireo runs it in process, so every agent acpx knows (Claude Code, Codex,
+ * opencode, pi, …) works without more code, its steps show while it works,
+ * and a step the mode does not cover can wait for the owner.
  */
-
-const require = createRequire(import.meta.url);
-
-/** acpx's CLI entry, from this package's own dependency: nothing to install globally. */
-export function acpxEntry(): string {
-  return join(dirname(require.resolve("acpx/package.json")), "dist", "cli.js");
-}
 
 /** How much an agent may do without the owner: reads, edits, or anything. */
 export type PermissionMode = "read-only" | "edits" | "full";
 
 const READ_KINDS = ["read", "search", "think", "fetch"];
 const WRITE_KINDS = ["edit", "move"];
-const DANGEROUS_KINDS = ["delete", "execute", "other"];
-
-export function permissionArgs(mode: PermissionMode): string[] {
-  if (mode === "full") return ["--approve-all", "--permission-policy", JSON.stringify({ defaultAction: "approve" }), "--non-interactive-permissions", "deny"];
-
-  const policy =
-    mode === "read-only"
-      ? { autoApprove: READ_KINDS, autoDeny: [...WRITE_KINDS, ...DANGEROUS_KINDS], defaultAction: "deny" }
-      : { autoApprove: [...READ_KINDS, ...WRITE_KINDS], autoDeny: DANGEROUS_KINDS, defaultAction: "deny" };
-  // The client's own filesystem and terminal capabilities let an agent act without asking for
-  // permission at all, so they are what makes a mode mean anything: without the terminal an agent has
-  // to ask before running a command, and without the filesystem (read-only) it cannot write at all.
-  const args = ["--deny-all", "--permission-policy", JSON.stringify(policy), "--non-interactive-permissions", "deny", "--no-terminal"];
-  if (mode === "read-only") args.push("--no-fs");
-  return args;
-}
-
-export interface RunOptions {
-  /** Where the agent works; also the session's scope. */
-  cwd: string;
-  mode: PermissionMode;
-  /** How long one prompt turn may take. */
-  timeoutSeconds: number;
-  /** How long the session's helper process stays warm between prompts. */
-  ttlSeconds: number;
-  /** A raw ACP agent command, instead of one of acpx's built-ins. */
-  agentCommand?: string;
-  /** Extra environment for the agent, for a wrapper or a provider of its own (e.g. CLAUDE_CODE_EXECUTABLE). */
-  env?: Record<string, string>;
-  model?: string;
-  signal?: AbortSignal;
-}
-
-/** Global flags, which acpx requires before the agent name. */
-export function globalArgs(o: RunOptions): string[] {
-  const args = ["--cwd", o.cwd, "--format", "json", "--json-strict", "--timeout", String(o.timeoutSeconds), "--ttl", String(o.ttlSeconds), ...permissionArgs(o.mode)];
-  if (o.agentCommand) args.push("--agent", o.agentCommand);
-  if (o.model) args.push("--model", o.model);
-  return args;
-}
 
 /**
- * The agent's name, unless the setup runs a command of its own: acpx refuses a positional agent
- * next to --agent, and reads the command's words as the subcommand instead.
+ * What a mode makes of one permission request: allowed, refused, or (edits) the owner's to decide.
+ * A kind the agent did not name counts as the riskiest, so it is never let through unasked.
  */
-const agentPart = (agent: string, o: RunOptions): string[] => (o.agentCommand ? [] : [agent]);
-
-export const execArgs = (agent: string, prompt: string, o: RunOptions): string[] => [...globalArgs(o), ...agentPart(agent, o), "exec", prompt];
-export const sessionPromptArgs = (agent: string, session: string, prompt: string, o: RunOptions): string[] => [...globalArgs(o), ...agentPart(agent, o), "-s", session, "prompt", prompt];
-export const sessionEnsureArgs = (agent: string, session: string, o: RunOptions): string[] => [...globalArgs(o), ...agentPart(agent, o), "sessions", "ensure", "--name", session];
-export const sessionListArgs = (agent: string, o: RunOptions): string[] => [...globalArgs(o), ...agentPart(agent, o), "sessions", "list", "--local"];
-export const sessionCloseArgs = (agent: string, session: string, o: RunOptions): string[] => [...globalArgs(o), ...agentPart(agent, o), "sessions", "close", session];
-
-export interface RunResult {
-  code: number;
-  stdout: string;
-  stderr: string;
-  timedOut: boolean;
-  aborted: boolean;
+export function permissionFor(mode: PermissionMode, kind: string | undefined): "allow" | "deny" | "ask" {
+  if (mode === "full") return "allow";
+  if (kind && READ_KINDS.includes(kind)) return "allow";
+  if (mode === "read-only") return "deny";
+  if (kind && WRITE_KINDS.includes(kind)) return "allow";
+  return "ask";
 }
-
-const OUTPUT_CAP = 4 << 20;
 
 /**
  * Vireo's own settings and credentials stay with Vireo; the agent gets the rest of the environment
@@ -92,82 +46,20 @@ const OUTPUT_CAP = 4 << 20;
  */
 export function agentEnv(base: NodeJS.ProcessEnv, extra: Record<string, string> = {}): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {};
-  for (const [k, v] of Object.entries(base)) if (!/^(VIREO_|GOOGLE_CLIENT_)/.test(k)) env[k] = v;
+  for (const [k, v] of Object.entries(base)) if (!VIREO_ONLY.test(k)) env[k] = v;
   return { ...env, ...extra };
 }
 
+const VIREO_ONLY = /^(VIREO_|GOOGLE_CLIENT_)/;
+
 /**
- * Runs acpx and collects its output. `onLine` sees every stdout line however long the run, while
- * `stdout` keeps only the first few megabytes; stderr keeps its tail, where the failure is.
- * Stopping a run kills acpx's whole process group, so the agent it started goes too.
+ * acpx builds the agent's environment from this process's own and lays an overlay on top, so
+ * Vireo's keys can only be blanked there, not removed.
  */
-export function runAcpx(
-  args: string[],
-  opts: { cwd: string; timeoutMs: number; env?: Record<string, string>; signal?: AbortSignal; onLine?: (line: string) => void },
-): Promise<RunResult> {
-  return new Promise((resolve) => {
-    const child = spawn(process.execPath, [acpxEntry(), ...args], {
-      cwd: opts.cwd,
-      env: agentEnv(process.env, opts.env),
-      stdio: ["ignore", "pipe", "pipe"],
-      detached: process.platform !== "win32",
-    });
-
-    let stdout = "";
-    let stderr = "";
-    let pending = "";
-    let timedOut = false;
-    let aborted = false;
-    let done = false;
-
-    const kill = (): void => {
-      try {
-        if (child.pid && process.platform !== "win32") process.kill(-child.pid, "SIGKILL");
-        else child.kill("SIGKILL");
-      } catch {
-        child.kill("SIGKILL");
-      }
-    };
-
-    const finish = (code: number): void => {
-      if (done) return;
-      done = true;
-      clearTimeout(timer);
-      opts.signal?.removeEventListener("abort", onAbort);
-      if (pending) opts.onLine?.(pending);
-      resolve({ code, stdout, stderr, timedOut, aborted });
-    };
-
-    const timer = setTimeout(() => {
-      timedOut = true;
-      kill();
-    }, opts.timeoutMs);
-
-    const onAbort = (): void => {
-      aborted = true;
-      kill();
-    };
-    if (opts.signal?.aborted) onAbort();
-    else opts.signal?.addEventListener("abort", onAbort, { once: true });
-
-    child.stdout.on("data", (chunk: Buffer) => {
-      const text = chunk.toString("utf8");
-      if (stdout.length < OUTPUT_CAP) stdout += text;
-      if (!opts.onLine) return;
-      const lines = (pending + text).split("\n");
-      pending = lines.pop() ?? "";
-      for (const line of lines) opts.onLine(line);
-    });
-    child.stderr.on("data", (chunk: Buffer) => {
-      stderr += chunk.toString("utf8");
-      if (stderr.length > OUTPUT_CAP) stderr = stderr.slice(-OUTPUT_CAP / 2);
-    });
-    child.on("error", (err) => {
-      stderr += `${stderr ? "\n" : ""}${err.message}`;
-      finish(-1);
-    });
-    child.on("close", (code) => finish(code ?? -1));
-  });
+export function agentOverlay(base: NodeJS.ProcessEnv, extra: Record<string, string> = {}): Record<string, string> {
+  const blank: Record<string, string> = {};
+  for (const k of Object.keys(base)) if (VIREO_ONLY.test(k)) blank[k] = "";
+  return { ...blank, ...extra };
 }
 
 export interface ToolStep {
@@ -180,6 +72,14 @@ export interface ToolStep {
   detail?: string;
 }
 
+export interface TurnUsage {
+  model?: string;
+  input?: number;
+  output?: number;
+  cached?: number;
+  cacheWrite?: number;
+}
+
 export interface Turn {
   text: string;
   tools: ToolStep[];
@@ -187,102 +87,85 @@ export interface Turn {
   plans: string[];
   stopReason?: string;
   errors: string[];
-  /** Permission requests the policy refused, so the model knows what was blocked. */
+  /** Permission requests that were refused, so the model knows what was blocked. */
   refused: string[];
-  frames: number;
+  usage?: TurnUsage;
+  timedOut: boolean;
+  aborted: boolean;
 }
 
 const MAX_TOOLS = 60;
 const MAX_TEXT = 200_000;
 
 const str = (v: unknown): string | undefined => (typeof v === "string" ? v : undefined);
+const num = (v: unknown): number | undefined => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
 
-function toolSteps(update: Record<string, unknown>, turn: Turn): void {
-  const id = str(update.toolCallId);
-  if (!id) return;
+/** The step's title, unless an update only says "tool call", which would hide the real one. */
+const GENERIC_TITLE = "tool call";
+
+function toolStep(e: Extract<AcpRuntimeEvent, { type: "tool_call" }>, turn: Turn): ToolStep | undefined {
+  const id = e.toolCallId;
+  if (!id) return undefined;
   let step = turn.tools.find((t) => t.id === id);
   if (!step) {
     // Past the cap new calls are left out, but the ones listed still get their updates.
-    if (turn.tools.length >= MAX_TOOLS) return;
-    step = { title: str(update.title) ?? id, id };
+    if (turn.tools.length >= MAX_TOOLS) return undefined;
+    step = { title: e.title ?? id, id };
     turn.tools.push(step);
   }
-  const title = str(update.title);
-  if (title) step.title = title;
-  const kind = str(update.kind);
-  if (kind) step.kind = kind;
-  const status = str(update.status);
-  if (status) step.status = status;
-  const raw = update.rawInput;
+  if (e.title && e.title !== GENERIC_TITLE) step.title = e.title;
+  if (e.kind) step.kind = e.kind;
+  if (e.status) step.status = e.status;
+  const raw = e.rawInput;
   if (raw && typeof raw === "object") {
     const input = raw as Record<string, unknown>;
     const detail = str(input.command) ?? str(input.path) ?? str(input.file_path) ?? str(input.pattern);
     if (detail) step.detail = detail;
   }
-  const content = update.content;
-  if (Array.isArray(content)) {
-    for (const c of content as Record<string, unknown>[]) {
-      if (c.type === "diff" && typeof c.path === "string" && !turn.files.includes(c.path)) turn.files.push(c.path);
-    }
+  for (const c of (e.content ?? []) as unknown as Record<string, unknown>[]) {
+    if (c.type === "diff" && typeof c.path === "string") turn.files.push(c.path);
   }
-  if (Array.isArray(update.locations)) {
-    for (const l of update.locations as Record<string, unknown>[]) {
-      if (typeof l.path === "string" && !turn.files.includes(l.path)) turn.files.push(l.path);
-    }
-  }
+  for (const l of e.locations ?? []) if (typeof l.path === "string") turn.files.push(l.path);
+  return step;
 }
 
-/** Reads acpx's JSON-RPC stream, line by line, into what the owner (and the model) needs to see. */
+/** Reads acpx's events, as they come, into what the owner (and the model) needs to see. */
 export class TurnReader {
-  readonly turn: Turn = { text: "", tools: [], files: [], plans: [], errors: [], refused: [], frames: 0 };
+  readonly turn: Turn = { text: "", tools: [], files: [], plans: [], errors: [], refused: [], timedOut: false, aborted: false };
 
-  push(line: string): void {
+  /** Returns a line saying what the agent is doing now, when that changed. */
+  push(e: AcpRuntimeEvent): string | undefined {
     const turn = this.turn;
-    const trimmed = line.trim();
-    if (!trimmed.startsWith("{")) return;
-    let msg: Record<string, unknown>;
-    try {
-      msg = JSON.parse(trimmed) as Record<string, unknown>;
-    } catch {
+    if (e.type === "text_delta") {
+      if (e.stream !== "thought" && turn.text.length < MAX_TEXT) turn.text += e.text;
+    } else if (e.type === "tool_call") {
+      const step = toolStep(e, turn);
+      if (step && step.title !== step.id && (!step.status || step.status === "pending" || step.status === "in_progress")) return step.title;
+    } else if (e.type === "status" && e.tag === "plan" && e.entries) {
+      // Each plan update is the whole plan, not an addition to it.
+      turn.plans = e.entries.map((p) => `${p.status}: ${p.content}`);
+    } else if (e.type === "status" && e.tag === "usage_update" && e.breakdown) {
+      // The last breakdown of a turn is that turn's usage; earlier ones were partial.
+      const usage: TurnUsage = {};
+      if (e.breakdown.inputTokens !== undefined) usage.input = e.breakdown.inputTokens;
+      if (e.breakdown.outputTokens !== undefined) usage.output = e.breakdown.outputTokens;
+      if (e.breakdown.cachedReadTokens !== undefined) usage.cached = e.breakdown.cachedReadTokens;
+      if (e.breakdown.cachedWriteTokens !== undefined) usage.cacheWrite = e.breakdown.cachedWriteTokens;
+      turn.usage = usage;
+    } else if (e.type === "error") {
+      turn.errors.push(e.message);
+    }
+    return undefined;
+  }
+
+  /** The turn's end: how it stopped, and (when no usage event came) the tokens on its result. */
+  end(result: AcpRuntimeTurnResult): void {
+    if (result.status === "failed") {
+      this.turn.errors.push(result.error.message);
       return;
     }
-    turn.frames += 1;
-
-    const error = msg.error as Record<string, unknown> | undefined;
-    if (error) turn.errors.push(str(error.message) ?? JSON.stringify(error));
-    const result = msg.result as Record<string, unknown> | undefined;
-    if (result) {
-      const stop = str(result.stopReason);
-      if (stop) turn.stopReason = stop;
-      const outcome = result.outcome as Record<string, unknown> | undefined;
-      if (outcome?.outcome === "selected" && !/allow/i.test(String(outcome.optionId))) turn.refused.push("a permission request was declined");
-      const meta = result._meta as Record<string, unknown> | undefined;
-      const escalation = meta?.acpx as Record<string, unknown> | undefined;
-      if (escalation?.permissionEscalation) turn.refused.push("a permission request was escalated but could not be approved here");
-    }
-
-    if (msg.method !== "session/update") return;
-    const params = msg.params as Record<string, unknown> | undefined;
-    const update = params?.update as Record<string, unknown> | undefined;
-    const tag = str(update?.sessionUpdate);
-    if (!update || !tag) return;
-
-    if (tag === "agent_message_chunk") {
-      const content = update.content as Record<string, unknown> | undefined;
-      if (content?.type === "text" && typeof content.text === "string" && turn.text.length < MAX_TEXT) turn.text += content.text;
-    } else if (tag === "tool_call" || tag === "tool_call_update") {
-      toolSteps(update, turn);
-    } else if (tag === "plan") {
-      // Each plan update is the whole plan, not an addition to it.
-      const entries = update.entries;
-      if (Array.isArray(entries)) {
-        turn.plans = [];
-        for (const e of entries as Record<string, unknown>[]) {
-          const content = str(e.content);
-          if (content) turn.plans.push(`${str(e.status) ?? "pending"}: ${content}`);
-        }
-      }
-    }
+    this.turn.stopReason = result.stopReason;
+    if (!this.turn.usage) this.turn.usage = turnUsage(result._meta);
   }
 
   finish(): Turn {
@@ -292,8 +175,200 @@ export class TurnReader {
   }
 }
 
-export function parseTurn(stdout: string): Turn {
-  const reader = new TurnReader();
-  for (const line of stdout.split("\n")) reader.push(line);
-  return reader.finish();
+/**
+ * The tokens a turn used, from the `_meta.quota` block acpx puts on its prompt result (Claude Code
+ * and Codex report it there; pi does not, and then there is nothing to record).
+ */
+export function turnUsage(meta: Record<string, unknown> | null | undefined): TurnUsage | undefined {
+  const quota = meta?.quota as Record<string, unknown> | undefined;
+  const count = (quota?.token_count ?? meta?.usage ?? meta?.token_count) as Record<string, unknown> | undefined;
+  if (!count || typeof count !== "object") return undefined;
+  const models = quota?.model_usage as Record<string, unknown>[] | undefined;
+  const usage = {
+    model: str(models?.[0]?.model),
+    input: num(count.inputTokens) ?? num(count.input_tokens),
+    output: num(count.outputTokens) ?? num(count.output_tokens),
+    cached: num(count.cachedInputTokens) ?? num(count.cache_read_input_tokens),
+    cacheWrite: num(count.cachedWriteTokens) ?? num(count.cache_creation_input_tokens),
+  };
+  if (usage.input === undefined && usage.output === undefined) return undefined;
+  return usage;
+}
+
+export interface AgentSpec {
+  /** The setup's name and the mode this call runs in: one runtime per pair, so what its client may do is its own. */
+  name: string;
+  /** An acpx agent name, or a command of the owner's. */
+  command: string;
+  cwd: string;
+  /** The call's mode: what the runtime's own filesystem and terminal allow. */
+  mode: PermissionMode;
+  env: Record<string, string>;
+}
+
+export interface TurnOptions {
+  text: string;
+  /** What this call may do, at most the setup's mode. */
+  mode: PermissionMode;
+  timeoutSeconds: number;
+  signal?: AbortSignal;
+  /** Asks the owner about one step; resolves true when they allow it. Without it, such steps are refused. */
+  ask?: (request: AcpPermissionRequest, signal: AbortSignal) => Promise<boolean>;
+  /** Called with what the agent is doing now. */
+  onStep?: (line: string) => void;
+}
+
+export interface SessionInfo {
+  name: string;
+  cwd: string;
+  lastUsedAt?: string;
+}
+
+export function describeRequest(request: AcpPermissionRequest): string {
+  const call = request.raw.toolCall;
+  const input = call?.rawInput as Record<string, unknown> | undefined;
+  const what = str(input?.command) ?? str(input?.file_path) ?? str(input?.path);
+  const title = call?.title?.trim() || "a step";
+  return what && what !== title ? `${title} (${what})` : title;
+}
+
+/**
+ * The coding agents of all setups, each in its own acpx runtime. Sessions are kept in the plugin's
+ * directory; an agent stays running between the turns of its session until the session is closed
+ * or Vireo stops.
+ */
+export class AcpAgents {
+  private readonly runtimes = new Map<string, { key: string; runtime: AcpRuntime }>();
+
+  constructor(private readonly stateDir: string) {}
+
+  /** The runtime key includes the mode, so a call that narrows the mode gets a client with narrower powers. */
+  runtime(spec: AgentSpec): AcpRuntime {
+    const key = JSON.stringify([spec.command, spec.cwd, spec.mode, spec.env]);
+    const known = this.runtimes.get(spec.name);
+    if (known?.key === key) return known.runtime;
+    // The setup or the mode changed: its old agents go, its sessions stay on disk.
+    if (known) void known.runtime.shutdown?.().catch(() => {});
+    const runtime = createAcpRuntime({
+      cwd: spec.cwd,
+      agentProcessEnv: agentOverlay(process.env, spec.env),
+      sessionStore: createFileSessionStore({ stateDir: this.stateDir }),
+      agentRegistry: createAgentRegistry(),
+      // Below full the client itself writes nothing, and without its terminal an agent has to ask
+      // before it runs a command; what it asks then is decided per turn (`permissionFor`).
+      permissionMode: spec.mode === "full" ? "approve-all" : "deny-all",
+      nonInteractivePermissions: "deny",
+      terminal: spec.mode === "full",
+      fs: spec.mode !== "read-only",
+    });
+    this.runtimes.set(spec.name, { key, runtime });
+    return runtime;
+  }
+
+  async ensure(spec: AgentSpec, session: string, oneshot: boolean, model?: string): Promise<AcpRuntimeHandle> {
+    return this.runtime(spec).ensureSession({
+      sessionKey: session,
+      agent: spec.command,
+      mode: oneshot ? "oneshot" : "persistent",
+      cwd: spec.cwd,
+      sessionOptions: model ? { model } : undefined,
+    });
+  }
+
+  async find(spec: AgentSpec, session: string): Promise<AcpRuntimeHandle | undefined> {
+    return this.runtime(spec).findSession?.({ sessionKey: session, agent: spec.command });
+  }
+
+  async close(spec: AgentSpec, handle: AcpRuntimeHandle, discard = false): Promise<void> {
+    await this.runtime(spec).close({ handle, reason: "closed by Vireo", discardPersistentState: discard });
+  }
+
+  /** One prompt turn: its steps as they happen, permission requests decided by the mode (or the owner). */
+  async turn(spec: AgentSpec, handle: AcpRuntimeHandle, o: TurnOptions): Promise<Turn> {
+    const reader = new TurnReader();
+    const turn = reader.turn;
+    const stop = new AbortController();
+    const timer = setTimeout(() => {
+      turn.timedOut = true;
+      stop.abort();
+    }, o.timeoutSeconds * 1000);
+    const onAbort = (): void => {
+      turn.aborted = true;
+      stop.abort();
+    };
+    if (o.signal?.aborted) onAbort();
+    else o.signal?.addEventListener("abort", onAbort, { once: true });
+
+    const decide = async (request: AcpPermissionRequest, ctx: { signal: AbortSignal }): Promise<AcpPermissionDecision> => {
+      const verdict = permissionFor(o.mode, request.inferredKind);
+      if (verdict === "allow") return { outcome: "allow_once" };
+      if (verdict === "ask" && o.ask) {
+        if (await o.ask(request, ctx.signal)) return { outcome: "allow_once" };
+        turn.refused.push(`the owner declined: ${describeRequest(request)}`);
+        return { outcome: "reject_once" };
+      }
+      turn.refused.push(`not allowed in ${o.mode} mode: ${describeRequest(request)}`);
+      return { outcome: "reject_once" };
+    };
+
+    try {
+      const run = this.runtime(spec).startTurn({
+        handle,
+        text: o.text,
+        mode: "prompt",
+        requestId: crypto.randomUUID(),
+        signal: stop.signal,
+        onPermissionRequest: decide,
+      });
+      for await (const e of run.events) {
+        const line = reader.push(e);
+        if (line) o.onStep?.(line);
+      }
+      reader.end(await run.result);
+      if (turn.usage && !turn.usage.model) {
+        try {
+          const status = await this.runtime(spec).getStatus?.({ handle });
+          const model = status?.models?.currentModelId;
+          if (model) turn.usage.model = model;
+        } catch {
+          // the session closed before its status could be read; the counts still stand
+        }
+      }
+    } catch (err) {
+      turn.errors.push(err instanceof Error ? err.message : String(err));
+    } finally {
+      clearTimeout(timer);
+      o.signal?.removeEventListener("abort", onAbort);
+    }
+    return reader.finish();
+  }
+
+  /** The persistent sessions saved here whose name starts with `prefix`, latest first. */
+  sessions(prefix: string): SessionInfo[] {
+    const dir = join(this.stateDir, "sessions");
+    let files: string[];
+    try {
+      files = readdirSync(dir).filter((f) => f.endsWith(".json"));
+    } catch {
+      return [];
+    }
+    const out: SessionInfo[] = [];
+    for (const f of files) {
+      try {
+        const r = JSON.parse(readFileSync(join(dir, f), "utf8")) as Record<string, unknown>;
+        const name = str(r.name);
+        if (!name?.startsWith(prefix) || r.closed) continue;
+        out.push({ name, cwd: str(r.cwd) ?? "", lastUsedAt: str(r.lastUsedAt) ?? str(r.last_used_at) });
+      } catch {
+        // a file being written, or not a session
+      }
+    }
+    return out.sort((a, b) => (b.lastUsedAt ?? "").localeCompare(a.lastUsedAt ?? ""));
+  }
+
+  async shutdown(): Promise<void> {
+    const all = [...this.runtimes.values()];
+    this.runtimes.clear();
+    await Promise.allSettled(all.map((r) => r.runtime.shutdown?.()));
+  }
 }

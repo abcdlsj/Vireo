@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import type { App } from "../../apps/node/src/app.js";
-import { agentEnv, execArgs, parseTurn, sessionPromptArgs, type RunOptions } from "../../apps/node/src/acp.js";
+import { agentEnv, agentOverlay, permissionFor, TurnReader } from "../../apps/node/src/acp.js";
 import { detectedSetups, readProfile } from "../../apps/node/src/plugins/agents/index.js";
 import type { ToolContext } from "../../apps/node/src/tools/types.js";
 import { tempDir, testApp } from "./helpers.js";
@@ -144,33 +144,65 @@ describe("coding agents plugin", () => {
     expect(app.vault.redact("key sk-test-123456 via my-claude")).toBe("key [secret] via my-claude");
   });
 
-  it("names its own command with --agent and no positional agent", () => {
-    const o: RunOptions = { cwd: "/r", mode: "edits", timeoutSeconds: 60, ttlSeconds: 60, agentCommand: "my-wrapper --acp" };
-    const own = execArgs("my-wrapper --acp", "do it", o);
-    expect(own.slice(own.indexOf("--agent"), own.indexOf("--agent") + 2)).toEqual(["--agent", "my-wrapper --acp"]);
-    expect(own.slice(-2)).toEqual(["exec", "do it"]);
-    expect(own.filter((a) => a === "my-wrapper --acp")).toHaveLength(1);
-
-    const builtIn = sessionPromptArgs("claude", "work:fix", "go", { ...o, agentCommand: undefined });
-    expect(builtIn.slice(-5)).toEqual(["claude", "-s", "work:fix", "prompt", "go"]);
-    expect(builtIn).not.toContain("--agent");
+  it("decides each permission request by the mode", () => {
+    expect(permissionFor("full", "execute")).toBe("allow");
+    expect(permissionFor("edits", "read")).toBe("allow");
+    expect(permissionFor("edits", "edit")).toBe("allow");
+    // A shell command or a delete waits for the owner in the edits mode, and an unnamed kind never slips through.
+    expect(permissionFor("edits", "execute")).toBe("ask");
+    expect(permissionFor("edits", "delete")).toBe("ask");
+    expect(permissionFor("edits", undefined)).toBe("ask");
+    expect(permissionFor("read-only", "read")).toBe("allow");
+    expect(permissionFor("read-only", "edit")).toBe("deny");
+    expect(permissionFor("read-only", "execute")).toBe("deny");
   });
 
   it("keeps Vireo's own settings out of the agent's environment", () => {
     const env = agentEnv({ PATH: "/bin", VIREO_DATA_DIR: "/d", GOOGLE_CLIENT_SECRET: "s", ANTHROPIC_API_KEY: "k" }, { EXTRA: "1" });
     expect(env).toEqual({ PATH: "/bin", ANTHROPIC_API_KEY: "k", EXTRA: "1" });
+    // acpx starts the agent from Vireo's own environment, so its keys can only be blanked there.
+    expect(agentOverlay({ PATH: "/bin", VIREO_DATA_DIR: "/d" }, { EXTRA: "1" })).toEqual({ VIREO_DATA_DIR: "", EXTRA: "1" });
   });
 
   it("keeps tool calls up to date past the cap, and the plan as its latest version", () => {
-    const frame = (update: Record<string, unknown>) => JSON.stringify({ jsonrpc: "2.0", method: "session/update", params: { update } });
-    const lines: string[] = [];
-    for (let i = 0; i < 70; i++) lines.push(frame({ sessionUpdate: "tool_call", toolCallId: `t${i}`, title: `step ${i}`, status: "pending" }));
-    for (let i = 0; i < 70; i++) lines.push(frame({ sessionUpdate: "tool_call_update", toolCallId: `t${i}`, status: "completed" }));
-    lines.push(frame({ sessionUpdate: "plan", entries: [{ content: "read", status: "in_progress" }] }));
-    lines.push(frame({ sessionUpdate: "plan", entries: [{ content: "read", status: "completed" }, { content: "edit", status: "pending" }] }));
-    const turn = parseTurn(lines.join("\n"));
+    const reader = new TurnReader();
+    for (let i = 0; i < 70; i++) reader.push({ type: "tool_call", text: "", toolCallId: `t${i}`, title: `step ${i}`, status: "pending" });
+    for (let i = 0; i < 70; i++) reader.push({ type: "tool_call", text: "", toolCallId: `t${i}`, status: "completed" });
+    reader.push({ type: "status", text: "plan updated", tag: "plan", entries: [{ content: "read", status: "in_progress" }] });
+    reader.push({ type: "status", text: "plan updated", tag: "plan", entries: [{ content: "read", status: "completed" }, { content: "edit", status: "pending" }] });
+    const turn = reader.finish();
     expect(turn.tools).toHaveLength(60);
     expect(turn.tools.every((t) => t.status === "completed")).toBe(true);
     expect(turn.plans).toEqual(["completed: read", "pending: edit"]);
+  });
+
+  it("says what the agent is doing now, and records the tokens it reported", () => {
+    const reader = new TurnReader();
+    expect(reader.push({ type: "tool_call", text: "Run mkdir", toolCallId: "t1", title: "Run mkdir", status: "pending" })).toBe("Run mkdir");
+    // A status change to the same step does not repeat its title.
+    expect(reader.push({ type: "tool_call", text: "", toolCallId: "t1", title: "tool call", status: "completed" })).toBeUndefined();
+    reader.push({ type: "status", text: "usage updated", tag: "usage_update", breakdown: { inputTokens: 100, outputTokens: 20, cachedReadTokens: 80 } });
+    const turn = reader.finish();
+    expect(turn.tools[0]).toMatchObject({ title: "Run mkdir", status: "completed" });
+    expect(turn.usage).toEqual({ input: 100, output: 20, cached: 80 });
+  });
+
+  it("records the tokens on the agent's result when no usage event carried them", () => {
+    const reader = new TurnReader();
+    // Claude Code and Codex report a usage event with only the context size, then the turn's tokens on the result.
+    reader.push({ type: "status", text: "usage updated: 1/1000000", tag: "usage_update", used: 1, size: 1_000_000 });
+    reader.end({
+      status: "completed",
+      stopReason: "end_turn",
+      _meta: {
+        quota: {
+          token_count: { inputTokens: 100, outputTokens: 20, cachedInputTokens: 80, cachedWriteTokens: 5 },
+          model_usage: [{ model: "gpt-6-astra" }],
+        },
+      },
+    });
+    const turn = reader.finish();
+    expect(turn.stopReason).toBe("end_turn");
+    expect(turn.usage).toEqual({ model: "gpt-6-astra", input: 100, output: 20, cached: 80, cacheWrite: 5 });
   });
 });
