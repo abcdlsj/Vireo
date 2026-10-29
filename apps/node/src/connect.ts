@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, hostname } from "node:os";
 import { dirname, join } from "node:path";
 import { Db } from "./db.js";
@@ -7,19 +7,15 @@ import { addKey, KEYS_KV, PATH, type Key } from "./plugins/endpoint/index.js";
 
 /**
  * Connects the coding agents on this machine to the Vireo node running here,
- * with nothing for the owner to copy: each gets its own key, Vireo as an MCP
- * server, and hooks that tell the owner when a long task finishes or the
- * agent waits on them, and ask their approval before a risky shell command.
- * Running it again replaces what it set up before.
+ * with nothing for the owner to copy: each gets its own key and Vireo as an MCP
+ * server. Nothing else of the owner's own sessions changes: no hooks, no notify.
+ * The sessions Vireo runs itself go through ACP, where it sees every step and
+ * permission request already. Running it again replaces what it set up before,
+ * and takes out the hooks earlier versions added.
  */
 
-export interface HookConfig {
-  url: string;
-  key: string;
-}
-
-/** Where the hooks find the node and their key; readable by this user only. */
-export const hooksFile = (dataDir: string) => join(dataDir, "hooks.json");
+/** Where earlier versions kept the hooks' key; removed on connect. */
+const oldHooksFile = (dataDir: string) => join(dataDir, "hooks.json");
 
 const has = (bin: string) => {
   try {
@@ -53,7 +49,7 @@ function keyFor(db: Db, name: string): string {
 
 type HookEntry = { matcher?: string; hooks: { type: "command"; command: string; timeout?: number }[] };
 
-function connectClaude(url: string, key: string, hookArgs: string[]): string {
+function connectClaude(url: string, key: string): string {
   try {
     execFileSync("claude", ["mcp", "remove", "--scope", "user", "vireo"], { stdio: "ignore" });
   } catch {
@@ -61,48 +57,50 @@ function connectClaude(url: string, key: string, hookArgs: string[]): string {
   }
   execFileSync("claude", ["mcp", "add", "--scope", "user", "--transport", "http", "vireo", url, "--header", `Authorization: Bearer ${key}`], { stdio: "ignore" });
 
+  // Earlier versions hooked every session of the owner's (Stop, Notification, PreToolUse on Bash).
   const file = join(process.env.CLAUDE_CONFIG_DIR || join(homedir(), ".claude"), "settings.json");
   const settings = readJson<{ hooks?: Record<string, HookEntry[]> }>(file, {});
-  const hooks = settings.hooks ?? {};
-  const ours = (e: HookEntry) => e.hooks.some((h) => h.command.includes(" hook claude"));
-  const add = (event: string, entry: HookEntry) => (hooks[event] = [...(hooks[event] ?? []).filter((e) => !ours(e)), entry]);
-  const command = [...hookArgs.map((a) => JSON.stringify(a)), "hook", "claude"].join(" ");
-  add("Stop", { hooks: [{ type: "command", command, timeout: 30 }] });
-  add("Notification", { hooks: [{ type: "command", command, timeout: 30 }] });
-  // Long enough for the owner to answer on their phone.
-  add("PreToolUse", { matcher: "Bash", hooks: [{ type: "command", command, timeout: 600 }] });
-  writePrivate(file, `${JSON.stringify({ ...settings, hooks }, null, 2)}\n`);
-  return "Claude Code: Vireo added as an MCP server; you hear when a long task finishes or it waits on you, and risky shell commands wait for your approval.";
+  if (settings.hooks) {
+    const ours = (e: HookEntry) => e.hooks.some((h) => h.command.includes(" hook claude"));
+    let changed = false;
+    const hooks: Record<string, HookEntry[]> = {};
+    for (const [event, entries] of Object.entries(settings.hooks)) {
+      const kept = entries.filter((e) => !ours(e));
+      if (kept.length !== entries.length) changed = true;
+      if (kept.length) hooks[event] = kept;
+    }
+    if (changed) writePrivate(file, `${JSON.stringify({ ...settings, hooks }, null, 2)}\n`);
+  }
+  return "Claude Code: Vireo added as an MCP server.";
 }
 
-function connectCodex(url: string, key: string, hookArgs: string[]): string {
+function connectCodex(url: string, key: string): string {
   const file = join(process.env.CODEX_HOME || join(homedir(), ".codex"), "config.toml");
   let toml = existsSync(file) ? readFileSync(file, "utf8") : "";
   // Our own block from before, from its marker to the next table or the end.
   toml = toml.replace(/\n?# Added by Vireo \(askvireo connect\)\n\[mcp_servers\.vireo\][\s\S]*?(?=\n\[|$)/, "");
-  const notes: string[] = ["Codex: Vireo added as an MCP server"];
-  const notify = /^notify\s*=/m.test(toml);
-  if (!notify) {
-    toml = `notify = ${JSON.stringify([...hookArgs, "hook", "codex"])}\n${toml}`;
-    notes.push("you hear when a turn finishes");
-  } else if (!/^notify\s*=.*hook", "codex"/m.test(toml)) notes.push("its notify setting was yours already, so it is left alone");
+  // The notify earlier versions added; one of the owner's own stays.
+  toml = toml.replace(/^notify\s*=.*"hook",\s*"codex"\]\n?/m, "");
   toml = `${toml.replace(/\s*$/, "")}\n\n# Added by Vireo (askvireo connect)\n[mcp_servers.vireo]\nurl = ${JSON.stringify(url)}\nhttp_headers = { "Authorization" = ${JSON.stringify(`Bearer ${key}`)} }\n`;
   writePrivate(file, toml.replace(/^\n+/, ""));
-  return `${notes.join("; ")}.`;
+  return "Codex: Vireo added as an MCP server.";
 }
 
 /** Connects every coding agent found on this machine; returns one line per agent, empty when there is none. */
-export function connectAgents(opts: { dataDir: string; port: number; cli: string; only?: ("claude" | "codex")[] }): string[] {
+export function connectAgents(opts: { dataDir: string; port: number; only?: ("claude" | "codex")[] }): string[] {
   const url = `http://127.0.0.1:${opts.port}${PATH}`;
-  const hookArgs = [process.execPath, "--disable-warning=ExperimentalWarning", opts.cli];
   const wanted = opts.only ?? ["claude", "codex"];
   const db = Db.open(opts.dataDir);
   const lines: string[] = [];
   try {
     const host = hostname().split(".")[0];
-    if (wanted.includes("claude") && has("claude")) lines.push(connectClaude(url, keyFor(db, `Claude Code on ${host}`), hookArgs));
-    if (wanted.includes("codex") && has("codex")) lines.push(connectCodex(url, keyFor(db, `Codex on ${host}`), hookArgs));
-    if (lines.length) writePrivate(hooksFile(opts.dataDir), `${JSON.stringify({ url, key: keyFor(db, `Hooks on ${host}`) } satisfies HookConfig)}\n`);
+    if (wanted.includes("claude") && has("claude")) lines.push(connectClaude(url, keyFor(db, `Claude Code on ${host}`)));
+    if (wanted.includes("codex") && has("codex")) lines.push(connectCodex(url, keyFor(db, `Codex on ${host}`)));
+    // The hooks' own key, from earlier versions, goes with them.
+    const keys = db.getKv<Key[]>(KEYS_KV) ?? [];
+    const left = keys.filter((k) => k.name !== `Hooks on ${host}`);
+    if (left.length !== keys.length) db.setKv(KEYS_KV, left);
+    rmSync(oldHooksFile(opts.dataDir), { force: true });
   } finally {
     db.close();
   }

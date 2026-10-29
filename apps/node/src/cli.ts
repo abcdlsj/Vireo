@@ -23,9 +23,7 @@ Commands:
   link      Link this node again, e.g. to another account or another way of connecting.
   unlink    Forget the link to the account.
   status    Show which account and cloud this node is linked to.
-  connect   Connect Claude Code and Codex on this machine to Vireo: MCP, plus
-            hooks that tell you when a long task finishes or it waits on you,
-            and ask your approval before a risky shell command.
+  connect   Connect Claude Code and Codex on this machine to Vireo over MCP.
   service   Run in the background, started at login and restarted if it stops
             (launchd on macOS, systemd on Linux):
               service install     link if needed, then install and start it
@@ -94,15 +92,13 @@ const config = loadConfig();
 const identity = new Identity(config.dataDir);
 
 if (command === "hook") {
-  // Run by a coding agent's hook: quick, quiet, and never in the agent's way.
-  const { runHook } = await import("./hook.js");
-  await runHook(positionals[1] ?? "", config.dataDir, positionals.slice(2)).catch(() => undefined);
+  // Hooks of earlier versions, until `connect` takes them out: nothing to do.
   process.exit(0);
 }
 
-/** Connects the coding agents here to this node; the hooks run the service's copy of the node when there is one. */
-function connect(cli = service.installedCli(service.servicePaths(config.dataDir)) ?? process.argv[1]!): string[] {
-  return connectAgents({ dataDir: config.dataDir, port: config.port, cli });
+/** Connects the coding agents here to this node. */
+function connect(): string[] {
+  return connectAgents({ dataDir: config.dataDir, port: config.port });
 }
 
 if (command === "connect") {
@@ -191,11 +187,11 @@ if (command === "service") {
         identity.save(await linkNode({ cloudUrl: config.cloudUrl, request: { name: config.name, platform: platform(), version: VERSION, mode }, onCode: showLinkCode }));
         console.log("  Linked.");
       }
-      const cli = service.install(paths, action === "upgrade" ? "latest" : VERSION);
-      // The coding agents here talk to the node the service runs; their hooks point at its copy.
+      service.install(paths, action === "upgrade" ? "latest" : VERSION);
+      // The coding agents here talk to the node the service runs.
       let agents: string[] = [];
       try {
-        agents = connect(cli);
+        agents = connect();
       } catch (err) {
         agents = [`Could not connect the coding agents here: ${err instanceof Error ? err.message : err}`];
       }

@@ -1,12 +1,9 @@
-import { spawn } from "node:child_process";
-import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { APPROVAL_TTL_MS, NO_ANSWER } from "../../apps/node/src/actions.js";
 import type { App } from "../../apps/node/src/app.js";
 import { connectAgents } from "../../apps/node/src/connect.js";
-import { risky } from "../../apps/node/src/hook.js";
-import { createHttp } from "../../apps/node/src/http/index.js";
 import { APPROVAL_TOOL } from "../../apps/node/src/tools/approval.js";
 import { now } from "../../apps/node/src/util.js";
 import { tempDir, testApp } from "./helpers.js";
@@ -42,65 +39,49 @@ function fakeAgents(): { dir: string; calls: string } {
 }
 
 describe("connecting coding agents", () => {
-  it("adds Vireo to Claude Code and Codex with keys and hooks, and again without duplicates", () => {
+  it("adds Vireo to Claude Code and Codex over MCP with keys, and again without duplicates", () => {
     const { dir, calls } = fakeAgents();
     const data = tempDir();
-    for (let i = 0; i < 2; i++) expect(connectAgents({ dataDir: data, port: 8787, cli: "/opt/vireo/cli.js" })).toHaveLength(2);
+    for (let i = 0; i < 2; i++) expect(connectAgents({ dataDir: data, port: 8787 })).toHaveLength(2);
 
     expect(readFileSync(calls, "utf8")).toMatch(/mcp add --scope user --transport http vireo http:\/\/127\.0\.0\.1:8787\/public\/mcp --header Authorization: Bearer vireo_/);
-    const settings = JSON.parse(readFileSync(join(dir, "claude", "settings.json"), "utf8"));
-    for (const event of ["Stop", "Notification", "PreToolUse"]) expect(settings.hooks[event]).toHaveLength(1);
-    expect(settings.hooks.PreToolUse[0]).toMatchObject({ matcher: "Bash", hooks: [{ timeout: 600 }] });
-    expect(settings.hooks.Stop[0].hooks[0].command).toContain('"/opt/vireo/cli.js" hook claude');
-
+    // The owner's own sessions get no hooks and no notify.
+    expect(existsSync(join(dir, "claude", "settings.json"))).toBe(false);
     const toml = readFileSync(join(dir, "codex", "config.toml"), "utf8");
     expect(toml.match(/\[mcp_servers\.vireo\]/g)).toHaveLength(1);
-    expect(toml.startsWith("notify = [")).toBe(true);
+    expect(toml).not.toMatch(/^notify/m);
     expect(toml).toContain('[profiles.fast]\nmodel = "gpt-5-mini"');
     expect(toml).toMatch(/http_headers = \{ "Authorization" = "Bearer vireo_/);
 
-    // One key per agent and one for the hooks, replaced rather than piled up; the plugin is added.
+    // One key per agent, replaced rather than piled up; the plugin is added.
     const app = testApp(data);
     apps.push(app);
-    expect((app.db.getKv<{ name: string }[]>("plugin.endpoint.keys") ?? []).map((k) => k.name).sort()).toEqual([expect.stringMatching(/^Claude Code on /), expect.stringMatching(/^Codex on /), expect.stringMatching(/^Hooks on /)]);
+    expect((app.db.getKv<{ name: string }[]>("plugin.endpoint.keys") ?? []).map((k) => k.name).sort()).toEqual([expect.stringMatching(/^Claude Code on /), expect.stringMatching(/^Codex on /)]);
     expect(app.plugins.installed("endpoint")).toBe(true);
   });
 
-  it("asks only about risky shell commands", () => {
-    for (const c of ["rm -rf build", "git push --force origin main", "kubectl delete pod x", "terraform apply", "npm publish", "psql -c 'DROP TABLE users'", "wrangler deploy"]) expect(risky(c)).toBe(true);
-    for (const c of ["ls -la", "npm test", "git push origin feature", "rm file.txt", "git status", "kubectl get pods"]) expect(risky(c)).toBe(false);
-  });
+  it("takes out the hooks and notify earlier versions added, and leaves the owner's own", () => {
+    const { dir } = fakeAgents();
+    const data = tempDir();
+    const ours = (timeout: number, matcher?: string) => ({ ...(matcher ? { matcher } : {}), hooks: [{ type: "command", command: '"/usr/bin/node" "/opt/vireo/cli.js" hook claude', timeout }] });
+    const theirs = { hooks: [{ type: "command", command: "bash ~/my-hook.sh" }] };
+    mkdirSync(join(dir, "claude"));
+    writeFileSync(join(dir, "claude", "settings.json"), JSON.stringify({ model: "opus", hooks: { Stop: [theirs, ours(30)], Notification: [ours(30)], PreToolUse: [ours(600, "Bash")] } }));
+    writeFileSync(join(dir, "codex", "config.toml"), 'notify = ["/usr/bin/node","/opt/vireo/cli.js","hook","codex"]\nmodel = "gpt-5"\n');
+    writeFileSync(join(data, "hooks.json"), "{}");
 
-  it("judges only what the shell runs, not words in code, quotes or heredocs", () => {
-    // Code that mentions shutdown, and SQL written to a file, are data.
-    for (const c of [
-      "cat > a.ts <<'EOF'\nawait runtime.shutdown?.();\nEOF",
-      "cat > m.sql <<EOF\nDROP TABLE users;\nEOF",
-      "node -e 'rt.shutdown()'",
-      "grep -rn shutdown src",
-      "git commit -m 'rm -rf build cache; drop table docs'",
-      "echo 'DROP TABLE x' > f.sql",
-      "python3 - <<'EOF'\nimport os\nos.system('reboot')\nEOF\necho done",
-      "echo dd if=x",
-      "cat <<-EOF > x\n\tshutdown\n\tEOF\nls",
-    ])
-      expect(risky(c), c).toBe(false);
-    // The same words as the command itself, or as statements a SQL client or a shell runs, still ask.
-    for (const c of [
-      "sudo shutdown -h now",
-      "cd x && reboot",
-      "FOO=1 sudo -u root reboot",
-      "mkfs.ext4 /dev/sdb1",
-      "dd if=/dev/zero of=/dev/sda",
-      "psql <<SQL\nDROP TABLE users;\nSQL",
-      'mysql -e "truncate table t"',
-      "bash -c 'rm -rf /'",
-      "bash <<EOF\nrm -rf /tmp/x\nEOF",
-      "ssh -p 22 host 'sudo reboot'",
-      'echo "$(rm -rf x)"',
-      "cat a <<EOF\nhi\nEOF\nreboot",
-    ])
-      expect(risky(c), c).toBe(true);
+    connectAgents({ dataDir: data, port: 8787 });
+
+    expect(JSON.parse(readFileSync(join(dir, "claude", "settings.json"), "utf8"))).toEqual({ model: "opus", hooks: { Stop: [theirs] } });
+    const toml = readFileSync(join(dir, "codex", "config.toml"), "utf8");
+    expect(toml).not.toMatch(/^notify/m);
+    expect(toml.startsWith('model = "gpt-5"')).toBe(true);
+    expect(existsSync(join(data, "hooks.json"))).toBe(false);
+
+    // A notify of the owner's own stays.
+    writeFileSync(join(dir, "codex", "config.toml"), 'notify = ["my-notify"]\n');
+    connectAgents({ dataDir: data, port: 8787, only: ["codex"] });
+    expect(readFileSync(join(dir, "codex", "config.toml"), "utf8").startsWith('notify = ["my-notify"]')).toBe(true);
   });
 
   it("lets an approval nobody answered lapse after half an hour, and no longer wait on the owner", () => {
@@ -127,37 +108,4 @@ describe("connecting coding agents", () => {
     expect(app.actions.expireApprovals()).toBe(0);
     expect(app.actions.get(own.id)!.status).toBe("pending");
   });
-
-  it("holds a risky command until the owner decides in Vireo", async () => {
-    fakeAgents();
-    const { serve } = await import("@hono/node-server");
-    const data = tempDir();
-    const app = testApp(data);
-    apps.push(app);
-    const server = serve({ fetch: createHttp(app).fetch, port: 0, hostname: "127.0.0.1" });
-    if (!server.listening) await new Promise((r) => server.once("listening", r));
-    try {
-      connectAgents({ dataDir: data, port: (server.address() as { port: number }).port, cli: "x", only: ["claude"] });
-      const hook = (input: object) =>
-        new Promise<string>((done) => {
-          const child = spawn(process.execPath, ["--import", "tsx", resolve("apps/node/src/cli.ts"), "hook", "claude"], { env: { ...process.env, VIREO_DATA_DIR: data } });
-          let out = "";
-          child.stdout.on("data", (d) => (out += d));
-          child.on("close", () => done(out));
-          child.stdin.end(JSON.stringify(input));
-        });
-      const pending = () => app.actions.pending().find((a) => a.summary.includes("rm -rf"));
-
-      const asked = hook({ hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command: "rm -rf dist" }, cwd: "/work/site" });
-      for (let i = 0; i < 200 && !pending(); i++) await new Promise((r) => setTimeout(r, 50));
-      await app.actions.confirm(pending()!.id);
-      expect(JSON.parse(await asked)).toMatchObject({ hookSpecificOutput: { permissionDecision: "allow" } });
-
-      expect(await hook({ hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command: "ls" } })).toBe("");
-      await hook({ hook_event_name: "Notification", message: "Claude needs your permission to use Bash", cwd: "/work/site" });
-      expect(app.push.recent[0]).toMatchObject({ title: expect.stringContaining("Claude Code needs you · Claude Code in site"), body: expect.stringContaining("permission") });
-    } finally {
-      server.close();
-    }
-  }, 60_000);
 });

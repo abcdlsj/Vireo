@@ -65,10 +65,12 @@ Requires Node 22.13 or newer. Vireo uses the built-in `node:sqlite`, so there ar
 
 `service install` (and so `install.sh`) connects the coding agents it finds; run `npx askvireo connect` to do it again, say after installing one. Each agent gets its own key, and:
 
-- **Claude Code** gets Vireo as an MCP server (`claude mcp add --scope user`) and hooks in `~/.claude/settings.json`: you get a notification when a task that ran over two minutes finishes or when it waits on you, and a risky shell command (`rm -rf`, `git push --force`, `terraform apply`, `npm publish`, `DROP TABLE`, deploys and the like) waits for your confirmation in Vireo. If you don't answer, or the node can't be reached, Claude Code asks in the terminal as usual.
-- **Codex** gets Vireo as an MCP server in `~/.codex/config.toml`, and a `notify` command that tells you when a turn finishes (unless you already have a `notify` of your own).
+- **Claude Code** gets Vireo as an MCP server (`claude mcp add --scope user`).
+- **Codex** gets Vireo as an MCP server in `~/.codex/config.toml`.
 
-Running it again replaces what it set up before instead of adding to it.
+Your own sessions can then ask Vireo things, notify you, and ask your approval before a risky step, when they choose to. Vireo adds no hooks or `notify` to them: it does not watch or hold up a session it did not start. The sessions Vireo starts itself run over ACP, where it already sees each step and decides each permission request.
+
+Running it again replaces what it set up before instead of adding to it, and takes out the hooks and `notify` that earlier versions added.
 
 ### Notifications
 
