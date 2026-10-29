@@ -15,7 +15,7 @@ async function setup() {
   await migrate(db);
   const key = await SigningKey.load(db);
   const identity: NodeIdentity = { nodeId: "n_1", cloudUrl: "http://cloud", nodeSecret: "s", owner, publicKey: key.publicPem, mode: "relay", linkedAt: 0 };
-  const token = (over: Partial<{ sub: string; aud: string; exp: number }> = {}) =>
+  const token = (over: Partial<{ sub: string; aud: string; exp: number; via: string }> = {}) =>
     key.sign({ iss: "http://cloud", sub: owner.id, aud: "n_1", login: "owner", role: "owner", iat: 0, exp: Math.floor(Date.now() / 1000) + 60, ...over });
   return { key, identity, token };
 }
@@ -46,5 +46,16 @@ describe("node access tokens", () => {
     expect((await http.request("/api/threads", { headers: { authorization: `Bearer ${await token()}` } })).status).toBe(200);
     expect((await http.request(`/api/threads?access_token=${await token()}`)).status).toBe(200);
     expect((await http.request("/api/health")).status).toBe(200);
+  });
+
+  it("let the owner's other node reach only MCP, not settings, plugins or files", async () => {
+    const { identity, token } = await setup();
+    const app = testApp();
+    const http = createHttp(app);
+    app.identity.save(identity);
+    const peer = { authorization: `Bearer ${await token({ via: "n_2" })}`, "content-type": "application/json" };
+    expect((await http.request("/api/threads", { headers: peer })).status).toBe(403);
+    expect((await http.request("/api/plugins/mcp", { method: "PATCH", headers: peer, body: JSON.stringify({ servers: '{"x":{"command":"touch"}}' }) })).status).toBe(403);
+    expect((await http.request("/api/mcp", { method: "POST", headers: { ...peer, accept: "application/json, text/event-stream" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }) })).status).toBe(200);
   });
 });

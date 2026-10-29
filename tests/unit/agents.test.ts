@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { mkdirSync, symlinkSync } from "node:fs";
+import { join, resolve } from "node:path";
 import type { App } from "../../apps/node/src/app.js";
-import { AcpAgents, agentEnv, agentOverlay, permissionFor, TurnReader, type AgentSpec } from "../../apps/node/src/acp.js";
+import { AcpAgents, agentEnv, agentOverlay, insideWorkdir, permissionFor, requestPaths, TurnReader, type AgentSpec } from "../../apps/node/src/acp.js";
 import { detectedSetups, readProfile } from "../../apps/node/src/plugins/agents/index.js";
 import type { ToolContext } from "../../apps/node/src/tools/types.js";
 import { tempDir, testApp } from "./helpers.js";
@@ -166,7 +168,7 @@ describe("coding agents plugin", () => {
   it("decides each permission request by the mode", () => {
     expect(permissionFor("full", "execute")).toBe("allow");
     expect(permissionFor("edits", "read")).toBe("allow");
-    expect(permissionFor("edits", "edit")).toBe("allow");
+    expect(permissionFor("edits", "edit", { cwd: "/repo", paths: ["/repo/a.ts"] })).toBe("allow");
     // A shell command or a delete waits for the owner in the edits mode, and an unnamed kind never slips through.
     expect(permissionFor("edits", "execute")).toBe("ask");
     expect(permissionFor("edits", "delete")).toBe("ask");
@@ -174,6 +176,32 @@ describe("coding agents plugin", () => {
     expect(permissionFor("read-only", "read")).toBe("allow");
     expect(permissionFor("read-only", "edit")).toBe("deny");
     expect(permissionFor("read-only", "execute")).toBe("deny");
+  });
+
+  it("lets an edit through unasked only inside the working directory, where nothing runs it by itself", () => {
+    const home = tempDir();
+    const repo = join(home, "repo");
+    mkdirSync(join(repo, "src"), { recursive: true });
+    symlinkSync(join(home, ".zshrc"), join(repo, "src", "rc"));
+    const edit = (...paths: string[]) => permissionFor("edits", "edit", { cwd: repo, paths: paths.map((p) => resolve(repo, p)) });
+    const where = (p: string) => insideWorkdir(repo, p, home);
+    expect(where("src/new.ts")).toBe(true);
+    expect(where(join(repo, "README.md"))).toBe(true);
+    // Outside, through a symlink, or where Git and the agents run what is written.
+    expect(where("../.zshrc")).toBe(false);
+    expect(where(join(home, "Library/LaunchAgents/x.plist"))).toBe(false);
+    expect(where("src/rc")).toBe(false);
+    for (const p of [".git/hooks/pre-commit", ".git/config", ".claude/settings.json", ".codex/config.toml"]) expect(where(p), p).toBe(false);
+    // With the home directory as the workdir, every edit asks.
+    expect(insideWorkdir(home, join(home, "notes.md"), home)).toBe(false);
+    // One path outside, or none named, is enough to ask.
+    expect(edit()).toBe("ask");
+    expect(permissionFor("edits", "edit")).toBe("ask");
+    expect(permissionFor("edits", "move", { cwd: repo, paths: [join(repo, "a"), "/etc/x"] })).toBe("ask");
+    expect(permissionFor("full", "edit", { cwd: repo, paths: ["/etc/x"] })).toBe("allow");
+
+    const request = (toolCall: object) => ({ sessionId: "s", inferredKind: "edit", raw: { sessionId: "s", options: [], toolCall } }) as never;
+    expect(requestPaths(request({ toolCallId: "1", locations: [{ path: "/repo/a.ts" }], rawInput: { file_path: "/repo/b.ts", new_path: "/x/c", content: "/not/a/path" } }))).toEqual(["/repo/a.ts", "/repo/b.ts", "/x/c"]);
   });
 
   it("keeps Vireo's own settings out of the agent's environment", () => {

@@ -1,5 +1,6 @@
-import { readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { readdirSync, readFileSync, readlinkSync, realpathSync } from "node:fs";
+import { homedir } from "node:os";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import {
   createAcpRuntime,
   createAgentRegistry,
@@ -50,14 +51,72 @@ export function unasked(command: string, mode: PermissionMode): string | undefin
 }
 
 /**
- * What a mode makes of one permission request: allowed, refused, or (edits) the owner's to decide.
- * A kind the agent did not name counts as the riskiest, so it is never let through unasked.
+ * Inside the working directory, the places whose contents something runs by itself: Git's hooks
+ * and config, and the coding agents' own settings (their hooks run in the owner's sessions).
  */
-export function permissionFor(mode: PermissionMode, kind: string | undefined): "allow" | "deny" | "ask" {
+const RUNS_ITSELF = [".git", ".claude", ".codex"];
+
+/**
+ * A path as the filesystem resolves it, symlinks included, for a file that may not exist yet. A
+ * link to a file that does not exist yet is followed too: writing through it creates the target.
+ */
+function real(path: string, depth = 0): string {
+  const rest: string[] = [];
+  for (let cur = path; ; ) {
+    try {
+      return join(realpathSync(cur), ...rest.reverse());
+    } catch {
+      try {
+        // A link that loops never resolves; one this deep is treated as pointing nowhere safe.
+        if (depth > 32) return "/";
+        return real(join(resolve(dirname(cur), readlinkSync(cur)), ...rest.reverse()), depth + 1);
+      } catch {
+        // not a link: what is missing is a directory or file still to be made
+      }
+      const up = dirname(cur);
+      if (up === cur) return path;
+      rest.push(basename(cur));
+      cur = up;
+    }
+  }
+}
+
+/**
+ * Whether a step may touch `path` unasked: inside `cwd`, and not where its contents would run by
+ * themselves. The home directory (or one above it) is no such place: shell profiles and login items
+ * live there, so with it as the directory every edit asks.
+ */
+export function insideWorkdir(cwd: string, path: string, home = homedir()): boolean {
+  const root = real(cwd);
+  const up = relative(root, real(home));
+  if (up === "" || (up !== ".." && !up.startsWith(`..${sep}`) && !isAbsolute(up))) return false;
+  const rel = relative(root, real(resolve(cwd, path)));
+  if (rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel)) return false;
+  return !RUNS_ITSELF.includes(rel.split(sep)[0]!);
+}
+
+/** The paths one permission request names: where the agent says it acts, and the paths in its input. */
+export function requestPaths(request: AcpPermissionRequest): string[] {
+  const call = request.raw.toolCall;
+  const paths = (call?.locations ?? []).map((l) => l.path).filter((p): p is string => typeof p === "string");
+  const input = call?.rawInput;
+  if (input && typeof input === "object") {
+    for (const [k, v] of Object.entries(input as Record<string, unknown>)) if (/(^|_)path$|^(destination|target)$/i.test(k) && typeof v === "string") paths.push(v);
+  }
+  return paths;
+}
+
+/**
+ * What a mode makes of one permission request: allowed, refused, or (edits) the owner's to decide.
+ * A kind the agent did not name counts as the riskiest, so it is never let through unasked. Below
+ * full, an edit goes through unasked only inside the working directory (see `insideWorkdir`): one
+ * that names no path, or one outside (`~/.zshrc`, a LaunchAgent, a Git hook), asks.
+ */
+export function permissionFor(mode: PermissionMode, kind: string | undefined, where?: { cwd: string; paths: string[] }): "allow" | "deny" | "ask" {
   if (mode === "full") return "allow";
   if (kind && READ_KINDS.includes(kind)) return "allow";
   if (mode === "read-only") return "deny";
-  if (kind && WRITE_KINDS.includes(kind)) return "allow";
+  if (kind && WRITE_KINDS.includes(kind)) return where && where.paths.length && where.paths.every((p) => insideWorkdir(where.cwd, p)) ? "allow" : "ask";
   return "ask";
 }
 
@@ -350,7 +409,7 @@ export class AcpAgents {
     else o.signal?.addEventListener("abort", onAbort, { once: true });
 
     const decide = async (request: AcpPermissionRequest, ctx: { signal: AbortSignal }): Promise<AcpPermissionDecision> => {
-      const verdict = permissionFor(o.mode, request.inferredKind);
+      const verdict = permissionFor(o.mode, request.inferredKind, { cwd: spec.cwd, paths: requestPaths(request) });
       if (verdict === "allow") return { outcome: "allow_once" };
       if (verdict === "ask" && o.ask) {
         if (await o.ask(request, ctx.signal)) return { outcome: "allow_once" };

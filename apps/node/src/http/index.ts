@@ -78,6 +78,9 @@ export function createHttp(app: App): Hono<Env> {
     if (!identity) return c.json({ error: "This node is not linked to an account yet. Run `npx askvireo` on it." }, 503);
     const claims = verifyAccess(tokenOf(c), identity);
     if (!claims) return c.json({ error: "Not signed in" }, 401);
+    // The owner's other node may only talk to Vireo over MCP: settings, plugins and files are the
+    // owner's alone, so a node that is taken over cannot set up a command to run here.
+    if (claims.via && c.req.path !== "/api/mcp") return c.json({ error: "Another node can only reach this one over MCP." }, 403);
     c.set("claims", claims);
     await next();
   });
