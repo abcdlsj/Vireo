@@ -10,6 +10,7 @@ import {
   type AcpRuntimeEvent,
   type AcpRuntimeHandle,
   type AcpRuntimeTurnResult,
+  type AcpSessionStore,
 } from "acpx/runtime";
 
 /**
@@ -27,6 +28,13 @@ export type PermissionMode = "read-only" | "edits" | "full";
 
 const READ_KINDS = ["read", "search", "think", "fetch"];
 const WRITE_KINDS = ["edit", "move"];
+
+/**
+ * Codex's own approval presets for each mode. Below full it runs in its read-only sandbox and asks
+ * before anything else, edits included; Vireo then answers by the mode. Its default ("agent")
+ * would run what it judges safe without asking.
+ */
+const CODEX_PRESETS: Record<PermissionMode, string> = { "read-only": "read-only", edits: "read-only", full: "agent-full-access" };
 
 /**
  * What a mode makes of one permission request: allowed, refused, or (edits) the owner's to decide.
@@ -239,8 +247,11 @@ export function describeRequest(request: AcpPermissionRequest): string {
  */
 export class AcpAgents {
   private readonly runtimes = new Map<string, { key: string; runtime: AcpRuntime }>();
+  private readonly store: AcpSessionStore;
 
-  constructor(private readonly stateDir: string) {}
+  constructor(private readonly stateDir: string) {
+    this.store = createFileSessionStore({ stateDir });
+  }
 
   /**
    * One runtime per setup and mode, so a call that narrows the mode gets a client with narrower
@@ -261,7 +272,7 @@ export class AcpAgents {
     const runtime = createAcpRuntime({
       cwd: spec.cwd,
       agentProcessEnv: agentOverlay(process.env, spec.env),
-      sessionStore: createFileSessionStore({ stateDir: this.stateDir }),
+      sessionStore: this.store,
       agentRegistry: createAgentRegistry(),
       // Below full the client itself writes nothing, and without its terminal an agent has to ask
       // before it runs a command; what it asks then is decided per turn (`permissionFor`).
@@ -282,6 +293,23 @@ export class AcpAgents {
       cwd: spec.cwd,
       sessionOptions: model ? { model } : undefined,
     });
+  }
+
+  /**
+   * Codex, by default, lets its own reviewer approve a step outside its sandbox. Below full it is put
+   * in its preset that asks instead, so such a step reaches the mode's decision (and the owner);
+   * inside the sandbox (the repository and /tmp, no network) it runs commands without asking. Codex
+   * offers this as its `mode` option; an agent without such an option keeps its own.
+   */
+  private async gate(spec: AgentSpec, handle: AcpRuntimeHandle, mode: PermissionMode): Promise<void> {
+    const record = await this.store.load(handle.acpxRecordId ?? handle.sessionKey);
+    const option = record?.acpx?.config_options?.find((o) => o.id === "mode");
+    if (!option || option.type !== "select") return;
+    const values = new Set(option.options.flatMap((o) => ("value" in o ? [o.value] : o.options.map((g) => g.value))));
+    const preset = CODEX_PRESETS[mode];
+    if (!values.has(CODEX_PRESETS["read-only"]) || !values.has(CODEX_PRESETS.full)) return;
+    if (option.currentValue === preset) return;
+    await this.runtime(spec).setConfigOption?.({ handle, key: "mode", value: preset });
   }
 
   async find(spec: AgentSpec, session: string): Promise<AcpRuntimeHandle | undefined> {
@@ -321,6 +349,8 @@ export class AcpAgents {
     };
 
     try {
+      // A failure here stops the turn: the agent would otherwise run with its own, wider defaults.
+      await this.gate(spec, handle, o.mode);
       const run = this.runtime(spec).startTurn({
         handle,
         text: o.text,
