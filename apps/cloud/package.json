@@ -1,6 +1,6 @@
 {
   "name": "@vireo/cloud",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "description": "Vireo cloud: GitHub sign-in, the nodes each account owns, access tokens, and the relay between the app and nodes. Runs on Cloudflare Workers or as a Node server.",
   "private": true,
   "type": "module",
