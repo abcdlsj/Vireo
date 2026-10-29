@@ -101,8 +101,34 @@ ${Object.entries(env)
 `;
   mkdirSync(dirname(plistPath()), { recursive: true });
   writeFileSync(plistPath(), plist, { mode: 0o600 });
-  tryRun("launchctl", ["bootout", `gui/${uid()}/${LABEL}`]);
-  run("launchctl", ["bootstrap", `gui/${uid()}`, plistPath()]);
+  reloadLaunchd();
+}
+
+const sleep = (ms: number) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+
+/**
+ * Replaces the loaded service with the plist just written. `bootout` returns while launchd is
+ * still stopping the old node, and a `bootstrap` in that window fails with "5: Input/output
+ * error"; so it waits for the old one to go, and tries again a few times before giving up.
+ */
+function reloadLaunchd(): void {
+  const target = `gui/${uid()}/${LABEL}`;
+  tryRun("launchctl", ["bootout", target]);
+  for (let i = 0; i < 40 && tryRun("launchctl", ["print", target]); i++) sleep(250);
+  let last = "";
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      execFileSync("launchctl", ["bootstrap", `gui/${uid()}`, plistPath()], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+      return;
+    } catch (err) {
+      last = ((err as { stderr?: string }).stderr ?? "").trim() || (err instanceof Error ? err.message : String(err));
+      sleep(1000);
+    }
+  }
+  throw new Error(
+    `launchd did not start the service (launchctl bootstrap: ${last}). The new version is installed; the old node may still have been stopping. ` +
+      `Run the same command again in a few seconds, or start it yourself: launchctl bootstrap gui/${uid()} ${plistPath()}`,
+  );
 }
 
 function writeSystemd(p: ServicePaths, cli: string): void {

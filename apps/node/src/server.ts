@@ -40,8 +40,17 @@ export async function runNode(config: Config, opts: RunOptions = {}): Promise<Ru
   const linking = new AbortController();
 
   await app.models.refresh();
-  const server = await new Promise<Server>((resolve) => {
-    const s = serve({ fetch: http.fetch, port: config.port, hostname: config.host }, () => resolve(s as Server)) as Server;
+  // A port already taken is the caller's to explain; only failing to listen is handled here.
+  const server = await new Promise<Server>((resolve, reject) => {
+    const failed = (err: Error) => {
+      app.db.close();
+      reject(err);
+    };
+    const s = serve({ fetch: http.fetch, port: config.port, hostname: config.host }, () => {
+      s.off("error", failed);
+      resolve(s as Server);
+    }) as Server;
+    s.once("error", failed);
   });
   const status = app.models.status();
   say(`Vireo node ${VERSION} on http://${config.host === "0.0.0.0" ? "localhost" : config.host}:${config.port}`);

@@ -235,10 +235,25 @@ function openBrowser(url: string): void {
     .unref();
 }
 
+/** Why the port is taken, and what to do instead: most often it is this machine's own service. */
+async function portTaken(): Promise<string> {
+  const health = await fetch(`http://127.0.0.1:${config.port}/api/health`, { signal: AbortSignal.timeout(2000) })
+    .then((r) => (r.ok ? (r.json() as Promise<{ version?: string }>) : undefined))
+    .catch(() => undefined);
+  const upgrade = "To upgrade it, run: curl -fsSL https://askvireo.com/install.sh | sh  (or: npx askvireo service upgrade)";
+  if (health && service.installed())
+    return `Port ${config.port} is in use by Vireo's background service (version ${health.version ?? "unknown"}), so a second node cannot start here.\n  ${upgrade}`;
+  if (health) return `Port ${config.port} is in use by another Vireo node (version ${health.version ?? "unknown"}). Stop it (Ctrl+C in its terminal), or start this one with --port <port>.`;
+  return `Port ${config.port} is in use by another program. Stop it, or start Vireo with --port <port>.${service.installed() ? "\n  If that is Vireo's background service, it has not answered yet; check it with: npx askvireo service status" : ""}`;
+}
+
 console.log("");
 const node = await runNode(config, {
   tailscale,
   onLinkCode: showLinkCode,
+}).catch(async (err: NodeJS.ErrnoException) => {
+  console.error(`  ${err.code === "EADDRINUSE" ? await portTaken() : `Vireo could not start: ${err.message}`}`);
+  process.exit(1);
 });
 
 const shutdown = () => void node.stop().then(() => process.exit(0));
