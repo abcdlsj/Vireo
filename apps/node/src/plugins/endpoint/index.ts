@@ -3,6 +3,7 @@ import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { CallToolRequestSchema, ListToolsRequestSchema, type CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { Type, type TSchema } from "typebox";
+import { NO_ANSWER } from "../../actions.js";
 import { APPROVAL_TOOL } from "../../tools/approval.js";
 import { errorMessage, newId, now, sha256, truncate } from "../../util.js";
 import { VERSION } from "../../version.js";
@@ -216,6 +217,7 @@ function serve(ctx: PluginContext, key: Caller, keys: { touch(id: string): void 
       a = host.actions.get(id)!;
     }
     if (a.status === "pending") return text(`pending: the owner has not decided yet. Call approval_status with approval_id "${id}" to keep waiting.`);
+    if (a.status === "cancelled" && a.result === NO_ANSWER) return text("expired: the owner did not answer in time. Do not take this step; ask again if it is still needed.");
     if (a.status === "cancelled") return text("declined: the owner declined. Do not take this step.");
     if (a.status === "failed") return text(`not approved: ${a.result ?? "the approval did not go through"}. Do not take this step.`);
     const details = typeof a.args.description === "string" ? a.args.description : "";

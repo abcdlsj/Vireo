@@ -1,10 +1,18 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import type { App } from "./app.js";
+import { APPROVAL_TOOL } from "./tools/approval.js";
 import { forModel } from "./tools/types.js";
 import { errorMessage, newId, now, safeJson, truncate } from "./util.js";
 import type { Action } from "@vireo/protocol";
 
 export type { Action };
+
+/**
+ * How long an agent's approval waits for the owner. The agent stopped waiting long before (a hook
+ * gives up after nine minutes), so past this the card only stands in the owner's way.
+ */
+export const APPROVAL_TTL_MS = 30 * 60_000;
+export const NO_ANSWER = "no answer in time";
 
 
 interface ActionRow {
@@ -167,17 +175,28 @@ export class Actions {
   }
 
   cancel(id: string, reason?: string): Action {
-    const claimed = this.app.db.run("UPDATE actions SET status = 'cancelled', resolved_at = ? WHERE id = ? AND status = 'pending'", now(), id);
+    return this.close(id, (a) => `The owner cancelled: ${a.summary}${reason ? `. Reason: ${reason}` : ""}. Do not retry it unless the owner asks.`);
+  }
+
+  /** Agents' approvals still pending after APPROVAL_TTL_MS, cancelled for want of an answer. Returns how many. */
+  expireApprovals(at = now()): number {
+    const stale = this.app.db.all<{ id: string }>(
+      "SELECT id FROM actions WHERE tool = ? AND status = 'pending' AND created_at <= ?",
+      APPROVAL_TOOL,
+      at - APPROVAL_TTL_MS,
+    );
+    for (const { id } of stale) this.close(id, (a) => `No answer in time: ${a.summary}. It was not approved.`, NO_ANSWER);
+    return stale.length;
+  }
+
+  /** Cancels a pending action; `result` (shown on its card) says why when nobody decided. */
+  private close(id: string, notice: (a: Action) => string, result?: string): Action {
+    const claimed = this.app.db.run("UPDATE actions SET status = 'cancelled', result = ?, resolved_at = ? WHERE id = ? AND status = 'pending'", result ?? null, now(), id);
     const action = this.get(id);
     if (!action) throw new Error("Action not found");
     if (claimed.changes === 0) return action;
     this.app.bus.publish({ type: "action.updated", threadId: action.threadId, actionId: id });
-    this.app.threads.addNotice(
-      action.threadId,
-      "action_result",
-      `The owner cancelled: ${action.summary}${reason ? `. Reason: ${reason}` : ""}. Do not retry it unless the owner asks.`,
-      { llm: true, data: { actionId: id } },
-    );
+    this.app.threads.addNotice(action.threadId, "action_result", notice(action), { llm: true, data: { actionId: id } });
     this.app.threads.update(action.threadId, { needs_you: 0 });
     if (!this.app.tools.get(action.tool)?.settles) this.app.runner.schedule(action.threadId);
     return action;

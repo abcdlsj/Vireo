@@ -2,10 +2,13 @@ import { spawn } from "node:child_process";
 import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { APPROVAL_TTL_MS, NO_ANSWER } from "../../apps/node/src/actions.js";
 import type { App } from "../../apps/node/src/app.js";
 import { connectAgents } from "../../apps/node/src/connect.js";
 import { risky } from "../../apps/node/src/hook.js";
 import { createHttp } from "../../apps/node/src/http/index.js";
+import { APPROVAL_TOOL } from "../../apps/node/src/tools/approval.js";
+import { now } from "../../apps/node/src/util.js";
 import { tempDir, testApp } from "./helpers.js";
 
 let apps: App[] = [];
@@ -66,6 +69,63 @@ describe("connecting coding agents", () => {
   it("asks only about risky shell commands", () => {
     for (const c of ["rm -rf build", "git push --force origin main", "kubectl delete pod x", "terraform apply", "npm publish", "psql -c 'DROP TABLE users'", "wrangler deploy"]) expect(risky(c)).toBe(true);
     for (const c of ["ls -la", "npm test", "git push origin feature", "rm file.txt", "git status", "kubectl get pods"]) expect(risky(c)).toBe(false);
+  });
+
+  it("judges only what the shell runs, not words in code, quotes or heredocs", () => {
+    // Code that mentions shutdown, and SQL written to a file, are data.
+    for (const c of [
+      "cat > a.ts <<'EOF'\nawait runtime.shutdown?.();\nEOF",
+      "cat > m.sql <<EOF\nDROP TABLE users;\nEOF",
+      "node -e 'rt.shutdown()'",
+      "grep -rn shutdown src",
+      "git commit -m 'rm -rf build cache; drop table docs'",
+      "echo 'DROP TABLE x' > f.sql",
+      "python3 - <<'EOF'\nimport os\nos.system('reboot')\nEOF\necho done",
+      "echo dd if=x",
+      "cat <<-EOF > x\n\tshutdown\n\tEOF\nls",
+    ])
+      expect(risky(c), c).toBe(false);
+    // The same words as the command itself, or as statements a SQL client or a shell runs, still ask.
+    for (const c of [
+      "sudo shutdown -h now",
+      "cd x && reboot",
+      "FOO=1 sudo -u root reboot",
+      "mkfs.ext4 /dev/sdb1",
+      "dd if=/dev/zero of=/dev/sda",
+      "psql <<SQL\nDROP TABLE users;\nSQL",
+      'mysql -e "truncate table t"',
+      "bash -c 'rm -rf /'",
+      "bash <<EOF\nrm -rf /tmp/x\nEOF",
+      "ssh -p 22 host 'sudo reboot'",
+      'echo "$(rm -rf x)"',
+      "cat a <<EOF\nhi\nEOF\nreboot",
+    ])
+      expect(risky(c), c).toBe(true);
+  });
+
+  it("lets an approval nobody answered lapse after half an hour, and no longer wait on the owner", () => {
+    const app = testApp();
+    apps.push(app);
+    const ask = (title: string) => {
+      const thread = app.threads.create({ title, temporary: true });
+      return app.actions.create(thread.id, APPROVAL_TOOL, { from: "Claude Code" }, title);
+    };
+    const old = ask("Run: rm -rf dist");
+    const fresh = ask("Run: rm -rf build");
+    app.db.run("UPDATE actions SET created_at = ? WHERE id = ?", now() - APPROVAL_TTL_MS - 1000, old.id);
+    expect(app.threads.get(old.threadId)!.needsYou).toBe(true);
+
+    expect(app.actions.expireApprovals()).toBe(1);
+    expect(app.actions.get(old.id)).toMatchObject({ status: "cancelled", result: NO_ANSWER });
+    expect(app.threads.get(old.threadId)).toMatchObject({ needsYou: false, pendingActions: 0 });
+    // A younger one keeps waiting, and the owner can still decide it.
+    expect(app.actions.get(fresh.id)!.status).toBe("pending");
+    expect(app.threads.get(fresh.threadId)!.needsYou).toBe(true);
+    // Only agents' approvals lapse: Vireo's own confirmations wait for the owner.
+    const own = app.actions.create(app.threads.create({ title: "Send the email" }).id, "send_email", {}, "Send the email");
+    app.db.run("UPDATE actions SET created_at = ? WHERE id = ?", now() - APPROVAL_TTL_MS - 1000, own.id);
+    expect(app.actions.expireApprovals()).toBe(0);
+    expect(app.actions.get(own.id)!.status).toBe("pending");
   });
 
   it("holds a risky command until the owner decides in Vireo", async () => {

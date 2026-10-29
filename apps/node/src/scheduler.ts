@@ -35,6 +35,7 @@ export class Scheduler {
     if (this.ticking) return;
     this.ticking = true;
     try {
+      this.app.actions.expireApprovals();
       await this.fireReminders();
       await this.maybeNudge();
       await this.maybeCheckInbox();
