@@ -123,6 +123,25 @@ describe("coding agents plugin", () => {
     expect(tool.summarize!({ task: "x" } as never)).toContain(dir);
   });
 
+  it("tells the owner, before a run, what Codex and pi do without asking", async () => {
+    const app = open();
+    await app.plugins.install("agents", {
+      agents: [
+        { name: "c", command: "codex", directory: tempDir(), mode: "edits" },
+        { name: "p", command: "pi", directory: tempDir(), mode: "edits" },
+        { name: "f", command: "pi", directory: tempDir(), mode: "full" },
+        { name: "k", command: "claude", directory: tempDir(), mode: "edits" },
+      ],
+    });
+    const run = app.tools.get("coding_agent_run")!;
+    expect(run.summarize!({ task: "x", agent: "c" } as never)).toContain("Codex runs shell commands inside the repository without asking");
+    expect(run.summarize!({ task: "x", agent: "p" } as never)).toContain("pi runs every tool");
+    expect(run.summarize!({ task: "x", agent: "f" } as never)).not.toContain("without asking");
+    expect(run.summarize!({ task: "x", agent: "k" } as never)).not.toContain("without asking");
+    const details = (await view(app)).status!.details!;
+    expect(details.find((d) => d.label === "p")!.value).toContain("without asking");
+  });
+
   it("finds a session by its setup even when the setup's name has a colon", async () => {
     const app = open();
     await app.plugins.install("agents", {

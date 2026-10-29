@@ -4,7 +4,7 @@ import type { PluginRow } from "@vireo/protocol";
 import { Type } from "typebox";
 import { join } from "node:path";
 import type { AcpPermissionRequest, AcpRuntimeHandle } from "acpx/runtime";
-import { AcpAgents, describeRequest, type AgentSpec, type PermissionMode, type Turn } from "../../acp.js";
+import { AcpAgents, describeRequest, unasked, type AgentSpec, type PermissionMode, type Turn } from "../../acp.js";
 import type { AgentDef } from "../../agents.js";
 import { CLI_ORDER, findCli } from "../../cli-model.js";
 import { APPROVAL_TOOL } from "../../tools/approval.js";
@@ -56,7 +56,14 @@ const PROFILE_FIELDS: ConfigField[] = [
     help: "An ACP agent — claude, codex, opencode, pi, gemini, … — or a command of your own.",
   },
   { key: "directory", label: "Directory", type: "text", placeholder: "/Users/you/Workspace/my-project", help: "The repository it works in. Every run is scoped to it." },
-  { key: "mode", label: "May do", type: "select", default: "edits", options: MODES },
+  {
+    key: "mode",
+    label: "May do",
+    type: "select",
+    default: "edits",
+    options: MODES,
+    help: "Claude Code keeps to it. Codex runs shell commands inside the repository without asking in any mode; pi asks about nothing.",
+  },
   {
     key: "env",
     label: "Environment",
@@ -116,7 +123,11 @@ const MODE_LABEL: Record<PermissionMode, string> = { "read-only": "read only", e
 /** How long a step the agent asked for waits for the owner before it counts as refused. */
 const ASK_MS = 540_000;
 /** What a call asking for `asked` will run with, for the confirmation; asking for more fails at run time. */
-const shown = (p: Profile, asked?: PermissionMode): string => MODE_LABEL[asked && RANK[asked] <= RANK[p.mode] ? asked : p.mode];
+function shown(p: Profile, asked?: PermissionMode): string {
+  const mode = asked && RANK[asked] <= RANK[p.mode] ? asked : p.mode;
+  const note = unasked(p.command, mode);
+  return note ? `${MODE_LABEL[mode]} (${note})` : MODE_LABEL[mode];
+}
 
 /** Environment keys whose values are credentials, to keep them out of what the model and the owner read. */
 const SECRET_KEY = /(KEY|TOKEN|SECRET|PASSWORD|PASSWD|AUTH|CREDENTIAL)/i;
@@ -168,6 +179,8 @@ function report(p: Profile, r: Run, session: string | undefined, turn: Turn): st
   if (turn.stopReason) facts.push(`stopped: ${turn.stopReason}`);
   if (turn.tools.length) facts.push(`${turn.tools.filter((t) => t.status === "completed").length}/${turn.tools.length} tool calls finished`);
   parts.push(facts.join(" · "));
+  const note = unasked(p.command, r.mode);
+  if (note) parts.push(`Note: ${note}.`);
 
   if (turn.tools.length) {
     const lines = turn.tools.slice(0, 25).map((t) => `- ${[t.kind, t.title].filter(Boolean).join(" ")}${t.detail ? ` — ${truncate(t.detail, 120)}` : ""} [${t.status ?? "pending"}]`);
@@ -456,7 +469,7 @@ export const agentsPlugin: PluginDef = {
 
       async status(): Promise<PluginStatus> {
         const all = profiles();
-        const details = all.map((p) => ({ label: p.name, value: `${p.command} in ${p.directory || "(no directory)"} · ${MODE_LABEL[p.mode]}` }));
+        const details = all.map((p) => ({ label: p.name, value: `${p.command} in ${p.directory || "(no directory)"} · ${shown(p)}` }));
         if (!all.length) return { state: "setup", message: "No coding agent found on this machine. Install Claude Code, Codex or pi, or add one of your own.", details };
         const names = all.map((p) => p.name.toLowerCase());
         const twice = all.filter((p, i) => names.indexOf(p.name.toLowerCase()) !== i);

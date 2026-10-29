@@ -37,6 +37,19 @@ const WRITE_KINDS = ["edit", "move"];
 const CODEX_PRESETS: Record<PermissionMode, string> = { "read-only": "read-only", edits: "read-only", full: "agent-full-access" };
 
 /**
+ * What a built-in agent does in `mode` that the mode's name would not suggest: Codex runs shell
+ * commands inside the repository without asking whatever it is told, and pi asks about nothing.
+ * Undefined when the agent keeps to the mode (or is a command of the owner's, taken at its word).
+ */
+export function unasked(command: string, mode: PermissionMode): string | undefined {
+  if (mode === "full") return undefined;
+  const agent = command.trim();
+  if (agent === "codex") return "Codex runs shell commands inside the repository without asking (its sandbox keeps it there, with no network)";
+  if (agent === "pi") return "pi runs every tool, shell commands included, without asking";
+  return undefined;
+}
+
+/**
  * What a mode makes of one permission request: allowed, refused, or (edits) the owner's to decide.
  * A kind the agent did not name counts as the riskiest, so it is never let through unasked.
  */
