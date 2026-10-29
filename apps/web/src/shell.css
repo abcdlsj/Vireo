@@ -269,12 +269,6 @@
   box-shadow: var(--c-shadow);
 }
 
-.shell .composer-box:focus-within {
-  box-shadow:
-    0 0 0 2px var(--c-accent-soft),
-    var(--c-shadow);
-}
-
 .shell .composer .send {
   width: 36px;
   height: 36px;

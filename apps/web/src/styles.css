@@ -1778,11 +1778,6 @@ button.link.danger {
   transition: border-color 0.12s, box-shadow 0.12s;
 }
 
-.composer-box:focus-within {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft);
-}
-
 .composer textarea {
   resize: none;
   border: none;
