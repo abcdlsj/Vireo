@@ -1,6 +1,6 @@
 {
   "name": "askvireo",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "description": "Your own Vireo node: the agent, its threads and memory, on your machine. Sign in at the Vireo app and run `npx askvireo`.",
   "repository": {
     "type": "git",
