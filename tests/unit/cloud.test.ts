@@ -1,4 +1,6 @@
 import type { LinkStart, NodeAccess, NodeSummary } from "@vireo/protocol";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { spawn } from "node:child_process";
 import { createServer } from "node:net";
 import { resolve } from "node:path";
@@ -167,13 +169,19 @@ describe.each([
       expect(node.app.plugins.installed("nodes")).toBe(true);
       expect((await run("node_list", {})).text).toContain("## nas");
 
-      // Something on the NAS waits on the owner; the laptop confirms it after the owner did, but only that one.
+      // Something on the NAS waits on the owner. Another node can decline it, never confirm it: a
+      // node that was taken over could otherwise start a step on the NAS and approve it itself.
       const there = nas.app.threads.create({ temporary: true });
       const pending = nas.app.actions.create(there.id, "agent_approval", { from: "test" }, "Restart the backup job");
-      expect((await run("node_confirm", { node: "nas", action_id: pending.id, summary: "Wipe the disks" })).failed).toBe(true);
+      expect(node.app.tools.get("node_confirm")).toBeUndefined();
+      const mcp = new Client({ name: "test", version: "1" });
+      await mcp.connect(new StreamableHTTPClientTransport(new URL(peers[0]!.url), { requestInit: { headers: { authorization: `Bearer ${peers[0]!.token}` } } }));
+      const confirmed = await mcp.callTool({ name: "decide_action", arguments: { action_id: pending.id, decision: "confirm" } });
+      await mcp.close();
+      expect(confirmed.isError).toBe(true);
       expect(nas.app.actions.get(pending.id)!.status).toBe("pending");
-      expect((await run("node_confirm", { node: "nas", action_id: pending.id, summary: "Restart the backup job" })).text).toContain("Done");
-      expect(nas.app.actions.get(pending.id)!.status).toBe("done");
+      // Nor can it reach the NAS's settings, where it could set up a command to run there.
+      expect((await fetch(`${base}/n/${nasId}/api/plugins/mcp`, { method: "PATCH", headers: { authorization: `Bearer ${peers[0]!.token}`, "content-type": "application/json" }, body: "{}" })).status).toBe(403);
       const other = nas.app.actions.create(there.id, "agent_approval", { from: "test" }, "Drop the table");
       await run("node_decline", { node: "nas", action_id: other.id });
       expect(nas.app.actions.get(other.id)!.status).toBe("cancelled");

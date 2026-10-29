@@ -2,7 +2,7 @@ import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import type { App } from "./app.js";
 import { APPROVAL_TOOL } from "./tools/approval.js";
 import { forModel } from "./tools/types.js";
-import { errorMessage, newId, now, safeJson, truncate } from "./util.js";
+import { errorMessage, isTruncated, newId, now, safeJson, truncate } from "./util.js";
 import type { Action } from "@vireo/protocol";
 
 export type { Action };
@@ -64,12 +64,15 @@ export class Actions {
     this.app.threads.addNotice(threadId, "action", summary, { data: { actionId: id } });
     this.app.bus.publish({ type: "action.updated", threadId, actionId: id });
     const thread = this.app.threads.get(threadId);
+    // One tap confirms only what the notification shows in full: past the cut, a task could say
+    // more than the owner read. Such a one opens the card, which shows all of it.
+    const whole = !isTruncated(summary);
     void this.app.push.notify({
       title: thread ? `Confirm: ${thread.title}` : "Vireo needs your confirmation",
-      body: summary,
+      body: whole ? summary : `${summary}\nOpen Vireo to read it in full before you confirm.`,
       url: `/#thread/${threadId}`,
       tag: `action-${id}`,
-      decide: { confirm: this.decisionUrl(id, "confirm"), cancel: this.decisionUrl(id, "cancel") },
+      decide: whole ? { confirm: this.decisionUrl(id, "confirm"), cancel: this.decisionUrl(id, "cancel") } : undefined,
     });
     return this.get(id)!;
   }

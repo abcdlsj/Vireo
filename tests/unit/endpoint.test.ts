@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { App } from "../../apps/node/src/app.js";
 import { createHttp } from "../../apps/node/src/http/index.js";
 import { PATH } from "../../apps/node/src/plugins/endpoint/index.js";
+import { truncate } from "../../apps/node/src/util.js";
 import { testApp } from "./helpers.js";
 
 let apps: App[] = [];
@@ -124,5 +125,14 @@ describe("one-tap decisions on a notification", () => {
     expect(app.actions.get(a.id)!.status).toBe("done");
     const declined = await http.request(path(app.push.recent[0]!.decide!.cancel), { method: "POST" });
     expect(await declined.json()).toMatchObject({ status: "cancelled" });
+  });
+
+  it("are not offered for a summary cut short, which could hide what the step does", async () => {
+    const app = testApp();
+    apps.push(app);
+    const t = app.threads.create({ temporary: true });
+    const a = app.actions.create(t.id, "agent_approval", { from: "x" }, truncate(`Fix the typo in README; ${"then ".repeat(40)}write ~/.zshrc`, 140));
+    expect(app.push.recent[0]).toMatchObject({ decide: undefined, body: expect.stringContaining("Open Vireo to read it in full") });
+    expect(app.actions.get(a.id)!.status).toBe("pending");
   });
 });

@@ -9,6 +9,7 @@ import { decryptFeishu } from "../../apps/node/src/plugins/feishu/index.js";
 import { parseServers, parseSecrets, toolName } from "../../apps/node/src/plugins/mcp/index.js";
 import { createHttp } from "../../apps/node/src/http/index.js";
 import { messageText, OVERVIEW_ID } from "../../apps/node/src/threads.js";
+import { truncate } from "../../apps/node/src/util.js";
 import { testApp } from "./helpers.js";
 
 let apps: App[] = [];
@@ -135,6 +136,24 @@ describe("telegram plugin", () => {
     tg.push({ callback_query: { id: "cb1", from: { id: 7 }, message: { message_id: 1, chat: { id: 42 } }, data } });
     await until(() => tg.sent.some((m) => m.text.startsWith("Cancelled")));
     expect(app.actions.pending()).toHaveLength(0);
+  });
+
+  it("gives no buttons for a confirmation whose summary was cut short, and a tap on one does not run it", async () => {
+    const tg = await fakeTelegram();
+    process.env.VIREO_TELEGRAM_API_URL = tg.url;
+    const app = open();
+    await app.plugins.install("telegram", { bot_token: "123:abc" });
+    const code = (await app.plugins.action("telegram", "link", { origin: "" })).message!.match(/\/start (\S+)/)![1]!;
+    tg.say(`/start ${code}`);
+    await until(() => tg.sent.some((m) => m.text.startsWith("Linked.")));
+
+    const t = app.threads.create({ temporary: true });
+    const a = app.actions.create(t.id, "agent_approval", { from: "x" }, truncate(`Fix the typo; ${"then ".repeat(40)}write ~/.zshrc`, 140));
+    await until(() => tg.sent.some((m) => m.text.includes("Open Vireo to read it in full")));
+    expect(tg.sent.some((m) => m.reply_markup?.inline_keyboard?.length)).toBe(false);
+    tg.push({ callback_query: { id: "cb1", from: { id: 7 }, message: { message_id: 1, chat: { id: 42 } }, data: `act:confirm:${a.id}` } });
+    await until(() => tg.sent.filter((m) => m.text.includes("Open Vireo to read it in full")).length === 2);
+    expect(app.actions.get(a.id)!.status).toBe("pending");
   });
 });
 

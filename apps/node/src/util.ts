@@ -12,9 +12,14 @@ export function now(): number {
   return Date.now();
 }
 
+const TRUNCATED = "… [truncated ";
+
 export function truncate(text: string, max: number): string {
-  return text.length > max ? `${text.slice(0, max)}… [truncated ${text.length - max} chars]` : text;
+  return text.length > max ? `${text.slice(0, max)}${TRUNCATED}${text.length - max} chars]` : text;
 }
+
+/** Whether `truncate` cut this text short. */
+export const isTruncated = (text: string): boolean => text.includes(TRUNCATED);
 
 export function safeJson<T>(text: string | null | undefined, fallback: T): T {
   if (!text) return fallback;

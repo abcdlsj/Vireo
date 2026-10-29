@@ -1,7 +1,7 @@
 import type { PluginContext } from "./types.js";
 import type { Notification } from "../push.js";
 import { OVERVIEW_ID } from "../threads.js";
-import { errorMessage, truncate } from "../util.js";
+import { errorMessage, isTruncated, truncate } from "../util.js";
 import { randomInt } from "node:crypto";
 
 /**
@@ -199,6 +199,11 @@ export class ChatBridge {
       await this.reply(chatId, note);
       return note;
     }
+    if (confirm && isTruncated(before.summary)) {
+      const note = `Open Vireo to read it in full before you confirm: ${before.summary}`;
+      await this.reply(chatId, note, before.threadId);
+      return note;
+    }
     this.watch(before.threadId, chatId);
     const after = confirm ? await this.ctx.host.actions.confirm(actionId) : this.ctx.host.actions.cancel(actionId);
     const note = `${confirm ? (after.status === "failed" ? "Failed" : "Confirmed") : "Cancelled"}: ${after.summary}`;
@@ -257,7 +262,8 @@ export class ChatBridge {
     const targets = threadId && s.watching[threadId] ? [s.watching[threadId]!] : s.chats.map((c) => c.chatId);
     const msg: OutMessage = {
       text: `${n.title}\n${n.body}`,
-      buttons: actionId
+      // Buttons only where the notification can be confirmed in one tap (see Actions.create).
+      buttons: actionId && n.decide
         ? [
             [
               { label: "Confirm", data: `act:confirm:${actionId}` },

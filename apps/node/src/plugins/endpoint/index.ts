@@ -124,13 +124,11 @@ function toolList(memory: boolean, node: boolean) {
     tools.push({
       name: "decide_action",
       description:
-        "Confirm or decline a confirmation waiting on this node (its id is in brackets in ask_vireo and read_thread). Only call it with the owner's own decision, which they made on a confirmation card of yours. Confirming runs the action and lets Vireo continue; the reply comes back.",
+        "Decline a confirmation waiting on this node (its id is in brackets in ask_vireo and read_thread), when the owner said no. Confirming is the owner's alone, in the Vireo app or a notification of this node's: another node cannot do it for them.",
       inputSchema: Type.Object({
         action_id: Type.String(),
-        decision: Type.Union([Type.Literal("confirm"), Type.Literal("decline")]),
+        decision: Type.Literal("decline"),
         reason: Type.Optional(Type.String({ description: "Why the owner declined, for Vireo." })),
-        expected_summary: Type.Optional(Type.String({ description: "The summary the owner saw; the call is refused if it is not this confirmation's." })),
-        wait_seconds: wait(60, 600),
       }),
     });
   if (node)
@@ -276,25 +274,11 @@ function serve(ctx: PluginContext, key: Caller, keys: { touch(id: string): void 
         const a = host.actions.get(id);
         if (!a) return text(`No confirmation ${id}.`, true);
         if (a.status !== "pending") return text(`Already ${a.status}${a.result ? `: ${a.result}` : ""}.`);
-        const norm = (v: string) => v.replace(/\s+/g, " ").trim().toLowerCase();
-        if (typeof args.expected_summary === "string" && norm(args.expected_summary) !== norm(a.summary))
-          return text(`Not decided: ${id} is “${a.summary}”, not what the owner saw. Ask the owner about this one.`, true);
-        if (args.decision === "decline") {
-          host.actions.cancel(id, typeof args.reason === "string" && args.reason.trim() ? args.reason.trim() : undefined);
-          return text(`Declined: ${a.summary}.`);
-        }
-        const since = now();
-        const done = await host.actions.confirm(id);
-        // An agent's approval settles there; anything else lets Vireo carry on, so wait for what it says.
-        const settles = a.tool === APPROVAL_TOOL;
-        const said = done.status === "pending" || settles ? undefined : await runEnd(a.threadId, since, seconds(args.wait_seconds, 60, 600), signal);
-        const lines = [`${done.status === "done" ? "Done" : done.status === "failed" ? "Failed" : `Now ${done.status}`}: ${a.summary}.`];
-        if (done.result) lines.push(done.result);
-        if (said) lines.push(`\nVireo: ${said}`);
-        else if (!settles) lines.push(`\nVireo is carrying on in thread ${a.threadId}; read it with read_thread.`);
-        const waiting = waitingLine(a.threadId);
-        if (waiting) lines.push(waiting);
-        return text(lines.join("\n"));
+        // A node that was taken over could otherwise start a step here (a coding agent's run) and
+        // confirm it itself. The owner confirms on this node: the app reaches it directly.
+        if (args.decision !== "decline") return text(`Not confirmed: the owner confirms “${a.summary}” themselves, in the Vireo app (it lists what this node waits on) or on this node's notification.`, true);
+        host.actions.cancel(id, typeof args.reason === "string" && args.reason.trim() ? args.reason.trim() : undefined);
+        return text(`Declined: ${a.summary}.`);
       }
       case "export_memory": {
         if (!key.node) return text("Only your own Vireo nodes can do that.", true);

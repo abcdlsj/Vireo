@@ -2,7 +2,7 @@ import type { NodeClaims } from "@vireo/protocol";
 import { Hono, type Context } from "hono";
 import { verifyAccess } from "../access.js";
 import type { App } from "../app.js";
-import { errorMessage } from "../util.js";
+import { errorMessage, isTruncated } from "../util.js";
 import { VERSION } from "../version.js";
 import { browserRoutes } from "./browser.js";
 import { eventRoutes } from "./events.js";
@@ -69,6 +69,7 @@ export function createHttp(app: App): Hono<Env> {
     const action = app.actions.get(id);
     if (!action) return c.json({ error: "Not found" }, 404);
     if (action.status !== "pending") return c.json({ status: action.status, summary: action.summary });
+    if (decision === "confirm" && isTruncated(action.summary)) return c.json({ error: "Open Vireo to read it in full before you confirm." }, 409);
     const done = decision === "confirm" ? await app.actions.confirm(id) : app.actions.cancel(id, "Declined from a notification");
     return c.json({ status: done.status, summary: done.summary });
   });
