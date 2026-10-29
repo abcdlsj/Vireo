@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import type { App } from "../../apps/node/src/app.js";
-import { agentEnv, agentOverlay, permissionFor, TurnReader } from "../../apps/node/src/acp.js";
+import { AcpAgents, agentEnv, agentOverlay, permissionFor, TurnReader, type AgentSpec } from "../../apps/node/src/acp.js";
 import { detectedSetups, readProfile } from "../../apps/node/src/plugins/agents/index.js";
 import type { ToolContext } from "../../apps/node/src/tools/types.js";
 import { tempDir, testApp } from "./helpers.js";
@@ -204,5 +204,23 @@ describe("coding agents plugin", () => {
     const turn = reader.finish();
     expect(turn.stopReason).toBe("end_turn");
     expect(turn.usage).toEqual({ model: "gpt-6-astra", input: 100, output: 20, cached: 80, cacheWrite: 5 });
+  });
+
+  it("prefers the result's count over a usage event's, since the result counts the whole turn", () => {
+    const reader = new TurnReader();
+    reader.push({ type: "status", text: "usage updated", tag: "usage_update", breakdown: { inputTokens: 10, outputTokens: 2 } });
+    reader.end({ status: "completed", _meta: { quota: { token_count: { inputTokens: 100, outputTokens: 20 } } } });
+    expect(reader.finish().usage).toMatchObject({ input: 100, output: 20 });
+  });
+
+  it("keeps a setup's runtime when a call narrows the mode, and replaces it when the setup changes", async () => {
+    const agents = new AcpAgents(tempDir());
+    const base: AgentSpec = { name: "work", command: "claude", cwd: tempDir(), mode: "full", env: {} };
+    const full = agents.runtime(base);
+    const edits = agents.runtime({ ...base, mode: "edits" });
+    expect(edits).not.toBe(full);
+    expect(agents.runtime(base)).toBe(full);
+    expect(agents.runtime({ ...base, env: { X: "1" } })).not.toBe(full);
+    await agents.shutdown();
   });
 });

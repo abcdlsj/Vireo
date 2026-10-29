@@ -145,7 +145,7 @@ export class TurnReader {
       // Each plan update is the whole plan, not an addition to it.
       turn.plans = e.entries.map((p) => `${p.status}: ${p.content}`);
     } else if (e.type === "status" && e.tag === "usage_update" && e.breakdown) {
-      // The last breakdown of a turn is that turn's usage; earlier ones were partial.
+      // Only a fallback: the result's own count, when there is one, replaces it.
       const usage: TurnUsage = {};
       if (e.breakdown.inputTokens !== undefined) usage.input = e.breakdown.inputTokens;
       if (e.breakdown.outputTokens !== undefined) usage.output = e.breakdown.outputTokens;
@@ -158,14 +158,14 @@ export class TurnReader {
     return undefined;
   }
 
-  /** The turn's end: how it stopped, and (when no usage event came) the tokens on its result. */
+  /** The turn's end: how it stopped, and the tokens on its result, which count the whole turn. */
   end(result: AcpRuntimeTurnResult): void {
     if (result.status === "failed") {
       this.turn.errors.push(result.error.message);
       return;
     }
     this.turn.stopReason = result.stopReason;
-    if (!this.turn.usage) this.turn.usage = turnUsage(result._meta);
+    this.turn.usage = turnUsage(result._meta) ?? this.turn.usage;
   }
 
   finish(): Turn {
@@ -196,7 +196,7 @@ export function turnUsage(meta: Record<string, unknown> | null | undefined): Tur
 }
 
 export interface AgentSpec {
-  /** The setup's name and the mode this call runs in: one runtime per pair, so what its client may do is its own. */
+  /** The setup's name: with the mode, it picks the runtime the call runs in. */
   name: string;
   /** An acpx agent name, or a command of the owner's. */
   command: string;
@@ -242,13 +242,22 @@ export class AcpAgents {
 
   constructor(private readonly stateDir: string) {}
 
-  /** The runtime key includes the mode, so a call that narrows the mode gets a client with narrower powers. */
+  /**
+   * One runtime per setup and mode, so a call that narrows the mode gets a client with narrower
+   * powers without stopping the setup's other calls.
+   */
   runtime(spec: AgentSpec): AcpRuntime {
-    const key = JSON.stringify([spec.command, spec.cwd, spec.mode, spec.env]);
-    const known = this.runtimes.get(spec.name);
+    const slot = `${spec.name}\0${spec.mode}`;
+    const key = JSON.stringify([spec.command, spec.cwd, spec.env]);
+    const known = this.runtimes.get(slot);
     if (known?.key === key) return known.runtime;
-    // The setup or the mode changed: its old agents go, its sessions stay on disk.
-    if (known) void known.runtime.shutdown?.().catch(() => {});
+    // The setup changed: the agents it started under the old settings go, its sessions stay on disk.
+    for (const [other, r] of this.runtimes) {
+      if (other.startsWith(`${spec.name}\0`) && r.key !== key) {
+        this.runtimes.delete(other);
+        void r.runtime.shutdown?.().catch(() => {});
+      }
+    }
     const runtime = createAcpRuntime({
       cwd: spec.cwd,
       agentProcessEnv: agentOverlay(process.env, spec.env),
@@ -261,7 +270,7 @@ export class AcpAgents {
       terminal: spec.mode === "full",
       fs: spec.mode !== "read-only",
     });
-    this.runtimes.set(spec.name, { key, runtime });
+    this.runtimes.set(slot, { key, runtime });
     return runtime;
   }
 
