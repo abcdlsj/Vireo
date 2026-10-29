@@ -89,7 +89,33 @@ say "Using Node.js $("$node_bin" -v) at $node_bin"
 
 # The service asks a question or two; read the answers from the terminal even
 # though this script itself arrives through a pipe.
-if [ -r /dev/tty ] && (: </dev/tty) 2>/dev/null; then
-  exec "$bin_dir/npx" --yes "$PACKAGE@latest" service install "$@" </dev/tty
+setup_node() {
+  if [ -r /dev/tty ] && (: </dev/tty) 2>/dev/null; then
+    "$bin_dir/npx" --yes "$PACKAGE@latest" service install "$@" </dev/tty 3>&-
+  else
+    "$bin_dir/npx" --yes "$PACKAGE@latest" service install "$@" 3>&-
+  fi
+}
+
+# npm's own errors seldom say what to do, so what goes to stderr is kept (and
+# still shown) to explain a failure afterwards.
+err="$(mktemp)"
+trap 'rm -rf "${tmp:-}" "$err" "$err.status"' EXIT
+# `|| echo` keeps set -e from ending the group before its status is written.
+{ { setup_node "$@" && echo 0 >"$err.status" || echo $? >"$err.status"; } 2>&1 1>&3 | tee "$err" >&2; } 3>&1
+status="$(cat "$err.status" 2>/dev/null || echo 1)"
+[ "$status" = 0 ] && exit 0
+
+say "" >&2
+if grep -Eq 'ETARGET|notarget' "$err"; then
+  say "Vireo: npm knows the latest $PACKAGE version but could not fetch it yet. This happens for a few minutes after a release, while npm's servers catch up. Nothing was installed or changed; run this again in a few minutes." >&2
+elif grep -Eq 'ENOTFOUND|EAI_AGAIN|ETIMEDOUT|ECONNRESET|ECONNREFUSED|ERR_SOCKET|network' "$err"; then
+  say "Vireo: npm could not reach registry.npmjs.org. Check the network (and HTTPS_PROXY, if you are behind a proxy), then run this again." >&2
+elif grep -Eq 'EACCES|EPERM' "$err"; then
+  say "Vireo: npm could not write a file it needs (the path is above). Often ~/.npm belongs to root after a 'sudo npm'; fix it with: sudo chown -R \"\$(id -u):\$(id -g)\" ~/.npm" >&2
+else
+  say "Vireo: setting up the node failed (exit $status); the reason is above. Running this again is safe." >&2
 fi
-exec "$bin_dir/npx" --yes "$PACKAGE@latest" service install "$@"
+log="$(sed -n 's/.*A complete log of this run can be found in: *//p' "$err" | tail -n 1)"
+[ -n "$log" ] && say "npm's full log: $log" >&2
+exit "$status"
