@@ -150,9 +150,17 @@
 .shell .title-input {
   font-size: 28px;
   line-height: 34px;
+  /* Narrower windows get a smaller title so a long name still takes two lines. */
   font-weight: 650;
   letter-spacing: -0.018em;
   text-wrap: balance;
+}
+
+@media (max-width: 1000px) {
+  :is(.shell .page-head h1, .shell .page-title, .shell .title-input) {
+    font-size: 22px;
+    line-height: 28px;
+  }
 }
 
 .shell .props {
@@ -352,9 +360,6 @@
   background: var(--c-paper);
   color: var(--c-ink);
   font-weight: 600;
-  box-shadow:
-    0 0 0 1px var(--c-hairline),
-    0 1px 2px rgba(30, 30, 20, 0.06);
 }
 
 .shell .panel-tabs .close {
@@ -523,8 +528,8 @@
 }
 
 .shell .settings :is(input, select, textarea):focus {
-  border-color: var(--c-accent);
-  box-shadow: 0 0 0 3px var(--c-accent-soft);
+  border-color: var(--c-ink-2);
+  box-shadow: none;
 }
 
 .shell .settings label {
@@ -549,7 +554,7 @@
 }
 
 /* A phone held sideways is wide but short: the details stay a sheet (see styles.css). */
-@media (max-width: 760px), (pointer: coarse) and (max-height: 560px) {
+@media (max-width: 1100px), (pointer: coarse) and (max-height: 560px) {
   .shell .side-panel,
   .shell .side-panel:not(.wide) {
     width: auto;
@@ -587,7 +592,9 @@
 .shell .steps.now .steps-toggle {
   padding-left: 10px;
   background: var(--c-paper);
-  box-shadow: var(--c-shadow);
+  border: 1px solid var(--c-line);
+  padding-top: 3px;
+  padding-bottom: 3px;
   color: var(--c-ink);
   cursor: default;
 }
@@ -604,8 +611,9 @@
   max-width: 100%;
 }
 
+/* The eyes and the count ride the first line's baseline, so a wrapped step still reads as one line of type. */
 .shell .steps.now .steps-toggle {
-  align-items: flex-start;
+  align-items: baseline;
 }
 
 .steps.now .steps-label {
@@ -1538,7 +1546,6 @@ button.attach:active {
   display: none;
 }
 
-/* The eyes sit on the first line of the live step, which can wrap. */
-.steps.now .steps-toggle > .eyes {
-  margin-top: 6px;
+.steps.now .steps-toggle > .count {
+  align-self: baseline;
 }

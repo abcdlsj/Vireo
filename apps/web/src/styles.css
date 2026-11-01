@@ -164,11 +164,12 @@ textarea {
   transition: border-color 0.12s, box-shadow 0.12s;
 }
 
+/* Focus is a tone step, not a colour: the field darkens its edge and nothing else. */
 input:focus,
 select:focus,
 textarea:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft);
+  border-color: var(--text-2);
+  box-shadow: none;
 }
 
 input[type="checkbox"] {
@@ -2998,7 +2999,7 @@ ul.rows {
  * conversation instead of taking a column beside it. Keep this query in step
  * with SHEET_QUERY in SidePanel.tsx.
  */
-@media (max-width: 760px), (pointer: coarse) and (max-height: 560px) {
+@media (max-width: 1100px), (pointer: coarse) and (max-height: 560px) {
   .panel-tabs .close.widen {
     display: none;
   }

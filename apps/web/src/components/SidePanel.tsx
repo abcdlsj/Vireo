@@ -6,8 +6,8 @@ import { AttachIcon, CalendarIcon, CloseIcon, FullscreenIcon, GlobeIcon, Keyboar
 
 const WIDE_KEY = "vireo.panel.wide";
 
-/** Where the details are a sheet rising from the bottom: phones, held either way. Keep in step with styles.css. */
-export const SHEET_QUERY = "(max-width: 760px), (pointer: coarse) and (max-height: 560px)";
+/** Where the details are a sheet rising from the bottom: anything too narrow for the rail beside the thread. Keep in step with styles.css. */
+export const SHEET_QUERY = "(max-width: 1100px), (pointer: coarse) and (max-height: 560px)";
 
 export function useSheet(): boolean {
   const [sheet, setSheet] = useState(() => window.matchMedia(SHEET_QUERY).matches);
