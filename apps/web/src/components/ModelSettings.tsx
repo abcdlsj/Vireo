@@ -102,7 +102,7 @@ function Current({ st }: { st: ModelStatus }) {
   const cli = st.using === "cli" ? st.clis.find((c) => c.id === st.cli) : undefined;
   return (
     <section className="card model-now" data-testid="models-card">
-      {st.fake ? <p className="tag">Demo mode: a scripted model is answering.</p> : null}
+      {st.fake ? <p className="tag demo-note">Demo mode: a scripted model is answering.</p> : null}
       {st.ready ? (
         <p>
           <span className="dot online" /> Using <b>{cli && st.main === DEFAULT ? `${cli.name}'s default model` : st.main}</b>

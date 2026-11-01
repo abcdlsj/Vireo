@@ -29,7 +29,7 @@ export function EventBody({
   return (
     <div className="tearoff-wrap">
       <div className={`tearoff ${card.status}`}>
-        <span className="tearoff-month">{s ? `${weekday(s)} · ${monthShort(s)}`.toUpperCase() : ""}</span>
+        <span className="tearoff-month">{s ? `${weekday(s)} · ${monthShort(s)}` : ""}</span>
         <span className="tearoff-day">{s ? s.getDate() : "?"}</span>
       </div>
       <div className="event-main">

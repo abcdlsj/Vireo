@@ -280,7 +280,7 @@ function section(c: Card): (typeof SECTIONS)[number]["key"] {
 }
 
 /** True on a phone, where the shell shows one page at a time (see shell.css). */
-function usePhone(): boolean {
+export function usePhone(): boolean {
   const query = "(max-width: 760px)";
   const [phone, setPhone] = useState(() => window.matchMedia(query).matches);
   useEffect(() => {

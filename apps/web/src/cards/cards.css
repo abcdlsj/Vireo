@@ -365,8 +365,17 @@
   color: var(--c-ink-2);
 }
 
+/* The signal is a dot, not coloured text: one hue stays the page's own. */
 .board-section.needs .board-head {
-  color: var(--c-needs-ink);
+  align-items: center;
+}
+
+.board-section.needs .board-head::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--c-needs);
 }
 
 .board-head .count {
@@ -2050,7 +2059,7 @@
 .tearoff-month {
   font-size: 12px;
   font-weight: 600;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.02em;
   opacity: 0.85;
 }
 

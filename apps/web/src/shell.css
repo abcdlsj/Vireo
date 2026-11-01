@@ -82,8 +82,21 @@
   color: var(--c-ink-2);
 }
 
+/* The row says what waits in ink; a small amber dot carries the signal. */
 .shell .row-sub.attention {
-  color: var(--c-needs-ink);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--c-ink-2);
+}
+
+.shell .row-sub.attention::before {
+  content: "";
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--c-needs);
 }
 
 .shell .sidebar-foot {

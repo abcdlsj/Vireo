@@ -7,7 +7,7 @@ import { ApproveNode, CloudUnreachable, NoNodes, SignIn, Unreachable } from "./c
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { currentNode, loadNodes, nodeAccess, restoreNodes } from "./nodes";
 import { cacheGet, cacheSet } from "./local-cache";
-import { Home } from "./components/Home";
+import { Home, usePhone } from "./components/Home";
 import { NewThread } from "./components/NewThread";
 import { ThreadList } from "./components/ThreadList";
 import { ThreadView } from "./components/ThreadView";
@@ -132,6 +132,7 @@ function Shell({ user }: { user: User | null }) {
 
   const current = route.name === "thread" ? route.id : null;
   const showList = route.name === "threads";
+  const phone = usePhone();
   const needsYou = threads.filter((t) => t.group === "needs_you").length;
 
   useEffect(() => {
@@ -179,6 +180,8 @@ function Shell({ user }: { user: User | null }) {
             {needsYou ? <span className="nav-count">{needsYou}</span> : null}
           </a>
         </nav>
+        {/* On a phone this list is a page of its own, so it opens with its own title. */}
+        {showList && phone ? <h1 className="list-title">All matters</h1> : null}
         <ThreadList threads={threads} current={current} />
         <nav className="sidebar-foot">
           <a href="#memory" className={`nav-item ${route.name === "memory" ? "active" : ""}`}>

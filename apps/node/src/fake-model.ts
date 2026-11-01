@@ -188,7 +188,7 @@ function noticeTurn(t: Turn): AssistantMessage {
     const result = n.match(/Result: ([\s\S]*?)\.?\s*Continue the task/)?.[1] ?? "";
     if (/Failed/i.test(result)) return reply(`That didn't go through: ${result}`);
     if (/Booking confirmed/i.test(result)) return reply(`Done — ${(result.match(/Booking confirmed for[^\n]*/) ?? result.match(/Booking confirmed[^\n]*/))?.[0] ?? "the booking is confirmed"}.`);
-    if (/sent/i.test(result)) return reply("Sent. ✅");
+    if (/sent/i.test(result)) return reply("Sent.");
     if (/Created event/i.test(result)) return reply("Done — the event is on your calendar and the invitations have gone out.");
     return reply(`Done. ${result.split("\n")[0]}`);
   }
