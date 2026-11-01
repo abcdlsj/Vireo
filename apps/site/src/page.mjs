@@ -53,8 +53,8 @@ export function page(t, other) {
 </head>
 <body>
 <header class="top">
-  <a class="brand" href="${t.path}">${MARK}<span>Vireo</span></a>
-  <nav>
+  <a class="brand" href="${t.path}" data-rise>${MARK}<span>Vireo</span></a>
+  <nav data-rise>
     <a class="lang" href="${other.path}" hreflang="${other.lang}" lang="${other.lang}" title="${esc(t.otherLabel)}">${esc(t.other)}</a>
     <a class="pill" href="${APP}">${esc(t.app)}</a>
   </nav>
@@ -62,31 +62,38 @@ export function page(t, other) {
 
 <main>
 <section class="hero">
-  <h1>${t.headline.map(esc).join(" <br>")}</h1>
-  <div class="cta">
+  <h1 data-rise>${t.headline.map(esc).join(" <br>")}</h1>
+  <p class="lede" data-rise>${esc(t.lede)}</p>
+  <div class="cta" data-rise>
     <a class="btn" href="${APP}">${esc(t.app)}</a>
     ${copyCmd(t)}
   </div>
 </section>
 
-<figure class="shot shot-board">${desk("board", t, t.boardAlt, [2400, 1500])}</figure>
+<figure class="shot shot-board" data-rise>${desk("board", t, t.boardAlt, [2400, 1500])}</figure>
 
 <section class="pair">
-  <h2>${t.confirm.map(esc).join("<br>")}</h2>
-  <figure class="shot">${desk("thread", t, t.threadAlt, [1500, 1240])}</figure>
+  <div class="pair-copy">
+    <h2 data-rise>${t.confirm.map(esc).join("<br>")}</h2>
+    <p data-rise>${esc(t.confirmBody)}</p>
+  </div>
+  <figure class="shot" data-rise>${desk("thread", t, t.threadAlt, [1500, 1240])}</figure>
 </section>
 
 <section class="pair phones">
-  <h2>${t.phone.map(esc).join("<br>")}</h2>
+  <div class="pair-copy">
+    <h2 data-rise>${t.phone.map(esc).join("<br>")}</h2>
+    <p data-rise>${esc(t.phoneBody)}</p>
+  </div>
   <div class="phone-row">
-    <figure class="shot phone">${phone("phone-board", t, t.phoneAlt[0])}</figure>
-    <figure class="shot phone">${phone("phone-thread", t, t.phoneAlt[1])}</figure>
+    <figure class="shot phone" data-rise>${phone("phone-board", t, t.phoneAlt[0])}</figure>
+    <figure class="shot phone" data-rise>${phone("phone-thread", t, t.phoneAlt[1])}</figure>
   </div>
 </section>
 
 <section class="end">
-  <ul class="facts">${t.facts.map((f) => `<li>${esc(f)}</li>`).join("")}</ul>
-  <div class="cta">
+  <ul class="facts" data-rise>${t.facts.map((f) => `<li>${esc(f)}</li>`).join("")}</ul>
+  <div class="cta" data-rise>
     <a class="btn" href="${APP}">${esc(t.app)}</a>
     ${copyCmd(t)}
   </div>
@@ -105,6 +112,39 @@ export function page(t, other) {
 </footer>
 
 <script>
+  // The page rises into place; without this script it is simply there.
+  document.documentElement.classList.add("js");
+  const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const rises = document.querySelectorAll("[data-rise]");
+  if (!still && "IntersectionObserver" in window) {
+    const seen = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) {
+          if (!e.isIntersecting) continue;
+          e.target.classList.add("in");
+          seen.unobserve(e.target);
+        }
+      },
+      { rootMargin: "0px 0px -12% 0px", threshold: 0.01 },
+    );
+    for (const el of rises) seen.observe(el);
+  } else {
+    for (const el of rises) el.classList.add("in");
+  }
+  // The board drifts a little as the page moves, so the app reads as a window.
+  const board = document.querySelector(".shot-board img");
+  if (board && !still) {
+    let queued = false;
+    const drift = () => {
+      queued = false;
+      const r = board.getBoundingClientRect();
+      const t = (r.top + r.height / 2 - innerHeight / 2) / innerHeight;
+      const y = Math.max(-14, Math.min(14, t * -22)).toFixed(1);
+      board.style.transform = "translateY(" + y + "px) scale(1.02)";
+    };
+    addEventListener("scroll", () => { if (!queued) { queued = true; requestAnimationFrame(drift); } }, { passive: true });
+    drift();
+  }
   for (const b of document.querySelectorAll("[data-copy]")) {
     b.addEventListener("click", async () => {
       const label = b.querySelector(".cmd-act");

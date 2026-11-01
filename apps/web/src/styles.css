@@ -7,9 +7,10 @@
   --bg: #ffffff;
   --sidebar: #f7f7f5;
   --text: #37352f;
-  --text-2: rgba(55, 53, 47, 0.65);
-  --muted: rgba(55, 53, 47, 0.5);
-  --faint: rgba(55, 53, 47, 0.35);
+  /* Every grey that carries words clears 4.5:1 on the ground it sits on. */
+  --text-2: #5f5d55;
+  --muted: #6b6960;
+  --faint: #6f6d66;
   --line: rgba(55, 53, 47, 0.09);
   --line-strong: rgba(55, 53, 47, 0.16);
   --hover: rgba(55, 53, 47, 0.06);
@@ -17,8 +18,8 @@
   --block: #f1f1ef;
   --field: #ffffff;
 
-  --accent: #4e8a63;
-  --accent-hover: #457b58;
+  --accent: #477f5c;
+  --accent-hover: #3f6f50;
   --accent-text: #ffffff;
   --accent-ink: #3b6e4e;
   --accent-soft: #edf3ec;
@@ -50,9 +51,9 @@
   --bg: #191919;
   --sidebar: #202020;
   --text: #e3e2e0;
-  --text-2: rgba(255, 255, 255, 0.62);
-  --muted: rgba(255, 255, 255, 0.46);
-  --faint: rgba(255, 255, 255, 0.3);
+  --text-2: rgba(255, 255, 255, 0.74);
+  --muted: rgba(255, 255, 255, 0.62);
+  --faint: rgba(255, 255, 255, 0.5);
   --line: rgba(255, 255, 255, 0.08);
   --line-strong: rgba(255, 255, 255, 0.14);
   --hover: rgba(255, 255, 255, 0.055);
@@ -2959,8 +2960,9 @@ ul.rows {
   font-weight: 500;
 }
 
+/* Centred in the area beside the section nav, so the canvas has equal margins. */
 .settings-layout .page-body {
-  margin: 0;
+  margin: 0 auto;
 }
 
 .sheet-backdrop,
@@ -3101,15 +3103,17 @@ ul.rows {
     flex-direction: column;
   }
 
+  /* Eight sections wrap into two rows instead of running off the right edge. */
   .settings-nav {
     display: flex;
+    flex-wrap: wrap;
     width: auto;
-    gap: 2px;
-    padding: 4px 12px 8px;
+    gap: 2px 6px;
+    padding: 6px 16px 10px;
     border-right: none;
     border-bottom: 1px solid var(--line);
-    overflow-x: auto;
-    white-space: nowrap;
+    overflow: visible;
+    white-space: normal;
   }
 
   .conversation-inner,

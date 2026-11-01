@@ -93,6 +93,10 @@ figure {
   margin: 0;
 }
 
+picture {
+  display: block;
+}
+
 h1,
 h2 {
   text-wrap: balance;
@@ -216,6 +220,7 @@ h2 {
 
 .cmd {
   max-width: 100%;
+  min-width: 0;
 }
 
 .cmd code {
@@ -253,9 +258,18 @@ main {
 }
 
 .hero h1 {
-  margin: 0 0 32px;
+  margin: 0 0 20px;
   font: 700 clamp(38px, 6.6vw, 84px) / 1.02 var(--display);
   letter-spacing: -0.04em;
+}
+
+.lede {
+  margin: 0 0 32px;
+  max-width: 52ch;
+  font-size: clamp(17px, 1.6vw, 20px);
+  line-height: 1.55;
+  color: var(--ink-2);
+  text-wrap: pretty;
 }
 
 :lang(zh) .hero h1 {
@@ -268,7 +282,6 @@ main {
 .shot img {
   border-radius: 14px;
   border: 1px solid var(--rule);
-  box-shadow: var(--shadow);
   background: var(--field);
 }
 
@@ -285,12 +298,24 @@ main {
   padding-top: clamp(80px, 12vw, 160px);
 }
 
-.pair h2 {
-  margin: 0;
+.pair-copy {
   position: sticky;
   top: 32px;
+}
+
+.pair h2 {
+  margin: 0 0 16px;
   font: 700 clamp(26px, 3vw, 36px) / 1.15 var(--display);
   letter-spacing: -0.03em;
+}
+
+.pair-copy p {
+  margin: 0;
+  max-width: 30ch;
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--ink-2);
+  text-wrap: pretty;
 }
 
 :lang(zh) .pair h2 {
@@ -352,8 +377,7 @@ main {
 .foot {
   max-width: var(--wrap);
   margin: 0 auto;
-  padding: 28px var(--gutter) max(28px, env(safe-area-inset-bottom));
-  border-top: 1px solid var(--rule);
+  padding: 36px var(--gutter) max(28px, env(safe-area-inset-bottom));
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -436,7 +460,7 @@ main {
     gap: 24px;
   }
 
-  .pair h2 {
+  .pair-copy {
     position: static;
   }
 
@@ -492,6 +516,88 @@ main {
   }
 
   .cmd {
+    width: 100%;
     justify-content: space-between;
+    padding: 10px 8px 10px 14px;
+  }
+
+  /* The install line wraps rather than being cut off; it is the whole point. */
+  .cmd code {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    line-height: 1.35;
+    text-align: left;
+  }
+}
+
+/* ---------- motion: the page rises into place ---------- */
+.js [data-rise] {
+  opacity: 0;
+  transform: translateY(22px);
+  transition:
+    opacity 0.6s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.js [data-rise].in {
+  opacity: 1;
+  transform: none;
+}
+
+.js .top nav[data-rise] {
+  transition-delay: 0.06s;
+}
+
+.js .hero [data-rise]:nth-child(2) {
+  transition-delay: 0.08s;
+}
+
+.js .hero [data-rise]:nth-child(3) {
+  transition-delay: 0.16s;
+}
+
+.js .pair .pair-copy > :nth-child(2) {
+  transition-delay: 0.08s;
+}
+
+.js .pair .shot {
+  transition-delay: 0.14s;
+}
+
+.js .phone-row .phone + .phone {
+  transition-delay: 0.22s;
+}
+
+.js .shot-board img {
+  transition: transform 0.2s linear;
+  will-change: transform;
+}
+
+.btn:active,
+.pill:active,
+.cmd:active {
+  transform: translateY(1px);
+}
+
+.btn,
+.pill,
+.cmd {
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease,
+    transform 0.12s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .js [data-rise] {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+
+  .js .shot-board img {
+    transform: none !important;
+    transition: none;
   }
 }

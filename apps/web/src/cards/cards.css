@@ -16,11 +16,11 @@
   --c-canvas: #f1f1ec;
   /* The working area beside the sidebar: a shade lighter than the canvas. */
   --c-main: #fafaf7;
-  --c-hairline: rgba(30, 30, 20, 0.07);
+  --c-hairline: #ecece7;
   --c-paper: #ffffff;
   --c-ink: #1f1f1a;
   --c-ink-2: #55544c;
-  --c-ink-3: #8b8a80;
+  --c-ink-3: #6d6c62;
   --c-line: rgba(30, 30, 20, 0.12);
   --c-soft: #f6f6f2;
   --c-chip: #e6e7e0;
@@ -52,12 +52,12 @@
 :root[data-theme="dark"] {
   --c-canvas: #141412;
   --c-main: #191917;
-  --c-hairline: rgba(255, 255, 255, 0.06);
+  --c-hairline: #2a2a26;
   --c-paper: #1f1f1c;
   --c-ink: #ecebe5;
   --c-ink-2: #a9a89e;
-  --c-ink-3: #77766d;
-  --c-line: rgba(255, 255, 255, 0.12);
+  --c-ink-3: #918f85;
+  --c-line: #3a3a33;
   --c-soft: #282824;
   --c-chip: #2c2c27;
   --c-accent: #7cc296;
@@ -74,8 +74,9 @@
   --c-dark-2: #22221f;
   --c-plus: #7cc296;
   --c-minus: #ec8c84;
-  --c-shadow: 0 0 0 1px rgba(255, 255, 255, 0.05), 0 12px 32px -10px rgba(0, 0, 0, 0.6);
-  --c-shadow-hover: 0 0 0 1px rgba(255, 255, 255, 0.09), 0 18px 40px -10px rgba(0, 0, 0, 0.7);
+  /* Dark surfaces separate by a hairline and a step of lightness, never by a floating shadow. */
+  --c-shadow: 0 0 0 1px rgba(255, 255, 255, 0.07);
+  --c-shadow-hover: 0 0 0 1px rgba(255, 255, 255, 0.12);
 }
 
 /* ---------- home: the board, in the main area of the shell ---------- */
