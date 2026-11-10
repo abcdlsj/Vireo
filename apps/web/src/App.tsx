@@ -106,6 +106,29 @@ function Shell({ user }: { user: User | null }) {
     }
   }, [nodeId]);
 
+  /**
+   * Moving a thread between the lists (archive, unarchive) shows in the sidebar
+   * at once; the fetch behind it keeps the rest honest.
+   */
+  const moveThread = useCallback(
+    (id: string, archived: boolean) => {
+      setThreads((ts) => {
+        const t = ts.find((x) => x.id === id);
+        if (!t) return ts;
+        const moved: Thread = {
+          ...t,
+          group: archived ? "archived" : t.state === "done" ? "done" : "in_progress",
+          archivedAt: archived ? Date.now() : null,
+          needsYou: archived ? false : t.needsYou,
+          running: archived ? false : t.running,
+        };
+        return [moved, ...ts.filter((x) => x.id !== id)];
+      });
+      void loadThreads();
+    },
+    [loadThreads],
+  );
+
   const loadMe = useCallback(async () => {
     const m = await api.get<Me>("/api/me");
     setMe(m);
@@ -200,7 +223,7 @@ function Shell({ user }: { user: User | null }) {
         {route.name === "home" ? (
           <Home me={me} onSearch={() => setJump(true)} />
         ) : route.name === "thread" ? (
-          <ThreadView key={route.id} id={route.id} />
+          <ThreadView key={route.id} id={route.id} onArchiveChange={moveThread} />
         ) : route.name === "new" ? (
           <NewThread />
         ) : route.name === "memory" ? (

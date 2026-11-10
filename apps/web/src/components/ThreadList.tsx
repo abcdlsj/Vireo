@@ -2,6 +2,8 @@ import type { Thread } from "../api";
 import { relTime } from "../format";
 import { prefetchThread } from "../thread-cache";
 import { attentionOf, Eyes, nowLine } from "./Eyes";
+import { useState } from "react";
+import { ChevronDown, ChevronRight } from "../icons";
 
 const GROUPS: { key: Thread["group"]; label: string }[] = [
   { key: "needs_you", label: "Needs you" },
@@ -10,19 +12,62 @@ const GROUPS: { key: Thread["group"]; label: string }[] = [
   { key: "archived", label: "Archived" },
 ];
 
+/** Groups that start folded, and the owner opens them; the choice is kept on this device. */
+const FOLDED = new Set<Thread["group"]>(["archived"]);
+const KEY = "vireo.group.open";
+
+function startOpen(key: Thread["group"]): boolean {
+  try {
+    const kept = localStorage.getItem(`${KEY}.${key}`);
+    if (kept !== null) return kept === "1";
+  } catch {
+    // Storage blocked: the default stands.
+  }
+  return !FOLDED.has(key);
+}
+
+function keepOpen(key: Thread["group"], open: boolean): void {
+  try {
+    localStorage.setItem(`${KEY}.${key}`, open ? "1" : "0");
+  } catch {
+    // Storage blocked: it just does not persist.
+  }
+}
+
 export function ThreadList({ threads, current }: { threads: Thread[]; current: string | null }) {
+  const [open, setOpen] = useState<Partial<Record<Thread["group"], boolean>>>(() => ({
+    archived: startOpen("archived"),
+  }));
   return (
     <div className="thread-list" data-testid="thread-list">
       {GROUPS.map((g) => {
         const items = threads.filter((t) => t.group === g.key);
         if (items.length === 0) return null;
+        // A folded group says how many it holds, so nothing disappears without a trace.
+        const folded = FOLDED.has(g.key);
+        const shown = open[g.key] ?? startOpen(g.key);
+        const toggle = () => {
+          const next = !shown;
+          setOpen((o) => ({ ...o, [g.key]: next }));
+          keepOpen(g.key, next);
+        };
         return (
-          <section key={g.key} data-testid={`group-${g.key}`}>
-            <h3>
-              {g.label}
-              <span className="count">{items.length}</span>
-            </h3>
-            {(g.key === "done" || g.key === "archived" ? items.slice(0, 30) : items).map((t) => (
+          <section key={g.key} data-testid={`group-${g.key}`} data-open={folded ? String(shown) : undefined}>
+            {folded ? (
+              <h3>
+                <button className="group-toggle" onClick={toggle} aria-expanded={shown} data-testid={`toggle-${g.key}`}>
+                  {shown ? <ChevronDown /> : <ChevronRight />}
+                  {g.label}
+                  <span className="count">{items.length}</span>
+                </button>
+              </h3>
+            ) : (
+              <h3>
+                {g.label}
+                <span className="count">{items.length}</span>
+              </h3>
+            )}
+            {(shown ? (g.key === "done" || g.key === "archived" ? items.slice(0, 30) : items) : []).map((t) => (
               <Row key={t.id} t={t} active={current === t.id} />
             ))}
           </section>

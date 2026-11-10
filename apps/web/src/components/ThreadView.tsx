@@ -144,7 +144,7 @@ function settled(l: Live, d: ThreadDetail): boolean {
   return d.messages.some((m) => m.role === "assistant" && m.text.trim() === text);
 }
 
-export function ThreadView({ id }: { id: string }) {
+export function ThreadView({ id, onArchiveChange }: { id: string; onArchiveChange?: (id: string, archived: boolean) => void }) {
   // A thread seen lately shows at once from what was loaded then, while a fresh copy loads.
   const [detail, setDetail] = useState<ThreadDetail | null>(() => cachedThread(id));
   const [error, setError] = useState("");
@@ -355,7 +355,16 @@ export function ThreadView({ id }: { id: string }) {
         </span>
         <div className="head-actions">
           {isOverview ? null : t.archivedAt ? (
-            <button className="btn ghost small" onClick={() => void api.post(`/api/threads/${t.id}/unarchive`).then(load)} data-testid="unarchive">
+            <button
+              className="btn ghost small"
+              onClick={() =>
+                void api.post(`/api/threads/${t.id}/unarchive`).then(() => {
+                  onArchiveChange?.(t.id, false);
+                  return load();
+                })
+              }
+              data-testid="unarchive"
+            >
               Unarchive
             </button>
           ) : (
@@ -373,7 +382,13 @@ export function ThreadView({ id }: { id: string }) {
               <button
                 className="btn ghost small"
                 title="Put it away: out of the lists, everything kept"
-                onClick={() => void api.post(`/api/threads/${t.id}/archive`).then(() => go(""))}
+                onClick={() =>
+                  void api.post(`/api/threads/${t.id}/archive`).then(() => {
+                    // The sidebar moves it before the list is fetched again.
+                    onArchiveChange?.(t.id, true);
+                    go("");
+                  })
+                }
                 data-testid="archive"
               >
                 Archive

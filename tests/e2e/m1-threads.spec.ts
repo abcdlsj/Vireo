@@ -411,4 +411,22 @@ test.describe("Milestone 1 — Threads that think", () => {
     await page.getByRole("button", { name: "Reopen" }).click();
     await expect(page.locator(`[data-testid="group-in_progress"] [data-thread-id="${id}"]`)).toBeVisible();
   });
+
+  test("[Archive] a thread put away leaves the lists at once, and its group starts folded", async ({ page, request }) => {
+    const id = await startThread(page, "Renew the passport before it expires");
+    await finalReply(page, request);
+    await page.getByTestId("archive").click();
+
+    // Back on the list, and out of "In hand" without waiting for a reload.
+    await expect(page.locator(`[data-testid="group-in_progress"] [data-thread-id="${id}"]`)).toHaveCount(0);
+    const archived = page.getByTestId("group-archived");
+    await expect(archived).toHaveAttribute("data-open", "false");
+    await expect(archived).toContainText("1");
+
+    // Opening it shows the thread, and the choice is kept on this device.
+    await page.getByTestId("toggle-archived").click();
+    await expect(archived.locator(`[data-thread-id="${id}"]`)).toBeVisible();
+    await page.reload();
+    await expect(page.getByTestId("group-archived")).toHaveAttribute("data-open", "true");
+  });
 });

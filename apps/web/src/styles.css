@@ -465,6 +465,25 @@ button.link.danger {
   font-weight: 400;
 }
 
+/* A folded group's heading is a button that looks like the others. */
+.thread-list .group-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.thread-list .group-toggle svg {
+  margin-left: -4px;
+  opacity: 0.6;
+}
+
 .thread-row {
   display: flex;
   align-items: center;
