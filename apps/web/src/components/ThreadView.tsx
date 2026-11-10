@@ -175,6 +175,37 @@ export function ThreadView({ id, onArchiveChange }: { id: string; onArchiveChang
   }, [browsing]);
   const panel = panelChoice ?? panelAuto(detail);
 
+  /*
+   * What a screen reader hears. A streamed answer is silent while it is being
+   * written (announcing every token would be noise); the owner is told that
+   * Vireo is working, then given the answer once, whole. Opening a thread with
+   * history announces nothing: it is read on the way down like any page.
+   */
+  const [announce, setAnnounce] = useState("");
+  const primed = useRef(false);
+  const announced = useRef<number | null>(null);
+  const said = useRef("");
+  useEffect(() => {
+    if (!detail) return;
+    const last = detail.messages.findLast((m): m is Extract<Message, { role: "assistant" }> => m.role === "assistant" && Boolean(m.text.trim()));
+    if (!last) return;
+    if (!primed.current) {
+      primed.current = true;
+      announced.current = last.id;
+      return;
+    }
+    if (detail.thread.running) {
+      if (said.current === "Vireo is working.") return;
+      said.current = "Vireo is working.";
+      setAnnounce(said.current);
+      return;
+    }
+    if (last.id === announced.current) return;
+    announced.current = last.id;
+    said.current = last.text;
+    setAnnounce(said.current);
+  }, [detail]);
+
   // What Vireo is paused on for the owner to do in its browser, if anything.
   const asking = useMemo(() => {
     if (!detail?.thread.running) return undefined;
@@ -344,6 +375,9 @@ export function ThreadView({ id, onArchiveChange }: { id: string; onArchiveChang
 
   return (
     <div className={`thread-view ${panel ? "with-panel" : ""}`} data-testid="thread-view" data-thread-id={t.id}>
+      <p className="sr-only" role="status" aria-live="polite" aria-atomic="true" data-testid="announce">
+        {announce}
+      </p>
       <header className="topbar">
         <a href="#" className="back" aria-label="Back to threads">
           <ChevronLeft />

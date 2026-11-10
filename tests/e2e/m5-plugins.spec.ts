@@ -7,8 +7,6 @@ const FAKE_TS = resolve("tests/fixtures/fake-tailscale");
 test.describe("Milestone 5 — Plugins", () => {
   test("[M5.1] a community plugin is added from Settings and configured there", async ({ page }) => {
     await page.goto("/#settings/plugins");
-    const card = page.getByTestId("plugins-card");
-    await card.getByTestId("community-plugins").click();
     for (const name of ["Tailscale", "Telegram", "Feishu / Lark", "MCP servers", "Search providers"]) await expect(page.getByTestId("plugin-catalog")).toContainText(name);
     await page.getByTestId("add-plugin-tailscale").click();
     const ts = page.getByTestId("plugin-tailscale");
@@ -42,7 +40,6 @@ test.describe("Milestone 5 — Plugins", () => {
 
   test("[M5.3] Google is a plugin and brings Drive", async ({ page, request }) => {
     await page.goto("/#settings/plugins");
-    await page.getByTestId("community-plugins").click();
     await page.getByTestId("add-plugin-google").click();
     await expect(page.getByTestId("plugin-google-status")).toContainText("Demo mode");
     await startThread(page, "In my drive, find the Lisbon trip plan");
@@ -53,7 +50,6 @@ test.describe("Milestone 5 — Plugins", () => {
     const repo = resolve("tests/fixtures");
     // Built in: not in the plugin catalog, a Settings page of its own, which old plugin links open.
     await page.goto("/#settings/plugins");
-    await page.getByTestId("community-plugins").click();
     await expect(page.getByTestId("add-plugin-agents")).toHaveCount(0);
     await page.goto("/#settings/plugins/agents");
     await expect(page.getByTestId("agents-found")).toBeVisible();

@@ -17,7 +17,7 @@ test.describe("Milestone 1 — Threads that think", () => {
     await page.goto("/");
     await expect(page.locator('link[rel="manifest"]')).toHaveAttribute("href", "/manifest.webmanifest");
     await expect(page.locator('meta[name="apple-mobile-web-app-capable"]')).toHaveAttribute("content", "yes");
-    await expect(page.getByRole("heading", { name: "Welcome to Vireo" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
     await signIn(page);
     await expect(page.getByTestId("home")).toBeVisible();
     await expect(page.getByTestId("node-switch").first()).toContainText("Test node");

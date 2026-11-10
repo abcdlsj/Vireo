@@ -9,7 +9,6 @@ import { go } from "../route";
  */
 export function PluginsCard({ reload, focus }: { reload: () => Promise<void>; focus?: string }) {
   const [plugins, setPlugins] = useState<PluginView[] | null>(null);
-  const [browsing, setBrowsing] = useState(false);
   const [error, setError] = useState("");
   const load = useCallback(() => api.get<{ plugins: PluginView[] }>("/api/plugins").then((r) => setPlugins(r.plugins)), []);
   useEffect(() => {
@@ -19,8 +18,6 @@ export function PluginsCard({ reload, focus }: { reload: () => Promise<void>; fo
   const loaded = plugins !== null;
   useEffect(() => {
     if (!loaded || !focus) return;
-    const target = plugins?.find((p) => p.id === focus);
-    if (target && !target.installed) setBrowsing(true);
     requestAnimationFrame(() => document.querySelector(`[data-plugin="${focus}"]`)?.scrollIntoView({ block: "center", behavior: "smooth" }));
     // Only when the page opens on a plugin, not on every reload of the list.
   }, [loaded, focus]);
@@ -48,43 +45,37 @@ export function PluginsCard({ reload, focus }: { reload: () => Promise<void>; fo
   return (
     <div className="plugins" data-testid="plugins-card">
       <div className="plugins-bar">
-        <p className="muted small">{plugins ? `${installed.length} added on this host` : ""}</p>
-        <button className={`btn small${!browsing && plugins?.length && installed.length === 0 ? " primary" : ""}`} onClick={() => setBrowsing((b) => !b)} aria-expanded={browsing} data-testid="community-plugins">
-          {browsing ? "Done" : "Community plugins"}
-        </button>
+        <p className="muted small">{plugins ? (installed.length === 1 ? "1 plugin on this host" : `${installed.length} plugins on this host`) : ""}</p>
       </div>
       {error ? <p className="error small">{error}</p> : null}
-      {browsing ? (
-        <section className="card plugin-catalog" data-testid="plugin-catalog">
-          <h3>Community plugins</h3>
-          <p className="muted small">Plugins that ship with Vireo. Each stays off until you add it.</p>
-          {available.length === 0 ? <p className="muted small">Every community plugin is added.</p> : null}
-          {available.map((p) => (
-            <div key={p.id} className={`plugin-row${p.id === focus ? " focused" : ""}`} data-plugin={p.id}>
-              <div className="plugin-about">
-                <b>{p.name}</b> <span className="muted small">by {p.author}</span>
-                <p className="muted small">{p.description}</p>
-                {p.browserSetup ? (
-                  <p className="small plugin-hint">
-                    Or let Vireo set it up: it opens the sign-in page in its browser, you sign in, it creates the keys. <SetUpWithVireo plugin={p} run={run} />
-                  </p>
-                ) : null}
-              </div>
-              <button className="btn small primary" data-testid={`add-plugin-${p.id}`} onClick={() => void run(() => api.post(`/api/plugins/${p.id}`, {}))}>
-                Add
-              </button>
-            </div>
-          ))}
-        </section>
-      ) : null}
-      {plugins && installed.length === 0 && !browsing ? (
-        <section className="card">
-          <p className="muted small">No plugins yet. Add Google, Tailscale and more from Community plugins.</p>
-        </section>
-      ) : null}
       {installed.map((p) => (
         <Plugin key={p.id} plugin={p} run={run} focused={p.id === focus} autoOpen={p.id === autoOpen} />
       ))}
+      {/* The catalogue is the page, not a drawer behind it: what can be added is the question a fresh install has. */}
+      <section className="card plugin-catalog" data-testid="plugin-catalog">
+        <h3>
+          Community plugins
+          <span className="count">{available.length}</span>
+        </h3>
+        <p className="muted small">Plugins that ship with Vireo. Each stays off until you add it.</p>
+        {plugins && available.length === 0 ? <p className="muted small">Every community plugin is added.</p> : null}
+        {available.map((p) => (
+          <div key={p.id} className={`plugin-row${p.id === focus ? " focused" : ""}`} data-plugin={p.id}>
+            <div className="plugin-about">
+              <b>{p.name}</b> <span className="muted small">by {p.author}</span>
+              <p className="muted small">{p.description}</p>
+              {p.browserSetup ? (
+                <p className="small plugin-hint">
+                  Or let Vireo set it up: it opens the sign-in page in its browser, you sign in, it creates the keys. <SetUpWithVireo plugin={p} run={run} />
+                </p>
+              ) : null}
+            </div>
+            <button className="btn small" data-testid={`add-plugin-${p.id}`} onClick={() => void run(() => api.post(`/api/plugins/${p.id}`, {}))}>
+              Add
+            </button>
+          </div>
+        ))}
+      </section>
     </div>
   );
 }

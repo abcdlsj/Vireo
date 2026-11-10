@@ -4,13 +4,74 @@ import { cloud, devSignIn, resumePendingLink, signInWithGitHub } from "../cloud"
 import { nodes, switchNode } from "../nodes";
 import { NodeSwitcher, StartNode } from "./Nodes";
 
-function Page({ title, children }: { title: string; children: ReactNode }) {
+const INSTALL = "curl -fsSL https://askvireo.com/install.sh | sh";
+
+/** Copies the one command that sets up a node; the browser's clipboard may refuse on http. */
+function CopyCommand({ command }: { command: string }) {
+  const [done, setDone] = useState(false);
+  return (
+    <button
+      type="button"
+      className="login-copy"
+      onClick={() => {
+        void navigator.clipboard?.writeText(command).then(
+          () => {
+            setDone(true);
+            window.setTimeout(() => setDone(false), 1600);
+          },
+          () => undefined,
+        );
+      }}
+    >
+      {done ? "Copied" : "Copy"}
+    </button>
+  );
+}
+
+/**
+ * Every screen before the app opens: signing in, linking a node, a node that
+ * will not answer. The action sits on the page's ground; the panel beside it
+ * is the app's own cover, so the front door says what Vireo is.
+ */
+function Page({ title, children, lede }: { title: string; children: ReactNode; lede?: string }) {
   return (
     <div className="login">
-      <div className="login-card">
-        <img src="/icon.svg" alt="" width={56} height={56} />
-        <h1>{title}</h1>
-        {children}
+      <div className="login-shell">
+        <div className="login-main">
+          <a className="login-brand" href="#" aria-label="Vireo">
+            <img src="/icon.svg" alt="" width={26} height={26} />
+            <span>Vireo</span>
+          </a>
+          <h1>{title}</h1>
+          {lede ? <p className="login-lede">{lede}</p> : null}
+          <div className="login-actions">{children}</div>
+        </div>
+        <aside className="login-side" aria-hidden="true">
+          <div className="login-side-top">
+            <img src="/icon.svg" alt="" width={34} height={34} />
+            <p className="login-side-title">Your agent, on your machine.</p>
+            <dl className="login-facts">
+              <div>
+                <dt>One matter, one thread</dt>
+                <dd>Each thing you ask about keeps its own conversation and its own card.</dd>
+              </div>
+              <div>
+                <dt>Nothing goes out on its own</dt>
+                <dd>An email, an invitation, a form: all wait for your yes.</dd>
+              </div>
+              <div>
+                <dt>It remembers you</dt>
+                <dd>What one matter teaches it, the next one already knows.</dd>
+              </div>
+            </dl>
+          </div>
+          <div className="login-install">
+            <span className="login-install-label">Run your own node</span>
+            {/* The address reads short enough to fit on one line; the button copies the whole command. */}
+            <code>{INSTALL.replace("https://", "")}</code>
+            <CopyCommand command={INSTALL} />
+          </div>
+        </aside>
       </div>
     </div>
   );
@@ -30,10 +91,10 @@ export function SignIn({ error, onDone }: { error?: string; onDone: () => void }
   }, []);
   const linking = /[#&]link=/.test(location.hash) || Boolean(localStorage.getItem("vireo.link"));
   return (
-    <Page title="Welcome to Vireo">
-      <p className="muted">
-        {linking ? "Sign in to approve the node that is asking to join your account." : "Your own assistant, running on your own machine. Sign in to reach your nodes."}
-      </p>
+    <Page
+      title={linking ? "One step to link your node" : "Sign in"}
+      lede={linking ? "Approving it lets this node join your account; nothing is sent to it until you do." : "Sign in to reach the nodes running on your own machines."}
+    >
       {unreachable ? <p className="error">{unreachable}</p> : null}
       {info?.github !== false ? (
         <button className="btn primary" onClick={signInWithGitHub} disabled={!info} data-testid="sign-in-github">
@@ -58,7 +119,7 @@ export function SignIn({ error, onDone }: { error?: string; onDone: () => void }
             Development sign-in
             <input value={login} onChange={(e) => setLogin(e.target.value)} placeholder="A name, e.g. alice" spellCheck={false} required data-testid="dev-login" />
           </label>
-          <button className="btn">Sign in</button>
+          <button className={`btn${info.github === false ? " primary" : ""}`}>Sign in</button>
         </form>
       ) : null}
       {failed ? <p className="error">{failed}</p> : null}

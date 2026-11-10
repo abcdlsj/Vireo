@@ -355,42 +355,223 @@ button.link.danger {
 }
 
 /* ---------- login ---------- */
+/* ---------- before the app opens: sign in, link a node ---------- */
 .login {
-  min-height: 100%;
+  /* Fills the window and scrolls inside itself, like every other page of the app. */
+  height: 100%;
+  overflow-y: auto;
   display: grid;
   place-items: center;
-  padding: 24px;
-  background: var(--sidebar);
+  padding: 32px;
+  background: var(--bg);
 }
 
-.login-card {
+.login-shell {
   width: 100%;
-  max-width: 360px;
+  max-width: 1060px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 0.92fr);
+  align-items: center;
+  gap: 72px;
+}
+
+.login-main {
+  width: 100%;
+  max-width: 400px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.login-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  align-self: flex-start;
+  margin-bottom: 12px;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.login-brand img {
+  border-radius: 7px;
+}
+
+.login-main h1 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 34px;
+  line-height: 40px;
+  font-weight: 700;
+  letter-spacing: -0.022em;
+  text-wrap: pretty;
+}
+
+.login-lede {
+  margin: -6px 0 0;
+  color: var(--text-2);
+  font-size: 15px;
+  line-height: 23px;
+}
+
+.login-actions {
   display: flex;
   flex-direction: column;
   gap: 14px;
+  margin-top: 6px;
 }
 
-.login-card img {
-  margin-bottom: 6px;
-  border-radius: 13px;
-  box-shadow: 0 0 0 1px var(--line), var(--shadow-soft);
-}
-
-.login-card h1 {
-  margin: 0;
-  font-size: 26px;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-}
-
-.login-card p {
+.login-actions p {
   margin: 0;
 }
 
-.login-card .btn {
+.login-actions .btn {
   justify-content: center;
-  padding: 8px 12px;
+  padding: 10px 12px;
+  font-size: 15px;
+}
+
+.login-actions .stack {
+  gap: 10px;
+}
+
+/* The cover: the app's own ink and paper, so the front door belongs to it. */
+.login-side {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 40px;
+  min-height: 460px;
+  padding: 40px;
+  border-radius: 24px;
+  background: var(--text);
+  color: var(--bg);
+}
+
+.login-side img {
+  border-radius: 9px;
+}
+
+.login-side-title {
+  margin: 20px 0 0;
+  font-family: var(--font-display);
+  font-size: 28px;
+  line-height: 34px;
+  font-weight: 600;
+  letter-spacing: -0.026em;
+  max-width: 16ch;
+}
+
+.login-facts {
+  margin: 26px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.login-facts > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.login-facts dt {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--bg);
+}
+
+.login-facts dd {
+  margin: 0;
+  font-size: 13px;
+  line-height: 19px;
+  color: color-mix(in srgb, var(--bg) 62%, transparent);
+}
+
+.login-install {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  padding-top: 18px;
+  border-top: 1px solid color-mix(in srgb, var(--bg) 16%, transparent);
+}
+
+.login-install-label {
+  flex: 1 1 100%;
+  font-size: 12px;
+  color: color-mix(in srgb, var(--bg) 55%, transparent);
+}
+
+.login-install code {
+  min-width: 0;
+  flex: 1;
+  font: 12px/1.5 var(--mono);
+  color: var(--bg);
+  background: none;
+  padding: 0;
+  overflow-wrap: anywhere;
+}
+
+.login-copy {
+  flex: none;
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid color-mix(in srgb, var(--bg) 26%, transparent);
+  border-radius: 14px;
+  background: transparent;
+  color: var(--bg);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.login-copy:hover {
+  background: color-mix(in srgb, var(--bg) 10%, transparent);
+}
+
+/* On a phone the form is the whole job: the cover goes, the ground stays. */
+@media (max-width: 860px) {
+  .login {
+    padding: 24px 20px calc(32px + env(safe-area-inset-bottom));
+    place-items: start center;
+  }
+
+  .login-shell {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+    max-width: 420px;
+    padding-top: 8vh;
+  }
+
+    /* The cover follows the form on a phone: still the front door, just one column. */
+  .login-side {
+    display: flex;
+    min-height: 0;
+    margin-top: 36px;
+    padding: 26px 24px 24px;
+    border-radius: 20px;
+    gap: 26px;
+  }
+
+  .login-side-title {
+    margin-top: 16px;
+    font-size: 23px;
+    line-height: 29px;
+    max-width: none;
+  }
+
+  .login-facts {
+    margin-top: 20px;
+    gap: 14px;
+  }
+
+  .login-main h1 {
+    font-size: 28px;
+    line-height: 34px;
+  }
 }
 
 /* ---------- shell ---------- */
@@ -2582,6 +2763,18 @@ table.usage :is(th, td):last-child {
   color: var(--text-2);
 }
 
+.plugin-catalog h3 {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.plugin-catalog h3 .count {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-2);
+}
+
 .plugin-catalog h3 + p {
   margin: 0 0 6px;
 }
@@ -3470,4 +3663,17 @@ ol.guide {
 
 .cli-option.static code {
   overflow-wrap: anywhere;
+}
+
+/* Read by a screen reader only: live announcements, labels that repeat an icon. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
 }

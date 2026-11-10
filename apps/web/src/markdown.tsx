@@ -1,17 +1,13 @@
-import DOMPurify from "dompurify";
-import { marked } from "marked";
-import { useMemo } from "react";
+/**
+ * Markdown, as the app shows it: sanitised HTML with links that leave the app
+ * in a new tab. The parser is loaded on demand (markdown-body.tsx) and the
+ * text shows as plain text until it arrives, so a card is never held back by
+ * a syntax highlighter it may not need.
+ */
+import { lazy, Suspense } from "react";
 
-marked.setOptions({ gfm: true, breaks: true });
-
-DOMPurify.addHook("afterSanitizeAttributes", (node) => {
-  if (node.tagName === "A") {
-    const href = node.getAttribute("href") ?? "";
-    if (href.startsWith("#")) return; // in-app links such as #thread/…
-    node.setAttribute("target", "_blank");
-    node.setAttribute("rel", "noopener noreferrer");
-  }
-});
+const Body = lazy(() => import("./markdown-body").then((m) => ({ default: m.MarkdownBody })));
+const Streaming = lazy(() => import("./markdown-body").then((m) => ({ default: m.StreamingMarkdownBody })));
 
 /**
  * The language a piece of content is mostly written in, when it is Chinese or
@@ -27,32 +23,41 @@ export function cjkLang(text: string): "zh-Hans" | "ja" | undefined {
   return han >= words ? "zh-Hans" : undefined;
 }
 
-export function Markdown({ text, className }: { text: string; className?: string }) {
-  const html = useMemo(() => render(text), [text]);
-  return <div className={`md ${className ?? ""}`} lang={cjkLang(text)} dangerouslySetInnerHTML={{ __html: html }} />;
-}
+const mdClass = (className?: string) => `md${className ? ` ${className}` : ""}`;
 
-const render = (text: string) => DOMPurify.sanitize(marked.parse(text, { async: false }) as string);
+export function Markdown({ text, className }: { text: string; className?: string }) {
+  const cls = mdClass(className);
+  const lang = cjkLang(text);
+  return (
+    <Suspense fallback={<Plain text={text} className={cls} lang={lang} />}>
+      <Body text={text} className={cls} lang={lang} />
+    </Suspense>
+  );
+}
 
 /**
- * An answer still being written. Only the paragraph in progress is parsed
- * again as text arrives; the finished ones above it are parsed once.
+ * An answer still being written. The text is there from the first token; it
+ * gains its formatting once the parser has loaded.
  */
 export function StreamingMarkdown({ text }: { text: string }) {
-  const cut = settledEnd(text);
-  const head = text.slice(0, cut);
-  const headHtml = useMemo(() => (head ? render(head) : ""), [head]);
-  const html = headHtml + render(text.slice(cut));
-  return <div className="md" lang={cjkLang(text)} dangerouslySetInnerHTML={{ __html: html }} />;
+  const lang = cjkLang(text);
+  return (
+    <Suspense fallback={<Plain text={text} className="md" lang={lang} />}>
+      <Streaming text={text} className="md" lang={lang} />
+    </Suspense>
+  );
 }
 
-/** Where the last blank line outside a code block is: everything before it is finished. */
-function settledEnd(text: string): number {
-  let at = text.lastIndexOf("\n\n");
-  while (at > 0) {
-    const fences = text.slice(0, at).match(/^\s*(```|~~~)/gm)?.length ?? 0;
-    if (fences % 2 === 0) return at;
-    at = text.lastIndexOf("\n\n", at - 1);
-  }
-  return 0;
+/**
+ * The same text, unformatted, as the same paragraphs the parser would make:
+ * the layout is already the final one, so nothing moves when it lands.
+ */
+function Plain({ text, className, lang }: { text: string; className: string; lang?: string }) {
+  return (
+    <div className={className} lang={lang}>
+      {text.split(/\n{2,}/).map((p, i) => (
+        <p key={i}>{p}</p>
+      ))}
+    </div>
+  );
 }
