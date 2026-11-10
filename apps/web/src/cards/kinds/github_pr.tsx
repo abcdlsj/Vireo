@@ -41,23 +41,28 @@ export default defineCard({
         <span className={`gh-state ${state}`}>{STATE_LABEL[state] ?? state}</span>
         <h3 className="c-title">{card.title}</h3>
         {add >= 0 || del >= 0 ? (
-          <p className="gh-diff">
-            {add >= 0 ? <span className="plus">+{add}</span> : null}
-            {del >= 0 ? <span className="minus">−{del}</span> : null}
-            {files >= 0 ? <span>{files} files</span> : null}
-          </p>
+          <div className="gh-change">
+            <p className="gh-diff">
+              {add >= 0 ? <span className="plus">+{add}</span> : null}
+              {del >= 0 ? <span className="minus">−{del}</span> : null}
+              {files >= 0 ? <span>{files} files</span> : null}
+            </p>
+            {add + del > 0 ? (
+              <span className="gh-diffbar" aria-hidden="true">
+                <i className="plus" style={{ flex: Math.max(add, 0) }} />
+                <i className="minus" style={{ flex: Math.max(del, 0) }} />
+              </span>
+            ) : null}
+          </div>
         ) : null}
         {total ? (
-          <div className="gh-checks" aria-label={`${passed} of ${total} checks passed`}>
-            <div className="checks-bar">
-              {Array.from({ length: Math.min(total, 24) }, (_, i) => (
-                <span key={i} className={i < Math.round((passed / total) * Math.min(total, 24)) ? "pass" : "fail"} />
-              ))}
-            </div>
-            <span className="c-sub">
-              {passed === total ? "All checks passed" : `${total - passed} of ${total} checks failing`}
-            </span>
-          </div>
+          <p className={`gh-checks ${passed === total ? "ok" : "failing"}`} aria-label={`${passed} of ${total} checks passed`}>
+            <span className="gh-checks-dot" aria-hidden="true" />
+            <b>
+              {passed}/{total}
+            </b>
+            {passed === total ? "checks passed" : `checks · ${total - passed} failing`}
+          </p>
         ) : null}
         {review ? <p className="c-sub gh-review">{review}</p> : null}
       </Frame>

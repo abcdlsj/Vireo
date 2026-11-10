@@ -42,9 +42,11 @@
   --c-plus: #2f7d4a;
   --c-minus: #b2423a;
   /* Surfaces sit on the page with a hairline and a short, soft shadow; only pop-ups float. */
-  --c-shadow: 0 0 0 1px rgba(30, 30, 20, 0.055), 0 1px 2px rgba(30, 30, 20, 0.04), 0 6px 18px -8px rgba(30, 30, 20, 0.1);
-  --c-shadow-hover: 0 0 0 1px rgba(30, 30, 20, 0.08), 0 2px 4px rgba(30, 30, 20, 0.05), 0 14px 32px -12px rgba(30, 30, 20, 0.18);
-  --c-radius: 22px;
+  --c-shadow: 0 0 0 1px rgba(30, 30, 20, 0.075);
+  --c-shadow-hover: 0 0 0 1px rgba(30, 30, 20, 0.1), 0 2px 3px rgba(30, 30, 20, 0.04), 0 16px 32px -18px rgba(30, 30, 20, 0.22);
+  --c-radius: 20px;
+  /* Figures and dates: one display face, already loaded for the app's headings. */
+  --c-display: "Manrope Variable", var(--font);
   /* The board's row: a card is two (short), three (medium) or four (tall) rows high, with the gaps between. */
   --c-row: 52px;
 }
@@ -75,8 +77,8 @@
   --c-plus: #7cc296;
   --c-minus: #ec8c84;
   /* Dark surfaces separate by a hairline and a step of lightness, never by a floating shadow. */
-  --c-shadow: 0 0 0 1px rgba(255, 255, 255, 0.07);
-  --c-shadow-hover: 0 0 0 1px rgba(255, 255, 255, 0.12);
+  --c-shadow: 0 0 0 1px rgba(255, 255, 255, 0.09);
+  --c-shadow-hover: 0 0 0 1px rgba(255, 255, 255, 0.16);
 }
 
 /* ---------- home: the board, in the main area of the shell ---------- */
@@ -388,13 +390,25 @@
   color: var(--c-ink-3);
 }
 
-/* Rows of fixed height; Frame sets how many each card spans, and a later card fills a hole an earlier one left. */
+/* Rows of fixed height; Frame sets how many each card spans. */
 .board {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   grid-auto-rows: var(--c-row);
-  grid-auto-flow: row dense;
   gap: 20px;
+}
+
+/*
+ * What waits on the owner is one column, full width, at its own height: the
+ * screen's first job, stated large, with no board rows deciding its shape.
+ */
+.board-section.needs .board {
+  grid-template-columns: minmax(0, 1fr);
+  grid-auto-rows: auto;
+}
+
+.board-section.needs .board > .slot.size-l {
+  grid-column: auto;
 }
 
 .board > .slot {
@@ -544,8 +558,8 @@
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 20px 22px;
+  gap: 14px;
+  padding: 22px 24px;
   background: var(--c-paper);
   color: var(--c-ink);
   border-radius: var(--c-radius);
@@ -553,7 +567,7 @@
   overflow: hidden;
   cursor: pointer;
   font-size: 14px;
-  line-height: 20px;
+  line-height: 21px;
   font-variant-numeric: tabular-nums;
   transition:
     box-shadow 0.18s ease,
@@ -628,7 +642,8 @@
  * Touch screens never show them, so they keep the whole width.
  */
 @media (hover: hover) and (pointer: fine) {
-  .vcard:not(.flush):not(.pass):has(> .vcard-corner.floating .vcard-act) > .vcard-body > :first-child:not(.watch-head, .trip-head) {
+  /* Only a heading that would run under the corner's buttons gives way; a block that starts with its own row does not. */
+  .vcard:not(.flush):not(.pass):has(> .vcard-corner.floating .vcard-act) > .vcard-body > :first-child:is(.c-title, .g-head, .watch-top, .trip-head, .event-time, .webpage > .c-title) {
     padding-right: 60px;
   }
 }
@@ -995,6 +1010,71 @@
   color: var(--c-ink-2);
 }
 
+/* The answer box on a card that is waiting: one line, one button. */
+.c-answer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 5px 0 14px;
+  border-radius: 22px;
+  background: var(--c-soft);
+  box-shadow: inset 0 0 0 1px var(--c-line);
+}
+
+.c-answer:focus-within {
+  background: var(--c-paper);
+  box-shadow: inset 0 0 0 1.5px var(--c-accent);
+}
+
+.c-answer input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  font: inherit;
+  font-size: 14px;
+  color: var(--c-ink);
+}
+
+.c-answer input::placeholder {
+  color: var(--c-ink-3);
+}
+
+.c-answer button {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: 17px;
+  background: var(--c-accent);
+  color: var(--c-on-accent);
+  cursor: pointer;
+}
+
+.c-answer button:disabled {
+  background: var(--c-chip);
+  color: var(--c-ink-3);
+  cursor: default;
+}
+
+.c-answer-sent {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  min-height: 44px;
+  font-size: 13px;
+  color: var(--c-ink-2);
+}
+
+.c-answer-sent svg {
+  color: var(--c-accent);
+}
+
 /* After a button: what the owner said, and that Vireo has it. */
 .vcard-sent {
   display: inline-flex;
@@ -1044,24 +1124,39 @@
 /* shared text */
 .c-title {
   margin: 0;
-  font-size: 17px;
-  line-height: 23px;
+  font-size: 18px;
+  line-height: 24px;
   font-weight: 600;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.012em;
   text-wrap: pretty;
 }
 
 .c-title.big {
-  font-size: 22px;
-  line-height: 28px;
-  letter-spacing: -0.02em;
+  font-size: 23px;
+  line-height: 29px;
+  letter-spacing: -0.022em;
+}
+
+/*
+ * The one figure a card is about: a price, a time, a date, a total. Set in the
+ * display face at two or three times the body, so a card read from across the
+ * board still says what it is about.
+ */
+.c-figure {
+  margin: 0;
+  font-family: var(--c-display);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  letter-spacing: -0.035em;
+  line-height: 1;
+  white-space: nowrap;
 }
 
 .c-sub {
   margin: 0;
   color: var(--c-ink-2);
   font-size: 13px;
-  line-height: 18px;
+  line-height: 19px;
 }
 
 .c-text {
@@ -1274,10 +1369,17 @@
 }
 
 .answer-lead {
-  font-size: 22px;
-  line-height: 30px;
+  font-family: var(--c-display);
+  font-size: 24px;
+  line-height: 31px;
   font-weight: 600;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.025em;
+  text-wrap: pretty;
+}
+
+.vcard.expanded .answer-lead {
+  font-size: 28px;
+  line-height: 36px;
 }
 
 .answer-lead p {
@@ -1355,10 +1457,16 @@
 }
 
 .option-value {
-  font-size: 17px;
+  font-family: var(--c-display);
+  font-size: 18px;
   font-weight: 600;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.025em;
   white-space: nowrap;
+}
+
+.options li.picked .option-value {
+  font-size: 24px;
+  letter-spacing: -0.035em;
 }
 
 /* ---------- summary ---------- */
@@ -1373,15 +1481,18 @@
 }
 
 .stat-value {
-  font-size: 22px;
-  line-height: 28px;
+  font-family: var(--c-display);
+  font-size: 34px;
+  line-height: 38px;
   font-weight: 600;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.035em;
+  font-variant-numeric: tabular-nums;
 }
 
 .stats.stats-sm .stat-value {
-  font-size: 17px;
-  line-height: 22px;
+  font-size: 20px;
+  line-height: 24px;
+  letter-spacing: -0.025em;
 }
 
 .stat-label {
@@ -1404,14 +1515,21 @@
 
 .c-rows li {
   display: flex;
+  align-items: center;
   gap: 12px;
-  padding: 8px 10px;
-  margin: 0 -10px;
-  border-radius: 14px;
+  padding: 10px 0;
+}
+
+.c-rows li + li {
+  border-top: 1px solid var(--c-line);
+}
+
+.c-rows li {
+  border-radius: 0;
 }
 
 .c-rows li:first-child {
-  background: var(--c-soft);
+  padding-top: 0;
 }
 
 .c-rows li > div {
@@ -1436,18 +1554,52 @@
 }
 
 /* ---------- watch ---------- */
-.watch-head {
+.watch-top {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.watch-top .c-title {
+  color: var(--c-ink-2);
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 500;
+  letter-spacing: 0;
+  order: -1;
 }
 
 .watch-value {
-  font-size: 22px;
+  margin: 2px 0 0;
+  font-family: var(--c-display);
+  font-size: 42px;
+  line-height: 1;
   font-weight: 600;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.04em;
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* A value that is a phrase is set at the size a phrase holds on two lines. */
+.watch-value.phrase {
+  font-size: 26px;
+  line-height: 30px;
+  letter-spacing: -0.03em;
+  white-space: normal;
+}
+
+.watch-detail {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.watch-trend {
+  margin-top: 2px;
+  padding-top: 2px;
 }
 
 .stages {
@@ -1556,10 +1708,11 @@
 
 .g-facts dd {
   margin: 0;
-  font-size: 22px;
-  line-height: 30px;
+  font-family: var(--c-display);
+  font-size: 26px;
+  line-height: 32px;
   font-weight: 600;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.03em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1813,11 +1966,16 @@
 .vcard.doc .doc-text {
   flex: 1;
   min-height: 0;
-  font-size: 13px;
-  line-height: 20px;
+  font-size: 14px;
+  line-height: 22px;
   color: var(--c-ink-2);
-  padding-left: 14px;
+  padding-left: 16px;
   border-left: 2px solid var(--c-chip);
+}
+
+.vcard.expanded.doc .doc-text {
+  font-size: 15px;
+  line-height: 25px;
 }
 
 .vcard.doc:not(.expanded) .doc-text {
@@ -1830,9 +1988,17 @@
 .doc-text h1,
 .doc-text h2,
 .doc-text h3 {
-  font-size: 14px;
-  margin: 0 0 4px;
+  font-family: var(--c-display);
+  font-size: 16px;
+  line-height: 22px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  margin: 10px 0 4px;
   color: var(--c-ink);
+}
+
+.doc-text > :first-child {
+  margin-top: 0;
 }
 
 /* ---------- flight (boarding pass) ---------- */
@@ -1926,15 +2092,18 @@
 }
 
 .pass-code {
-  font-size: 40px;
-  line-height: 44px;
+  font-family: var(--c-display);
+  font-size: 46px;
+  line-height: 46px;
   font-weight: 600;
-  letter-spacing: -0.03em;
+  letter-spacing: -0.045em;
 }
 
 .pass-time {
-  font-size: 15px;
+  font-family: var(--c-display);
+  font-size: 16px;
   font-weight: 500;
+  font-variant-numeric: tabular-nums;
 }
 
 .pass-path {
@@ -1974,13 +2143,15 @@
   width: 224px;
   flex-shrink: 0;
   box-sizing: border-box;
-  padding: 22px 24px;
+  padding: 22px 24px 26px;
   display: flex;
   flex-direction: column;
+  justify-content: center;
   gap: 8px;
   border-left: 2px dashed var(--c-line);
-  margin: 18px 0;
-  padding-top: 4px;
+  margin: 0;
+  background: var(--c-soft);
+  border-radius: 0 var(--c-radius) var(--c-radius) 0;
   position: relative;
 }
 
@@ -1996,18 +2167,20 @@
 }
 
 .pass-stub::before {
-  top: -29px;
+  top: -11px;
 }
 
 .pass-stub::after {
-  bottom: -29px;
+  bottom: -11px;
 }
 
 .stub-big {
-  font-size: 26px;
-  line-height: 30px;
+  font-family: var(--c-display);
+  font-size: 34px;
+  line-height: 34px;
   font-weight: 600;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.04em;
+  font-variant-numeric: tabular-nums;
 }
 
 .stub-ref {
@@ -2087,15 +2260,19 @@
 }
 
 .event-clock {
-  font-size: 32px;
+  font-family: var(--c-display);
+  font-size: 34px;
   line-height: 38px;
   font-weight: 600;
-  letter-spacing: -0.03em;
+  letter-spacing: -0.04em;
+  font-variant-numeric: tabular-nums;
 }
 
 .event-title {
-  font-size: 17px;
+  font-size: 19px;
+  line-height: 25px;
   font-weight: 600;
+  letter-spacing: -0.02em;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2120,30 +2297,36 @@
 /* ---------- email ---------- */
 .mail {
   display: flex;
-  gap: 18px;
+  flex-direction: column;
+  gap: 14px;
   flex: 1;
   min-height: 0;
 }
 
 .mail-in,
 .mail-draft {
-  flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 
 .mail-draft {
   background: var(--c-soft);
-  border-radius: 16px;
-  padding: 14px 16px;
+  border-radius: 14px;
+  padding: 14px 16px 16px;
 }
 
 .mail-from {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
+}
+
+.mail-name {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
 }
 
 .mail-from > div {
@@ -2153,15 +2336,18 @@
 }
 
 .mail-subject {
-  font-size: 17px;
+  margin-top: 2px;
+  font-size: 20px;
+  line-height: 26px;
   font-weight: 600;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.02em;
+  text-wrap: pretty;
 }
 
 .mail-body {
   margin: 0;
-  font-size: 13px;
-  line-height: 20px;
+  font-size: 14px;
+  line-height: 21px;
   color: var(--c-ink-2);
   white-space: pre-wrap;
   overflow: hidden;
@@ -2169,8 +2355,13 @@
 
 .vcard:not(.expanded) .mail-body {
   display: -webkit-box;
-  -webkit-line-clamp: 4;
+  -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
+}
+
+.vcard.expanded .mail-body {
+  font-size: 15px;
+  line-height: 23px;
 }
 
 /* ---------- github ---------- */
@@ -2185,10 +2376,12 @@
 
 .gh-state {
   align-self: flex-start;
-  padding: 2px 10px;
+  padding: 3px 10px;
   border-radius: 10px;
-  font-size: 12px;
+  font-size: 11px;
+  line-height: 16px;
   font-weight: 600;
+  letter-spacing: 0.02em;
   background: var(--c-accent-soft);
   color: var(--c-accent);
 }
@@ -2204,6 +2397,12 @@
   color: #5b3a8c;
 }
 
+.gh-change {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
 .gh-diff {
   margin: 0;
   display: flex;
@@ -2211,6 +2410,23 @@
   font-size: 13px;
   color: var(--c-ink-2);
   font-family: var(--mono);
+}
+
+/* The size of the change as a bar: additions against deletions, one scale. */
+.gh-diffbar {
+  display: flex;
+  gap: 2px;
+  height: 6px;
+}
+
+.gh-diffbar i {
+  display: block;
+  border-radius: 3px;
+  background: var(--c-plus);
+}
+
+.gh-diffbar i.minus {
+  background: var(--c-minus);
 }
 
 .gh-diff .plus {
@@ -2221,26 +2437,30 @@
   color: var(--c-minus);
 }
 
+/* One line for the checks: the count, and a dot only when something fails. */
 .gh-checks {
-  margin-top: auto;
+  margin: 0;
   display: flex;
-  flex-direction: column;
-  gap: 8px;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  color: var(--c-ink-2);
+  font-variant-numeric: tabular-nums;
 }
 
-.checks-bar {
-  display: flex;
-  gap: 3px;
+.gh-checks b {
+  color: var(--c-ink);
+  font-weight: 600;
 }
 
-.checks-bar span {
-  flex: 1;
-  height: 6px;
-  border-radius: 3px;
+.gh-checks-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
   background: var(--c-accent);
 }
 
-.checks-bar span.fail {
+.gh-checks.failing .gh-checks-dot {
   background: var(--c-minus);
 }
 
@@ -2287,6 +2507,12 @@
   background: var(--c-line);
 }
 
+.vcard.webpage .c-title {
+  font-size: 20px;
+  line-height: 26px;
+  letter-spacing: -0.025em;
+}
+
 .chrome-url {
   flex: 1;
   min-width: 0;
@@ -2300,7 +2526,7 @@
 /* ---------- place ---------- */
 .map {
   position: relative;
-  height: 110px;
+  height: 124px;
   flex-shrink: 0;
   background: #e9efe4;
 }
@@ -2359,6 +2585,12 @@
   color: var(--c-accent);
 }
 
+.vcard.place .c-title {
+  font-size: 21px;
+  line-height: 27px;
+  letter-spacing: -0.025em;
+}
+
 .vcard.place > .vcard-head {
   top: 12px;
   right: 14px;
@@ -2371,7 +2603,18 @@
 .person {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 16px;
+}
+
+.person .avatar {
+  box-shadow: none;
+  font-weight: 600;
+}
+
+.person .c-title {
+  font-size: 21px;
+  line-height: 27px;
+  letter-spacing: -0.025em;
 }
 
 .person > div {
@@ -2384,14 +2627,19 @@
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 6px;
 }
 
 .facts li {
-  padding: 8px 12px;
-  border-radius: 12px;
-  background: var(--c-soft);
-  font-size: 13px;
+  padding: 9px 0;
+  border-top: 1px solid var(--c-line);
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--c-ink);
+}
+
+.facts li:first-child {
+  border-top: none;
+  padding-top: 2px;
 }
 
 /* ---------- file ---------- */
@@ -2406,25 +2654,23 @@
 }
 
 .sheet {
-  width: 44px;
-  height: 54px;
+  width: 46px;
+  height: 58px;
   flex-shrink: 0;
-  border-radius: 6px;
-  background: #fbe9e6;
-  color: #9a2f22;
+  border-radius: 4px;
+  background: var(--c-soft);
+  color: var(--c-ink-2);
+  font-family: var(--c-display);
   font-size: 11px;
   font-weight: 700;
+  letter-spacing: 0.02em;
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  padding-bottom: 8px;
+  padding-bottom: 9px;
   box-sizing: border-box;
-  clip-path: polygon(0 0, 70% 0, 100% 22%, 100% 100%, 0 100%);
-}
-
-.sheet:not(.ext-pdf) {
-  background: #e6eef7;
-  color: #28456c;
+  box-shadow: inset 0 0 0 1px var(--c-line);
+  clip-path: polygon(0 0, 68% 0, 100% 24%, 100% 100%, 0 100%);
 }
 
 .kv {
@@ -2476,7 +2722,85 @@
   height: 16px;
 }
 
+.proposal-where {
+  color: var(--c-ink-3);
+}
+
+.proposal-command {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--c-soft);
+  color: var(--c-ink);
+  font: 12px/18px var(--mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 96px;
+  overflow: hidden;
+}
+
+.proposal-command code {
+  font: inherit;
+}
+
 /* ---------- thread & live browser ---------- */
+
+/*
+ * A matter without a card of its own is the answer itself: the name, then what
+ * Vireo last said, read at body size in the full ink rather than as a caption.
+ */
+.thread-answer {
+  color: var(--c-ink-2);
+  font-size: 14px;
+  line-height: 21px;
+}
+
+.vcard:not(.expanded) .thread-answer {
+  color: var(--c-ink-2);
+}
+
+/* What Vireo said is read at body size in the full ink; the matter's name above it is the headline. */
+.thread-answer .md > p:first-of-type {
+  margin: 0;
+  color: var(--c-ink);
+  font-size: 15px;
+  line-height: 22px;
+  text-wrap: pretty;
+}
+
+.vcard .thread-card .c-title,
+.vcard.thread-card .c-title {
+  font-size: 20px;
+  line-height: 26px;
+  letter-spacing: -0.022em;
+}
+
+.thread-answer .md > :not(p:first-of-type) {
+  font-size: 14px;
+  line-height: 21px;
+}
+
+/* The peek holds one matter and nothing else: its question is read at full size. */
+.peek-card .thread-answer .md > p:first-of-type {
+  font-family: var(--c-display);
+  font-size: 22px;
+  line-height: 30px;
+  font-weight: 500;
+  letter-spacing: -0.025em;
+}
+
+/* In the one column that waits on the owner, the question is the biggest thing on screen. */
+.board-section.needs .thread-answer .md > p:first-of-type {
+  font-family: var(--c-display);
+  font-size: 24px;
+  line-height: 32px;
+  font-weight: 500;
+  letter-spacing: -0.025em;
+}
+
+.board-section.needs .c-answer {
+  max-width: 100%;
+}
 
 .web-live {
   display: inline-flex;
@@ -2525,14 +2849,15 @@
 }
 
 .reminder-time {
-  font-size: 40px;
-  line-height: 44px;
+  font-family: var(--c-display);
+  font-size: 52px;
+  line-height: 52px;
   font-weight: 600;
-  letter-spacing: -0.03em;
+  letter-spacing: -0.045em;
+  font-variant-numeric: tabular-nums;
 }
 
 .reminder-day {
-  flex: 1;
   min-width: 0;
   font-size: 13px;
   font-weight: 500;
@@ -2540,6 +2865,11 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* The one action sits beside the time it cancels, not at the far end of a wide card. */
+.reminder-when .cbtn {
+  margin-left: 4px;
 }
 
 .reminder-text {
@@ -2552,6 +2882,11 @@
 /* The reminder is the point of the card, so it keeps its full ink. */
 .vcard.reminder:not(.expanded) .reminder-text {
   color: var(--c-ink);
+}
+
+/* A reminder has one fixed height: the time sits at its top, the matter on its bottom edge. */
+.vcard.reminder > .vcard-body {
+  justify-content: space-between;
 }
 
 /* On warm paper a quiet button is tinted with the paper's ink, so it reads as a button. */
@@ -2586,24 +2921,91 @@
 .browser-request-thumb {
   flex: 1 1 auto;
   min-height: 64px;
-  max-height: 150px;
-  aspect-ratio: 16 / 7;
+  max-height: 190px;
+  aspect-ratio: 16 / 8;
   border-radius: 12px;
   overflow: hidden;
   background: var(--c-paper);
   box-shadow: 0 0 0 1px var(--c-line);
   display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 12px;
+  flex-direction: column;
 }
 
-.browser-request-thumb img {
+.browser-request-chrome {
+  flex: none;
+  height: 26px;
+  border-radius: 0;
+  background: var(--c-soft);
+  border-bottom: 1px solid var(--c-line);
+}
+
+.browser-request-thumb .page-thumb {
+  flex: 1;
+  min-height: 0;
+}
+
+/* A page while its picture loads (or if it never does): paper, a title bar and a few lines. */
+.page-thumb {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.page-thumb img {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
   object-position: top left;
   display: block;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.page-thumb.on img {
+  opacity: 1;
+}
+
+.page-thumb-page {
+  position: absolute;
+  inset: 0;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  background: var(--c-paper);
+}
+
+.page-thumb-page i {
+  display: block;
+  height: 7px;
+  border-radius: 4px;
+  background: var(--c-chip);
+}
+
+.page-thumb-page i:nth-child(1) {
+  width: 42%;
+  height: 9px;
+  background: var(--c-line);
+}
+
+.page-thumb-page i:nth-child(2) {
+  width: 74%;
+}
+
+.page-thumb-page i:nth-child(3) {
+  width: 58%;
+}
+
+.page-thumb-page b {
+  display: block;
+  margin-top: 4px;
+  height: 44%;
+  border-radius: 6px;
+  background: var(--c-soft);
 }
 
 /* ---------- thread page: each card sits in the conversation where it last changed ---------- */
@@ -2762,10 +3164,12 @@
   display: inline-flex;
   align-items: baseline;
   gap: 8px;
-  font-size: 22px;
-  line-height: 28px;
-  font-weight: 700;
-  letter-spacing: -0.02em;
+  font-family: var(--c-display);
+  font-size: 27px;
+  line-height: 30px;
+  font-weight: 600;
+  letter-spacing: -0.04em;
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
@@ -2836,9 +3240,11 @@
 }
 
 .leg-price {
-  font-size: 20px;
+  font-family: var(--c-display);
+  font-size: 18px;
   font-weight: 600;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
@@ -2886,13 +3292,20 @@
 
 .bar-track {
   width: 100%;
-  height: 56px;
+  height: 72px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: flex-end;
-  gap: 4px;
   border-bottom: 1px solid var(--c-line);
+}
+
+/* The price sits on top of its own bar, not on a shared line. */
+.bar-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
 }
 
 .return-bar .bar {
@@ -2921,15 +3334,24 @@
 }
 
 .return-price {
+  font-family: var(--c-display);
   font-size: 12px;
   color: var(--c-ink-2);
-  font-weight: 500;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
 .return-date {
   font-size: 12px;
   font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--c-ink-2);
+}
+
+.return-bar.best .return-date {
+  color: var(--c-ink);
 }
 
 .return-bar.best .bar {
@@ -3052,13 +3474,13 @@
 }
 
 .peek-sheet {
-  /* Roomy enough to read an answer in place; a fresh matter still opens at a comfortable size. */
+  /* As tall as the card it holds: a question is a short sheet, a letter a long one. */
   width: min(860px, 100%);
-  min-height: min(560px, calc(100dvh - 48px));
+  min-height: min(340px, calc(100dvh - 48px));
   max-height: min(960px, calc(100dvh - 48px));
   display: flex;
   flex-direction: column;
-  background: var(--c-main);
+  background: var(--c-canvas);
   color: var(--c-ink);
   border-radius: calc(var(--c-radius) + 6px);
   box-shadow: 0 30px 80px -20px rgba(20, 20, 14, 0.45);
@@ -3282,6 +3704,19 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .vcard-pulse.working,
+  .c-answer-sent,
+  .setup,
+  .ask-sent,
+  .vcard.just-updated {
+    animation: none !important;
+  }
+
+  .vcard-status.working::before,
+  .vcard-sent .on-it::before {
+    animation: none !important;
+  }
+
   .board > .slot,
   .vcard,
   .vcard.just-updated,

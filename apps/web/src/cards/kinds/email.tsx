@@ -28,9 +28,9 @@ export function EmailBody({
     <div className={`mail ${draft ? "with-draft" : ""}`}>
       <div className="mail-in">
         <div className="mail-from">
-          <Avatar name={from} size={30} />
+          <Avatar name={from} size={38} />
           <div>
-            <span className="c-row-title">{from}</span>
+            <span className="mail-name">{from}</span>
             <span className="c-row-text">{[address, at ? relTime(at.getTime()) : ""].filter(Boolean).join(" · ")}</span>
           </div>
         </div>

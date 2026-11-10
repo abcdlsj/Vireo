@@ -98,13 +98,29 @@ export function BrowserAskButtons({ threadId, onOpen, card }: { threadId: string
 export function PageThumb({ threadId }: { threadId: string }) {
   const [tick, setTick] = useState(0);
   const [ok, setOk] = useState(true);
+  const [loaded, setLoaded] = useState(false);
   useEffect(() => {
     const t = window.setInterval(() => setTick((n) => n + 1), 2000);
     return () => window.clearInterval(t);
   }, []);
-  return ok ? (
-    <img src={authedUrl(`/api/threads/${threadId}/browser?t=${tick}`)} alt="The page Vireo opened for you" draggable={false} onError={() => setOk(false)} onLoad={() => setOk(true)} />
-  ) : (
-    <span className="muted">The page</span>
+  // The picture fades in over a drawn page, so a slow or failed load never shows a broken image.
+  return (
+    <span className={`page-thumb ${loaded && ok ? "on" : ""}`}>
+      <span className="page-thumb-page" aria-hidden="true">
+        <i />
+        <i />
+        <i />
+        <b />
+      </span>
+      {ok ? (
+        <img
+          src={authedUrl(`/api/threads/${threadId}/browser?t=${tick}`)}
+          alt="The page Vireo opened for you"
+          draggable={false}
+          onLoad={() => setLoaded(true)}
+          onError={() => setOk(false)}
+        />
+      ) : null}
+    </span>
   );
 }

@@ -154,8 +154,10 @@ function Shell({ user }: { user: User | null }) {
   }, [loadThreads, loadMe]);
 
   const current = route.name === "thread" ? route.id : null;
-  const showList = route.name === "threads";
   const phone = usePhone();
+  // The list has a page of its own only on a phone; on a wider screen the sidebar is that list.
+  const showList = route.name === "threads" && phone;
+  const homeView = route.name === "home" || route.name === "threads";
   const needsYou = threads.filter((t) => t.group === "needs_you").length;
 
   useEffect(() => {
@@ -178,7 +180,7 @@ function Shell({ user }: { user: User | null }) {
   const mac = /Mac|iPhone|iPad/.test(navigator.platform);
 
   return (
-    <div className={`shell ${showList ? "show-list" : "show-main"} ${route.name === "home" ? "at-home" : ""}`}>
+    <div className={`shell ${showList ? "show-list" : "show-main"} ${homeView ? "at-home" : ""}`}>
       <aside className="sidebar" ref={sidebar}>
         <header className="sidebar-head">
           <div className="brand">
@@ -197,7 +199,7 @@ function Shell({ user }: { user: User | null }) {
             <span>Search</span>
             <kbd>{mac ? "⌘K" : "Ctrl K"}</kbd>
           </button>
-          <a href="#" className={`nav-item ${route.name === "home" ? "active" : ""}`} data-testid="nav-home">
+          <a href="#" className={`nav-item ${homeView ? "active" : ""}`} data-testid="nav-home">
             <HomeIcon />
             <span>Home</span>
             {needsYou ? <span className="nav-count">{needsYou}</span> : null}

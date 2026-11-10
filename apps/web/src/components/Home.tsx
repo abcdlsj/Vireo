@@ -67,6 +67,25 @@ export function Home({ me, onSearch }: { me: Me | null; onSearch: () => void }) 
         ? `Working on ${working === 1 ? "one thing" : `${NUMBERS[working]?.toLowerCase() ?? working} things`}`
         : "Nothing needs you";
 
+  const renderSection = (sec: (typeof SECTIONS)[number]) => {
+    const items = active.filter((c) => section(c) === sec.key);
+    if (!items.length) return null;
+    return (
+      <section key={sec.key} className={`board-section ${sec.key}`} data-testid={`board-${sec.key}`}>
+        <h2 className="board-head">
+          {sec.label}
+          <span className="count">{items.length}</span>
+          {sec.hint ? <span className="hint">{sec.hint}</span> : null}
+        </h2>
+        <div className="board">
+          {items.map((c) => (
+            <CardSlot key={c.id} card={c} refresh={load} natural={sec.key === "needs"} />
+          ))}
+        </div>
+      </section>
+    );
+  };
+
   return (
     <div className="home" data-testid="home">
       <div className="home-inner">
@@ -102,7 +121,6 @@ export function Home({ me, onSearch }: { me: Me | null; onSearch: () => void }) 
           />
         </div>
         {note ? <p className="ask-sent">{note}</p> : null}
-        {me ? <Setup me={me} /> : null}
 
         <BoardContext.Provider value={board}>
           <div className="boards" data-testid="board">
@@ -112,24 +130,10 @@ export function Home({ me, onSearch }: { me: Me | null; onSearch: () => void }) 
                 <span>Ask for anything above. Each matter shows up here as a card while Vireo takes care of it.</span>
               </div>
             ) : null}
-            {SECTIONS.map((sec) => {
-              const items = active.filter((c) => section(c) === sec.key);
-              if (!items.length) return null;
-              return (
-                <section key={sec.key} className={`board-section ${sec.key}`} data-testid={`board-${sec.key}`}>
-                  <h2 className="board-head">
-                    {sec.label}
-                    <span className="count">{items.length}</span>
-                    {sec.hint ? <span className="hint">{sec.hint}</span> : null}
-                  </h2>
-                  <div className="board">
-                    {items.map((c) => (
-                      <CardSlot key={c.id} card={c} refresh={load} />
-                    ))}
-                  </div>
-                </section>
-              );
-            })}
+            {/* What waits on the owner comes first, and above the setup steps: it is the screen's job. */}
+            {renderSection(SECTIONS[0])}
+            {me ? <Setup me={me} /> : null}
+            {SECTIONS.slice(1).map(renderSection)}
           </div>
         </BoardContext.Provider>
 

@@ -44,15 +44,27 @@ function ProposalBody({ card }: { card: Card }) {
     );
   }
   if (tool === "send_email") {
-    return <EmailBody from={`To ${str("to")}`} subject={str("subject")} body={str("body")} address={str("cc") ? `cc ${str("cc")}` : ""} />;
+    // The letter is addressed to someone: show them by name, not the word "To".
+    const to = str("to");
+    const who = (to.split("@")[0] ?? to).replace(/[._-]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+    return <EmailBody from={who || to} subject={str("subject")} body={str("body")} address={[to, str("cc") ? `cc ${str("cc")}` : ""].filter(Boolean).join(" · ")} />;
   }
+  // Anything else is a command about to run somewhere: show it as one.
+  const command = str("command") || str("query") || str("url");
+  const machine = str("machine");
   return (
     <div className="proposal">
       <span className="proposal-kind">
         <ToolIcon tool={tool} />
         {toolLabel(tool)}
+        {machine ? <span className="proposal-where">on {machine}</span> : null}
       </span>
       <p className="c-title">{prettyDates(card.title)}</p>
+      {command ? (
+        <pre className="proposal-command">
+          <code>{command}</code>
+        </pre>
+      ) : null}
     </div>
   );
 }

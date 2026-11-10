@@ -1549,3 +1549,74 @@ button.attach:active {
 .steps.now .steps-toggle > .count {
   align-self: baseline;
 }
+
+/*
+ * On a phone every control a thumb aims at clears 40px: the bar's actions, the
+ * composer's, the card's own. The rows stay compact; only what is pressed grows.
+ */
+@media (max-width: 760px) {
+  .shell .topbar {
+    gap: 4px;
+    padding-right: 8px;
+  }
+
+  .shell .topbar .back {
+    display: grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    margin-left: -8px;
+    padding: 0;
+  }
+
+  .shell .head-actions > .btn,
+  .shell .head-actions > .icon-btn,
+  .shell .head-actions > a {
+    min-width: 40px;
+    height: 40px;
+    padding: 0 12px;
+  }
+
+  .shell .composer .icon-btn,
+  .shell .composer .send {
+    width: 40px;
+    height: 40px;
+  }
+
+  .shell .setup header .link {
+    padding: 10px 4px;
+    margin: -10px -4px -10px auto;
+  }
+
+  .shell .c-answer button {
+    width: 40px;
+    height: 40px;
+  }
+
+  .shell .home-logo {
+    width: 40px;
+    height: 40px;
+    margin-right: 0;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .shell .node-switch-btn {
+    min-height: 40px;
+  }
+
+  .shell .cbtn.small {
+    height: 36px;
+    padding: 0 14px;
+    border-radius: 18px;
+  }
+
+  .shell .peek-btn {
+    height: 40px;
+    padding: 0 12px;
+  }
+
+  .shell .peek-btn.icon {
+    width: 40px;
+  }
+}

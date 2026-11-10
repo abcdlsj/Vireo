@@ -31,6 +31,14 @@ export default defineCard({
           {card.threadTitle} · paused {ago(since)}
         </p>
         <div className="browser-request-thumb">
+          <div className="chrome browser-request-chrome">
+            <span className="chrome-dots">
+              <i />
+              <i />
+              <i />
+            </span>
+            <span className="chrome-url">Vireo's browser</span>
+          </div>
           <PageThumb threadId={card.threadId} />
         </div>
       </Frame>

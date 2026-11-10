@@ -213,7 +213,6 @@ label.check input {
   padding: 6px 12px;
   cursor: pointer;
   white-space: nowrap;
-  box-shadow: var(--shadow-soft);
   transition: background 0.12s;
 }
 
@@ -896,6 +895,13 @@ button.link.danger {
   border-radius: 50%;
   background: var(--accent);
   animation: pulse 1s infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .typing::after,
+  .thread-view.loading .skeleton {
+    animation: none;
+  }
 }
 
 .live-steps {
@@ -3068,6 +3074,14 @@ ul.rows {
     z-index: 10;
     background: rgba(20, 20, 15, 0.22);
     animation: sheet-fade 0.2s ease;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .side-panel,
+    .sheet-backdrop {
+      animation: none;
+      transition: none;
+    }
   }
 
   /* The handle says the sheet moves: drag it up for more room, down to put it away. */

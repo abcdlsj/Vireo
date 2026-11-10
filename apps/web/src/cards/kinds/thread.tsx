@@ -23,13 +23,13 @@ export default defineCard({
       );
     }
     return (
-      <Frame card={card} expanded={expanded} label={null}>
+      <Frame card={card} expanded={expanded} label={null} className="thread-card">
         <h3 className="c-title">{card.title}</h3>
         {/* While it runs, the frame's step line (eyes and what) is the only working mark. */}
         {card.running && !text ? null : !text && !statusLine ? (
           <p className="c-sub">Nothing here yet.</p>
         ) : (
-          <div className="c-text fit">
+          <div className={`c-text fit thread-answer`} data-lines={expanded ? 60 : 4}>
             <Markdown text={text || statusLine} />
           </div>
         )}

@@ -1,7 +1,7 @@
-import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type FormEvent, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import { api } from "../api";
 import { relTime } from "../format";
-import { ArrowUpRightIcon, CheckIcon } from "../icons";
+import { ArrowUpIcon, ArrowUpRightIcon, CheckIcon } from "../icons";
 import { go } from "../route";
 import { Eyes, nowLine } from "../components/Eyes";
 import { pressButton } from "./registry";
@@ -183,7 +183,14 @@ export function Frame({
   // Nor does a head with nothing in it at all (a card needing the owner, or one being worked on): it would only push the title down.
   const empty = labelNode === null && !statusShown(card, board?.grouped);
   const head = label !== null && !(labelNode === null && quiet) && !empty;
-  const own = buttons ?? (card.buttons.length ? <Buttons card={card} buttons={card.buttons} /> : null);
+  // A card that waits on the owner is answered where it sits: a box on the card, not a trip to the peek.
+  const own =
+    buttons ??
+    (card.buttons.length ? (
+      <Buttons card={card} buttons={card.buttons} />
+    ) : interactive && board && card.status === "needs_you" ? (
+      <Answer threadId={card.threadId} refresh={board.refresh} />
+    ) : null);
   const actions = interactive ? (
     <span className="vcard-actions">
       {board && closable(card) ? (
@@ -291,6 +298,51 @@ export function Status({ card, grouped }: { card: Card; grouped?: boolean }) {
   return <span className="vcard-status quiet">{relTime(card.updatedAt)}</span>;
 }
 
+/** The shortest way to answer a matter that is waiting on the owner, without opening it. */
+export function Answer({ threadId, refresh }: { threadId: string; refresh: () => void }) {
+  const [text, setText] = useState("");
+  const [sent, setSent] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    const t = text.trim();
+    if (!t || busy) return;
+    setBusy(true);
+    try {
+      await api.post(`/api/threads/${threadId}/messages`, { text: t });
+      setText("");
+      setSent(true);
+      // Let the words leave the box before the card reloads under them.
+      window.setTimeout(refresh, 700);
+    } finally {
+      setBusy(false);
+    }
+  };
+  if (sent) {
+    return (
+      <p className="c-answer-sent" data-testid="card-answer-sent">
+        <CheckIcon />
+        <span className="you">You</span> answered. Vireo is on it.
+      </p>
+    );
+  }
+  return (
+    <form className="c-answer" onSubmit={(e) => void submit(e)} onClick={(e) => e.stopPropagation()}>
+      <input
+        aria-label="Answer Vireo"
+        placeholder="Answer Vireo…"
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        disabled={busy}
+        data-testid="card-answer-input"
+      />
+      <button type="submit" aria-label="Send" disabled={busy || !text.trim()} data-testid="card-answer-send">
+        <ArrowUpIcon />
+      </button>
+    </form>
+  );
+}
+
 export function Buttons({ card, buttons }: { card: Card; buttons: CardButton[] }) {
   const [busy, setBusy] = useState<number | null>(null);
   const [sent, setSent] = useState("");
@@ -363,12 +415,14 @@ export function Sparkline({ values, width, height = 28 }: { values: number[]; wi
   const min = Math.min(...nums);
   const max = Math.max(...nums);
   const span = max - min || 1;
-  const pts = nums.map((v, i) => [(i / (nums.length - 1)) * (w - 8) + 4, height - 4 - ((v - min) / span) * (height - 8)] as const);
+  // Room for the last dot and the line's stroke at both ends, so neither is clipped by the card's edge.
+  const pad = 9;
+  const pts = nums.map((v, i) => [(i / (nums.length - 1)) * (w - pad * 2) + pad, height - pad - ((v - min) / span) * (height - pad * 2)] as const);
   const last = pts[pts.length - 1]!;
   const line = pts.map((p) => p.join(",")).join(" ");
   const svg = w > 0 && (
     <svg className="sparkline" width={w} height={height} viewBox={`0 0 ${w} ${height}`} role="img" aria-label={`Recent values from ${nums[0]} to ${nums[nums.length - 1]}`}>
-      <polygon points={`${pts[0]![0]},${height} ${line} ${last[0]},${height}`} fill="currentColor" opacity="0.08" />
+      <polygon points={`${pts[0]![0]},${height - 1} ${line} ${last[0]},${height - 1}`} fill="currentColor" opacity="0.08" />
       <polyline points={line} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
       <circle cx={last[0]} cy={last[1]} r="3.5" fill="currentColor" stroke="var(--c-paper)" strokeWidth="2" />
     </svg>

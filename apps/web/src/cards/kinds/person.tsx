@@ -12,7 +12,7 @@ export default defineCard({
     return (
       <Frame card={card} expanded={expanded}>
         <div className="person">
-          <Avatar name={name} size={52} />
+          <Avatar name={name} size={64} />
           <div>
             <h3 className="c-title">{name}</h3>
             <p className="c-sub">{[field(card, "role", ""), email].filter(Boolean).join(" · ")}</p>

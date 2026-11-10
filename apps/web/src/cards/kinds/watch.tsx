@@ -14,16 +14,18 @@ export default defineCard({
     const steps = field<string[]>(card, "steps", []);
     const current = Math.max(0, Math.min(steps.length - 1, field(card, "current", 0)));
     const checked = parseDate(card.data.checked_at);
+    // A figure is set like a headline; a phrase ("Out for delivery") keeps the size a headline needs to fit.
+    const phrase = value.length > 10;
     return (
-      <Frame card={card} expanded={expanded}>
-        <div className="watch-head">
+      <Frame card={card} expanded={expanded} className="watch">
+        <div className="watch-top">
           <h3 className="c-title">{card.title}</h3>
-          <span className="watch-value">{value}</span>
+          {value ? <p className={`watch-value ${phrase ? "phrase" : ""}`}>{value}</p> : null}
+          {detail ? <p className="c-sub watch-detail">{detail}</p> : null}
         </div>
-        {detail ? <p className="c-sub watch-detail">{detail}</p> : null}
         {trend.length > 1 ? (
-          <div className="accent-ink">
-            <Sparkline values={trend} height={expanded ? 40 : 48} />
+          <div className="watch-trend accent-ink">
+            <Sparkline values={trend} height={expanded ? 96 : 64} />
           </div>
         ) : null}
         {steps.length ? (
