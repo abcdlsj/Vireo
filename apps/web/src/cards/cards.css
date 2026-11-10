@@ -1143,7 +1143,8 @@
  * board still says what it is about.
  */
 .c-figure {
-  margin: 0;
+  /* The ink of a big digit starts a pixel or two inside its box; pull the box back so the column reads straight. */
+  margin: 0 0 0 -1px;
   font-family: var(--c-display);
   font-variant-numeric: tabular-nums;
   font-weight: 600;
@@ -2572,7 +2573,7 @@
 }
 
 .place-text {
-  padding: 16px 22px 0;
+  padding: 16px 24px 0;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -2859,9 +2860,6 @@
 }
 
 .reminder-day {
-  /* The day is a line of its own under the time: at 52px there is no room beside it. */
-  order: 3;
-  flex: 1 1 100%;
   min-width: 0;
   font-size: 13px;
   font-weight: 500;
@@ -2871,10 +2869,59 @@
   text-overflow: ellipsis;
 }
 
-/* The one action sits beside the time it cancels, not at the far end of a wide card. */
-.reminder-when .cbtn {
-  order: 2;
-  margin-left: auto;
+/*
+ * Figures at display sizes sit optically on the column: the ink of a digit
+ * starts a pixel or two inside its box, so stacked under 12px text a big
+ * number reads as indented. Measured per size, not guessed.
+ */
+.reminder-time {
+  margin-left: -2px;
+}
+
+.stat-value,
+.g-facts dd,
+.watch-value,
+.event-clock,
+.option-value,
+.trip-total,
+.stub-big {
+  margin-left: -1px;
+}
+
+.pass-route > div:first-child .pass-code {
+  margin-left: -3px;
+}
+
+/* A quiet action in a card's head: the size of the head's own text, not a button's. */
+.c-corner-act {
+  height: 24px;
+  padding: 0 9px;
+  margin: -2px 0;
+  border: none;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--c-ink-3);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.c-corner-act:hover {
+  background: color-mix(in srgb, currentColor 12%, transparent);
+  color: var(--c-ink);
+}
+
+.vcard.tone-warm .c-corner-act {
+  color: var(--c-warm-ink);
+  opacity: 0.75;
+}
+
+.vcard.tone-warm .c-corner-act:hover {
+  opacity: 1;
+  background: color-mix(in srgb, var(--c-warm-ink) 12%, transparent);
 }
 
 .reminder-text {

@@ -136,6 +136,7 @@ export function Frame({
   label,
   children,
   buttons,
+  corner,
   flush,
   className,
 }: {
@@ -146,6 +147,12 @@ export function Frame({
   children: ReactNode;
   /** Replaces the card's own buttons, e.g. Confirm on a proposal. */
   buttons?: ReactNode;
+  /**
+   * A small action that belongs in the head's corner rather than under the
+   * card: Cancel on a reminder. Secondary actions sit up here; the card's
+   * own job stays in the foot.
+   */
+  corner?: ReactNode;
   /** The body reaches the card's edges (images, ticket stubs). */
   flush?: boolean;
   className?: string;
@@ -219,12 +226,16 @@ export function Frame({
         <header className="vcard-head">
           <span className="vcard-label">{labelNode}</span>
           <span className="vcard-corner">
+            {corner}
             <Status card={card} grouped={board?.grouped} />
             {actions}
           </span>
         </header>
-      ) : actions ? (
-        <span className="vcard-corner floating">{actions}</span>
+      ) : corner || actions ? (
+        <span className="vcard-corner floating">
+          {corner}
+          {actions}
+        </span>
       ) : null}
       <div className="vcard-body" ref={body}>
         {children}
@@ -415,9 +426,13 @@ export function Sparkline({ values, width, height = 28 }: { values: number[]; wi
   const min = Math.min(...nums);
   const max = Math.max(...nums);
   const span = max - min || 1;
-  // Room for the last dot and the line's stroke at both ends, so neither is clipped by the card's edge.
-  const pad = 9;
-  const pts = nums.map((v, i) => [(i / (nums.length - 1)) * (w - pad * 2) + pad, height - pad - ((v - min) / span) * (height - pad * 2)] as const);
+  /*
+   * The line starts on the card's own left edge and keeps room for the last
+   * dot at the right, so a chart sits in the same column as the text above it.
+   */
+  const padL = 0;
+  const padR = 9;
+  const pts = nums.map((v, i) => [padL + (i / (nums.length - 1)) * (w - padL - padR), height - padR - ((v - min) / span) * (height - padR * 2)] as const);
   const last = pts[pts.length - 1]!;
   const line = pts.map((p) => p.join(",")).join(" ");
   const svg = w > 0 && (

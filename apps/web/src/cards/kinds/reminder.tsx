@@ -14,14 +14,20 @@ export default defineCard({
   render: ({ card, expanded, refresh }) => {
     const due = parseDate(card.data.due);
     const today = due && due.toDateString() === new Date().toDateString();
+    // Cancelling is the rare thing to do here, so it sits in the head's corner at the size of the head's own text.
+    const cancel = card.data.reminderId ? (
+      <button className="c-corner-act" onClick={(e) => {
+        e.stopPropagation();
+        void api.post(`/api/reminders/${String(card.data.reminderId)}/cancel`).then(refresh);
+      }}>
+        Cancel
+      </button>
+    ) : null;
     return (
-      <Frame card={card} expanded={expanded} tone="warm" className="reminder" label={<span className="bell">Reminder</span>} buttons={null}>
+      <Frame card={card} expanded={expanded} tone="warm" className="reminder" label={<span className="bell">Reminder</span>} buttons={null} corner={cancel}>
         <div className="reminder-when">
           <span className="reminder-time">{due ? clock(due) : ""}</span>
           <span className="reminder-day">{due ? (today ? `Today · ${until(due)}` : due.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })) : ""}</span>
-          <button className="cbtn small" onClick={() => void api.post(`/api/reminders/${String(card.data.reminderId)}/cancel`).then(refresh)}>
-            Cancel
-          </button>
         </div>
         <p className="reminder-text fit" data-lines={2}>
           {card.title}
