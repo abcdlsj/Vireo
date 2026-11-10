@@ -55,6 +55,8 @@ export function Peek({ card, onClose, refresh }: { card: Card; onClose: () => vo
   }, [close]);
 
   const view = cardView(card.kind);
+  // A card that is one column wide on the board opens as one column here too: a sheet its own size reads better than a wide one half filled.
+  const narrow = (typeof view.size === "function" ? view.size(card) : view.size) !== "l";
   const thread = detail?.thread;
   const running = thread?.running ?? card.running;
   // A matter without a card of its own already shows its latest answer as the card.
@@ -71,7 +73,7 @@ export function Peek({ card, onClose, refresh }: { card: Card; onClose: () => vo
 
   return (
     <div className={`peek ${closing ? "closing" : ""}`} data-testid="peek" onMouseDown={(e) => e.target === e.currentTarget && close()}>
-      <div className="peek-sheet" ref={sheet} tabIndex={-1} role="dialog" aria-modal="true" aria-label={card.title}>
+      <div className={`peek-sheet ${narrow ? "narrow" : ""}`} ref={sheet} tabIndex={-1} role="dialog" aria-modal="true" aria-label={card.title}>
         <header className="peek-head">
           {/* The one place the peek says the matter's state: working (and on what), needs you, or when it last moved. */}
           <span className={`peek-when attn-line ${attn}`} data-testid={running ? "peek-working" : undefined}>

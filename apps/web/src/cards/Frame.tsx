@@ -297,6 +297,8 @@ function Pulse({ card, live }: { card: Card; live: boolean }) {
 function statusShown(card: Card, grouped?: boolean): boolean {
   // Working shows once, as the eyes on the card's step line; on the board the heading says the rest, and the peek says when it moved.
   if (card.running || card.status === "working") return false;
+  // A reminder says its own time; "updated 1m" beside Cancel would read as part of the action.
+  if (card.kind === "reminder") return false;
   if (grouped) return false;
   // Needs you is said by where the card sits (the board's heading, the peek's head, the thread's status), not on the card.
   return card.status !== "needs_you";

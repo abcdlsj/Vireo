@@ -618,6 +618,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: flex-end;
+  gap: 8px;
   min-height: 28px;
   margin: -4px -6px -4px 0;
   padding-right: 6px;
@@ -2841,11 +2842,12 @@
   font-weight: 600;
 }
 
+/* The time, and the day directly under it: a clock reads as one block, not as a line with a footnote beside it. */
 .reminder-when {
   display: flex;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: 2px 12px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
   min-width: 0;
   color: var(--c-warm-ink);
 }
@@ -2861,6 +2863,7 @@
 
 .reminder-day {
   min-width: 0;
+  max-width: 100%;
   font-size: 13px;
   font-weight: 500;
   opacity: 0.75;
@@ -3544,6 +3547,11 @@
 
 .peek.closing .peek-sheet {
   animation: c-pop 0.16s ease reverse both;
+}
+
+/* A card that is one column on the board gets a sheet of its own width. */
+.peek-sheet.narrow {
+  width: min(620px, 100%);
 }
 
 .peek-head {
