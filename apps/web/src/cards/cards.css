@@ -2843,7 +2843,8 @@
 .reminder-when {
   display: flex;
   align-items: baseline;
-  gap: 12px;
+  flex-wrap: wrap;
+  gap: 2px 12px;
   min-width: 0;
   color: var(--c-warm-ink);
 }
@@ -2858,6 +2859,9 @@
 }
 
 .reminder-day {
+  /* The day is a line of its own under the time: at 52px there is no room beside it. */
+  order: 3;
+  flex: 1 1 100%;
   min-width: 0;
   font-size: 13px;
   font-weight: 500;
@@ -2869,7 +2873,8 @@
 
 /* The one action sits beside the time it cancels, not at the far end of a wide card. */
 .reminder-when .cbtn {
-  margin-left: 4px;
+  order: 2;
+  margin-left: auto;
 }
 
 .reminder-text {
