@@ -38,6 +38,8 @@ export class ThreadLifecycle {
     const thread = this.app.threads.get(threadId);
     if (!thread || thread.id === OVERVIEW_ID || thread.state === "done") return;
     await this.app.runner.settled(threadId);
+    // An open confirmation has nowhere left to lead once the matter is closed.
+    this.app.actions.dropForThread(threadId, "the matter was marked done");
     let summary = thread.statusLine || thread.title;
     try {
       summary = await this.app.models.complete({
@@ -75,6 +77,7 @@ export class ThreadLifecycle {
     if (!thread) throw new Error("Thread not found");
     this.app.runner.stop(threadId);
     await this.app.runner.settled(threadId);
+    this.app.actions.dropForThread(threadId, "the thread was archived");
     void this.app.browser.closeThread(threadId);
     this.app.threads.archive(threadId);
   }

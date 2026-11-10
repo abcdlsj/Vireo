@@ -108,7 +108,9 @@ export class ThreadStore {
   private toThread(row: ThreadRow): Thread {
     const pending =
       this.db.get<{ n: number }>("SELECT COUNT(*) AS n FROM actions WHERE thread_id = ? AND status = 'pending'", row.id)?.n ?? 0;
-    const needsYou = !row.archived_at && row.state !== "done" && (pending > 0 || row.needs_you === 1);
+    // A closed matter has no open question: anything left pending there is a leftover, not a wait.
+    const waiting = row.state === "done" ? 0 : pending;
+    const needsYou = !row.archived_at && row.state !== "done" && (waiting > 0 || row.needs_you === 1);
     const group: Thread["group"] =
       row.id === OVERVIEW_ID ? "overview" : row.archived_at ? "archived" : row.state === "done" ? "done" : needsYou ? "needs_you" : "in_progress";
     return {
@@ -116,13 +118,13 @@ export class ThreadStore {
       title: row.title,
       state: row.state,
       group,
-      statusLine: pending > 0 ? "Waiting for your confirmation" : row.running ? row.status_line || "Working…" : row.status_line,
+      statusLine: waiting > 0 ? "Waiting for your confirmation" : row.running ? row.status_line || "Working…" : row.status_line,
       agent: row.agent,
       temporary: row.temporary === 1,
       pinned: row.pinned === 1,
       running: row.running === 1,
       needsYou,
-      pendingActions: pending,
+      pendingActions: waiting,
       summary: row.summary,
       origin: safeJson(row.origin, null),
       createdAt: row.created_at,

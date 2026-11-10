@@ -75,4 +75,39 @@ describe("confirmation gating", () => {
     await second.runner.idle();
     expect((await events(second)).some((e) => e.attendees.includes("carol@example.com"))).toBe(true);
   });
+
+  it("asks one thing at a time: a newer confirmation retires the one still waiting", async () => {
+    const app = open();
+    const t = app.threads.create({});
+    const first = app.actions.create(t.id, "create_event", { title: "A" }, "Create A");
+    const second = app.actions.create(t.id, "create_event", { title: "B" }, "Create B");
+
+    expect(app.actions.get(first.id)!.status).toBe("cancelled");
+    expect(app.actions.get(second.id)!.status).toBe("pending");
+    expect(app.actions.pending().filter((a) => a.threadId === t.id)).toHaveLength(1);
+    // The retired one cannot be confirmed from a stale card.
+    expect((await app.actions.confirm(first.id)).status).toBe("cancelled");
+    expect(await events(app)).toHaveLength(0);
+  });
+
+  it("drops an open confirmation when the matter is closed, and the thread stops saying it waits", async () => {
+    const app = open();
+    const t = app.threads.create({ title: "Book a table" });
+    const pending = app.actions.create(t.id, "create_event", { title: "A" }, "Create A");
+    expect(app.threads.get(t.id)!.pendingActions).toBe(1);
+
+    await app.lifecycle.complete(t.id);
+
+    expect(app.actions.get(pending.id)!.status).toBe("cancelled");
+    const closed = app.threads.get(t.id)!;
+    expect(closed.pendingActions).toBe(0);
+    expect(closed.statusLine).not.toMatch(/Waiting for your confirmation/);
+    expect(closed.needsYou).toBe(false);
+
+    // A restart leaves nothing waiting in a closed matter either.
+    app.db.run("UPDATE actions SET status = 'pending' WHERE id = ?", pending.id);
+    app.db.close();
+    const again = open(app.config.dataDir);
+    expect(again.actions.get(pending.id)!.status).toBe("cancelled");
+  });
 });

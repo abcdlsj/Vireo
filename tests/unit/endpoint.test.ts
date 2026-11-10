@@ -119,7 +119,7 @@ describe("one-tap decisions on a notification", () => {
     const path = (u: string) => u.replace(/^https?:\/\/[^/]+/, "");
     // A link for one answer does not work for the other, nor for another action.
     expect((await http.request(path(decide!.confirm).replace("/confirm?", "/cancel?"), { method: "POST" })).status).toBe(403);
-    const b = app.actions.create(t.id, "agent_approval", { from: "x" }, "Delete");
+    const b = app.actions.create(app.threads.create({ temporary: true }).id, "agent_approval", { from: "x" }, "Delete");
     expect((await http.request(path(decide!.confirm).replace(a.id, b.id), { method: "POST" })).status).toBe(403);
     expect(await (await http.request(path(decide!.confirm), { method: "POST" })).json()).toMatchObject({ status: "done" });
     expect(app.actions.get(a.id)!.status).toBe("done");

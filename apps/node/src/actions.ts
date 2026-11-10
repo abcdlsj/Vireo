@@ -48,9 +48,18 @@ export class Actions {
     // An action interrupted mid-execution is not retried automatically: it may
     // already have taken effect, so the owner decides.
     app.db.run("UPDATE actions SET status = 'failed', result = 'Interrupted by a restart; check whether it took effect before retrying.' WHERE status = 'executing'");
+    // A matter that was closed while a confirmation was open keeps only the
+    // closed state: the question can no longer be answered meaningfully.
+    app.db.run(
+      `UPDATE actions SET status = 'cancelled', result = 'the matter was closed before it was answered', resolved_at = ?
+       WHERE status = 'pending' AND thread_id IN (SELECT id FROM threads WHERE state = 'done' OR archived_at IS NOT NULL)`,
+      now(),
+    );
   }
 
   create(threadId: string, tool: string, args: Record<string, unknown>, summary: string): Action {
+    // One thread asks one thing at a time: a new confirmation retires the one still waiting.
+    this.supersede(threadId);
     const id = newId("act");
     this.app.db.run(
       "INSERT INTO actions (id, thread_id, tool, args, summary, status, created_at) VALUES (?, ?, ?, ?, ?, 'pending', ?)",
@@ -179,6 +188,44 @@ export class Actions {
 
   cancel(id: string, reason?: string): Action {
     return this.close(id, (a) => `The owner cancelled: ${a.summary}${reason ? `. Reason: ${reason}` : ""}. Do not retry it unless the owner asks.`);
+  }
+
+  /**
+   * Retires the thread's open confirmations without resuming it, for when the
+   * matter is done or put away: the answer would no longer lead anywhere.
+   * Returns how many were waiting.
+   */
+  dropForThread(threadId: string, why: string): number {
+    const rows = this.app.db.all<{ id: string }>("SELECT id FROM actions WHERE thread_id = ? AND status = 'pending'", threadId);
+    for (const { id } of rows) {
+      const r = this.app.db.run(
+        "UPDATE actions SET status = 'cancelled', result = ?, resolved_at = ? WHERE id = ? AND status = 'pending'",
+        why,
+        now(),
+        id,
+      );
+      if (r.changes === 0) continue;
+      const action = this.get(id);
+      this.app.bus.publish({ type: "action.updated", threadId, actionId: id });
+      this.app.threads.addNotice(threadId, "action_result", `Not answered: ${action?.summary ?? "an action"} (${why}).`, { llm: true, data: { actionId: id } });
+    }
+    return rows.length;
+  }
+
+  /** Closes what is still waiting in a thread because a newer confirmation replaced it. */
+  private supersede(threadId: string): void {
+    const rows = this.app.db.all<{ id: string }>("SELECT id FROM actions WHERE thread_id = ? AND status = 'pending'", threadId);
+    for (const { id } of rows) {
+      const action = this.get(id);
+      const r = this.app.db.run(
+        "UPDATE actions SET status = 'cancelled', result = 'superseded by a newer confirmation', resolved_at = ? WHERE id = ? AND status = 'pending'",
+        now(),
+        id,
+      );
+      if (r.changes === 0) continue;
+      this.app.bus.publish({ type: "action.updated", threadId, actionId: id });
+      this.app.threads.addNotice(threadId, "action_result", `Superseded: ${action?.summary ?? "an action"}. A newer confirmation replaced it.`, { llm: true, data: { actionId: id } });
+    }
   }
 
   /** Agents' approvals still pending after APPROVAL_TTL_MS, cancelled for want of an answer. Returns how many. */
