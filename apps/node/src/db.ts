@@ -285,6 +285,10 @@ const MIGRATIONS: string[] = [
   `
   ALTER TABLE actions ADD COLUMN display TEXT;
   `,
+  // A thread the owner put away: out of the lists, everything else kept.
+  `
+  ALTER TABLE threads ADD COLUMN archived_at INTEGER;
+  `,
 ];
 
 function migrate(db: Db): void {

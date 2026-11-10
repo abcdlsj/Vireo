@@ -64,7 +64,11 @@ export class Runner {
     const body = `${text}${fileNote}`;
     const content = opts.images?.length ? [{ type: "text" as const, text: body }, ...opts.images] : body;
     const stored = this.app.threads.addMessage(threadId, { role: "user", content, timestamp: now() }, { agent: opts.source === "vireo" ? "vireo" : undefined });
-    if (opts.source !== "vireo") this.app.threads.update(threadId, { last_owner_at: now(), needs_you: 0, ...(thread.state === "done" ? { state: "active", done_at: null } : {}) });
+    if (opts.source !== "vireo") {
+      // Writing in a thread the owner put away brings it back to the lists.
+      if (thread.archivedAt) this.app.threads.unarchive(threadId);
+      this.app.threads.update(threadId, { last_owner_at: now(), needs_you: 0, ...(thread.state === "done" ? { state: "active", done_at: null } : {}) });
+    }
     if (thread.id !== OVERVIEW_ID && !this.app.threads.row(threadId)?.titled) void this.app.lifecycle.nameThread(threadId, text);
 
     if (this.active.has(threadId)) {

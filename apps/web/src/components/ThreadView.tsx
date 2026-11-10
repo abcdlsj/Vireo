@@ -354,15 +354,31 @@ export function ThreadView({ id }: { id: string }) {
           <span className="crumb-here">{t.title}</span>
         </span>
         <div className="head-actions">
-          {isOverview ? null : t.state === "done" ? (
-            <button className="btn ghost small" onClick={() => void api.post(`/api/threads/${t.id}/reopen`).then(load)}>
-              Reopen
+          {isOverview ? null : t.archivedAt ? (
+            <button className="btn ghost small" onClick={() => void api.post(`/api/threads/${t.id}/unarchive`).then(load)} data-testid="unarchive">
+              Unarchive
             </button>
           ) : (
-            <button className="btn ghost small" onClick={() => void api.post(`/api/threads/${t.id}/done`).then(load)} data-testid="mark-done">
-              <CheckIcon />
-              Done
-            </button>
+            <>
+              {t.state === "done" ? (
+                <button className="btn ghost small" onClick={() => void api.post(`/api/threads/${t.id}/reopen`).then(load)}>
+                  Reopen
+                </button>
+              ) : (
+                <button className="btn ghost small" onClick={() => void api.post(`/api/threads/${t.id}/done`).then(load)} data-testid="mark-done">
+                  <CheckIcon />
+                  Done
+                </button>
+              )}
+              <button
+                className="btn ghost small"
+                title="Put it away: out of the lists, everything kept"
+                onClick={() => void api.post(`/api/threads/${t.id}/archive`).then(() => go(""))}
+                data-testid="archive"
+              >
+                Archive
+              </button>
+            </>
           )}
           <button className={`btn ghost small ${panel ? "on" : ""}`} onClick={() => setPanel(!panel)} aria-label="Details" title="Details" data-testid="toggle-panel">
             <PanelIcon />

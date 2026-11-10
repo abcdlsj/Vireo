@@ -64,6 +64,24 @@ export class ThreadLifecycle {
     this.app.threads.update(threadId, { state: "active", done_at: null });
     this.app.threads.addNotice(threadId, "reopened", "Reopened");
   }
+
+  /**
+   * Puts a thread away: a run in flight stops first, so nothing is written
+   * into a thread the app no longer shows. Its browser tabs go too.
+   */
+  async archive(threadId: string): Promise<void> {
+    if (threadId === OVERVIEW_ID) throw new Error("The Overview thread cannot be archived");
+    const thread = this.app.threads.get(threadId);
+    if (!thread) throw new Error("Thread not found");
+    this.app.runner.stop(threadId);
+    await this.app.runner.settled(threadId);
+    void this.app.browser.closeThread(threadId);
+    this.app.threads.archive(threadId);
+  }
+
+  unarchive(threadId: string): void {
+    this.app.threads.unarchive(threadId);
+  }
 }
 
 function fallbackTitle(text: string): string {

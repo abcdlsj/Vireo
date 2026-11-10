@@ -7,7 +7,7 @@ export interface Thread {
   id: string;
   title: string;
   state: "active" | "done";
-  group: "overview" | "needs_you" | "in_progress" | "done";
+  group: "overview" | "needs_you" | "in_progress" | "done" | "archived";
   statusLine: string;
   agent: string;
   temporary: boolean;
@@ -20,6 +20,8 @@ export interface Thread {
   createdAt: number;
   updatedAt: number;
   doneAt: number | null;
+  /** When the owner put it away; an archived thread is out of the lists but keeps everything. */
+  archivedAt: number | null;
 }
 
 export type Message =

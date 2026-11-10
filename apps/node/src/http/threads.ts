@@ -20,7 +20,7 @@ export function signature(messages: unknown[], count: number): string {
 export function threadRoutes(app: App): Hono {
   const r = new Hono();
 
-  r.get("/threads", (c) => c.json({ threads: app.threads.list() }));
+  r.get("/threads", (c) => c.json({ threads: [...app.threads.list(), ...app.threads.listArchived()] }));
 
   r.post("/threads", async (c) => {
     const body = await c.req.json<{ text?: string; temporary?: boolean; title?: string }>();
@@ -72,6 +72,18 @@ export function threadRoutes(app: App): Hono {
   r.delete("/threads/:id", (c) => {
     app.threads.delete(c.req.param("id"));
     return c.json({ ok: true });
+  });
+
+  // Putting a matter away: out of the lists, everything kept. The app's Archive button.
+  r.post("/threads/:id/archive", async (c) => {
+    const id = c.req.param("id");
+    await app.lifecycle.archive(id);
+    return c.json({ thread: app.threads.get(id) });
+  });
+  r.post("/threads/:id/unarchive", (c) => {
+    const id = c.req.param("id");
+    app.lifecycle.unarchive(id);
+    return c.json({ thread: app.threads.get(id) });
   });
 
   r.post("/threads/:id/messages", async (c) => {

@@ -529,7 +529,8 @@ button.link.danger {
   font-weight: 500;
 }
 
-.thread-row.done .title {
+.thread-row.done .title,
+.thread-row.archived .title {
   color: var(--text-2);
 }
 

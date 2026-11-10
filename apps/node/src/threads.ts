@@ -25,6 +25,7 @@ export interface ThreadRow {
   updated_at: number;
   last_owner_at: number | null;
   done_at: number | null;
+  archived_at: number | null;
 }
 
 
@@ -90,18 +91,26 @@ export class ThreadStore {
     return row ? this.toThread(row) : undefined;
   }
 
+  /** The threads in the lists: archived ones are left out. */
   list(): Thread[] {
     return this.db
-      .all<ThreadRow>("SELECT * FROM threads ORDER BY pinned DESC, updated_at DESC")
+      .all<ThreadRow>("SELECT * FROM threads WHERE archived_at IS NULL ORDER BY pinned DESC, updated_at DESC")
+      .map((r) => this.toThread(r));
+  }
+
+  /** The newest archived threads, for the app's Archived group. */
+  listArchived(limit = 30): Thread[] {
+    return this.db
+      .all<ThreadRow>("SELECT * FROM threads WHERE archived_at IS NOT NULL ORDER BY archived_at DESC LIMIT ?", limit)
       .map((r) => this.toThread(r));
   }
 
   private toThread(row: ThreadRow): Thread {
     const pending =
       this.db.get<{ n: number }>("SELECT COUNT(*) AS n FROM actions WHERE thread_id = ? AND status = 'pending'", row.id)?.n ?? 0;
-    const needsYou = row.state !== "done" && (pending > 0 || row.needs_you === 1);
+    const needsYou = !row.archived_at && row.state !== "done" && (pending > 0 || row.needs_you === 1);
     const group: Thread["group"] =
-      row.id === OVERVIEW_ID ? "overview" : row.state === "done" ? "done" : needsYou ? "needs_you" : "in_progress";
+      row.id === OVERVIEW_ID ? "overview" : row.archived_at ? "archived" : row.state === "done" ? "done" : needsYou ? "needs_you" : "in_progress";
     return {
       id: row.id,
       title: row.title,
@@ -119,6 +128,7 @@ export class ThreadStore {
       createdAt: row.created_at,
       updatedAt: row.updated_at,
       doneAt: row.done_at,
+      archivedAt: row.archived_at,
     };
   }
 
@@ -134,6 +144,23 @@ export class ThreadStore {
   /** Touch without changing the sort order (used for live status updates). */
   setStatus(id: string, line: string): void {
     this.db.run("UPDATE threads SET status_line = ? WHERE id = ?", line.slice(0, 140), id);
+    this.changed(id);
+  }
+
+  /**
+   * Puts a thread away: it leaves the lists but keeps its messages, cards,
+   * files and whatever Vireo learned from it. Reversible with `unarchive`.
+   */
+  archive(id: string): void {
+    if (id === OVERVIEW_ID) throw new Error("The Overview thread cannot be archived");
+    const r = this.db.run("UPDATE threads SET archived_at = ?, needs_you = 0, running = 0, updated_at = ? WHERE id = ? AND archived_at IS NULL", now(), now(), id);
+    if (!r.changes) return;
+    this.changed(id);
+  }
+
+  unarchive(id: string): void {
+    const r = this.db.run("UPDATE threads SET archived_at = NULL, updated_at = ? WHERE id = ? AND archived_at IS NOT NULL", now(), id);
+    if (!r.changes) return;
     this.changed(id);
   }
 

@@ -7,6 +7,7 @@ const GROUPS: { key: Thread["group"]; label: string }[] = [
   { key: "needs_you", label: "Needs you" },
   { key: "in_progress", label: "In hand" },
   { key: "done", label: "Done" },
+  { key: "archived", label: "Archived" },
 ];
 
 export function ThreadList({ threads, current }: { threads: Thread[]; current: string | null }) {
@@ -21,7 +22,7 @@ export function ThreadList({ threads, current }: { threads: Thread[]; current: s
               {g.label}
               <span className="count">{items.length}</span>
             </h3>
-            {(g.key === "done" ? items.slice(0, 30) : items).map((t) => (
+            {(g.key === "done" || g.key === "archived" ? items.slice(0, 30) : items).map((t) => (
               <Row key={t.id} t={t} active={current === t.id} />
             ))}
           </section>
