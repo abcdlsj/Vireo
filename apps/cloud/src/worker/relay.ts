@@ -43,14 +43,15 @@ interface Limit {
  * Durable Object duration is billed for as long as a request is in flight, so
  * one stream holds this object awake — and a browser window left open on a
  * machine nobody is looking at holds one all day. The free plan allows 13,000
- * GB-s a day, which is 28 hours of this object awake at 128 MB; six hours of
- * busy time is about 2,765 GB-s and leaves the rest of the day to ordinary
- * requests. A normal day of use never reaches the first step.
+ * GB-s a day, which is 28 hours of this object awake at 128 MB; eighteen hours
+ * of busy time is about 8,294 GB-s and leaves the rest of the day to ordinary
+ * requests. A heavy day of real use is seven or eight hours and stays below
+ * the first step.
  */
 const LIMITS: Limit[] = [
-  { at: 6 * 60 * MINUTE, eventsMs: 0, gapMs: 0 },
-  { at: 4 * 60 * MINUTE, eventsMs: 5 * MINUTE, gapMs: 15_000 },
-  { at: 2 * 60 * MINUTE, eventsMs: 20 * MINUTE, gapMs: 0 },
+  { at: 18 * 60 * MINUTE, eventsMs: 0, gapMs: 0 },
+  { at: 12 * 60 * MINUTE, eventsMs: 5 * MINUTE, gapMs: 15_000 },
+  { at: 6 * 60 * MINUTE, eventsMs: 20 * MINUTE, gapMs: 0 },
 ];
 
 const limitFor = (busyMs: number): Limit => LIMITS.find((l) => busyMs >= l.at) ?? { at: 0, eventsMs: Infinity, gapMs: 0 };
