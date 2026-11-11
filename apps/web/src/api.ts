@@ -50,24 +50,28 @@ const listeners = new Set<Listener>();
 let stream: AbortController | undefined;
 let watched = false;
 let greeted = false;
+let touched = 0;
+let idle: ReturnType<typeof setTimeout> | undefined;
 
 /** A stream that lasted this long was healthy; anything shorter backs off. */
 const HEALTHY_MS = 30_000;
+/** No keystroke, no tap and no real update for this long: let the stream go. */
+const IDLE_MS = 10 * 60_000;
 
 /**
  * One shared stream of live updates from the node, held only while the page is
- * visible and something listens. Read with fetch rather than EventSource so
- * every reconnect sends a fresh token in a header.
+ * visible **and** someone is using it. Read with fetch rather than EventSource
+ * so every reconnect sends a fresh token in a header.
  *
- * Why the tab matters: a stream left open costs a request every ping, and —
- * more to the point — it keeps the node's Durable Object awake for as long as
- * it is open, which is billed as compute duration. A hidden tab holding one
- * overnight burns roughly a free plan's whole daily allowance.
+ * Why both matter: an open stream costs a request every ping, and — more to
+ * the point — it keeps the node's Durable Object awake for as long as it is
+ * open, which is billed as compute duration. A tab left open on a machine
+ * nobody is looking at burns a free plan's whole daily allowance overnight.
  */
 export function onEvent(fn: Listener): () => void {
   listeners.add(fn);
   watchPage();
-  startStream();
+  touch();
   return () => {
     listeners.delete(fn);
     if (listeners.size === 0) stopStream();
@@ -78,10 +82,29 @@ export function onEvent(fn: Listener): () => void {
 function watchPage(): void {
   if (watched) return;
   watched = true;
-  const sync = () => (document.visibilityState === "hidden" ? stopStream() : startStream());
-  document.addEventListener("visibilitychange", sync);
+  document.addEventListener("visibilitychange", () => (document.visibilityState === "hidden" ? stopStream() : touch()));
   window.addEventListener("pagehide", stopStream);
-  window.addEventListener("pageshow", startStream);
+  window.addEventListener("pageshow", touch);
+  for (const type of ["pointerdown", "keydown", "wheel", "touchstart", "focus"])
+    window.addEventListener(type, touch, { passive: true, capture: true });
+}
+
+/** Something happened — a keystroke, a tap, or a real update from the node. */
+function touch(): void {
+  touched = Date.now();
+  if (document.visibilityState === "hidden") return;
+  startStream();
+  armIdle();
+}
+
+/** Stops the stream once nothing has happened for a while, so a forgotten window costs nothing. */
+function armIdle(): void {
+  if (!stream) return;
+  clearTimeout(idle);
+  idle = setTimeout(
+    () => (Date.now() - touched >= IDLE_MS ? stopStream() : armIdle()),
+    Math.max(IDLE_MS - (Date.now() - touched), 1000),
+  );
 }
 
 function startStream(): void {
@@ -94,6 +117,7 @@ function startStream(): void {
 }
 
 function stopStream(): void {
+  clearTimeout(idle);
   const ctl = stream;
   if (!ctl) return;
   stream = undefined;
@@ -101,6 +125,8 @@ function stopStream(): void {
 }
 
 function emit(e: NodeEvent): void {
+  touched = Date.now();
+  armIdle();
   for (const l of listeners) l(e);
 }
 
@@ -118,6 +144,7 @@ async function follow(signal: AbortSignal): Promise<void> {
             // Everything open loads itself as the stream starts; only a gap may have missed something.
             if (greeted) emit({ type: "thread.updated", threadId: "*" });
             greeted = true;
+            touch();
           }
           else if (event === "message") emit(JSON.parse(data) as NodeEvent);
         });
