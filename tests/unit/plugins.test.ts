@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { resolve } from "node:path";
@@ -349,6 +349,31 @@ describe("desktop plugin", () => {
     expect(check).toContain("vireo");
   });
 
+  it("reads again while a window is being swapped out", async () => {
+    const dir = tempDir();
+    process.env.AGENT_DESKTOP_FAIL_WINDOWS = "3";
+    process.env.AGENT_DESKTOP_COUNTER = resolve(dir, "counter");
+    try {
+      const { app, thread } = await setup();
+      const seen = await app.tools.get("desktop_snapshot")!.run({ app: "System Settings" }, { app, thread, agent: "general" });
+      expect(seen.text).toContain("@sfake0001:e7");
+    } finally {
+      delete process.env.AGENT_DESKTOP_FAIL_WINDOWS;
+      delete process.env.AGENT_DESKTOP_COUNTER;
+    }
+  });
+
+  it("hands back the window after an action, so no second snapshot is needed", async () => {
+    const calls = withLog();
+    const { app, thread } = await setup();
+    await app.tools.get("desktop_snapshot")!.run({ app: "System Settings" }, { app, thread, agent: "general" });
+    const before = calls().length;
+    const done = await app.tools.get("desktop_act")!.run({ action: "check", ref: "@sfake0001:e7", description: "Turn on Reduce motion" }, { app, thread, agent: "general", confirmed: true });
+    expect(done.text).toContain("check in System Settings: Turn on Reduce motion");
+    expect(done.text).toContain("@sfake0001:e7");
+    expect(calls().slice(before).map((c) => c[0])).toEqual(["check", "snapshot"]);
+  });
+
   it("waits for the owner before touching anything", async () => {
     const { app, thread } = await setup();
     const def = app.tools.get("desktop_act")!;
@@ -382,6 +407,30 @@ describe("desktop plugin", () => {
     await expect(
       app.tools.get("desktop_act")!.run({ action: "type", ref: "@sfake0001:e7", description: "Type" }, { app, thread, agent: "general", confirmed: true }),
     ).rejects.toThrow(/needs a value/);
+  });
+
+  it("resolves a bare command name through the node's own PATH", async () => {
+    const dir = tempDir();
+    copyFileSync(FAKE_DESKTOP, resolve(dir, "agent-desktop"));
+    chmodSync(resolve(dir, "agent-desktop"), 0o755);
+    const before = process.env.PATH;
+    process.env.PATH = `${dir}:${before ?? ""}`;
+    try {
+      const app = open();
+      await app.plugins.install("desktop", { apps: "System Settings" });
+      const thread = app.threads.create({});
+      const out = await app.tools.get("desktop_apps")!.run({}, { app, thread, agent: "general" });
+      expect(out.text).toContain("System Settings");
+    } finally {
+      process.env.PATH = before;
+    }
+  });
+
+  it("says what is missing when the command cannot be found", async () => {
+    const app = open();
+    await app.plugins.install("desktop", { apps: "System Settings", binary: "agent-desktop-not-on-this-machine" });
+    const thread = app.threads.create({});
+    await expect(app.tools.get("desktop_apps")!.run({}, { app, thread, agent: "general" })).rejects.toThrow(/not installed/);
   });
 
   it("says what is missing when agent-desktop is not installed", async () => {

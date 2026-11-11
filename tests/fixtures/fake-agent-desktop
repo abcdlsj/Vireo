@@ -13,6 +13,17 @@ const flag = (name, fallback = "") => {
 
 if (process.env.AGENT_DESKTOP_LOG) fs.appendFileSync(process.env.AGENT_DESKTOP_LOG, `${JSON.stringify(argv)}\n`);
 
+// AGENT_DESKTOP_FAIL_WINDOWS=n makes the first n window reads fail the way
+// macOS does while a settings pane swaps its window out: no window at all.
+const failures = Number(process.env.AGENT_DESKTOP_FAIL_WINDOWS ?? "0");
+const counter = process.env.AGENT_DESKTOP_COUNTER;
+let windowGone = false;
+if (failures && counter) {
+  const seen = fs.existsSync(counter) ? Number(fs.readFileSync(counter, "utf8").trim() || "0") : 0;
+  fs.writeFileSync(counter, String(seen + 1));
+  windowGone = seen < failures;
+}
+
 const snapshotId = "sfake0001";
 const app = flag("app", "System Settings");
 
@@ -40,6 +51,10 @@ switch (command) {
     });
     break;
   case "snapshot":
+    if (windowGone && !argv.includes("--root")) {
+      fail("WINDOW_NOT_FOUND", `Application '${app}' is running but has no matching window.`);
+      break;
+    }
     ok({
       app,
       complete: true,

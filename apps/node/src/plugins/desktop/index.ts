@@ -153,6 +153,19 @@ export const desktopPlugin: PluginDef = {
   create(ctx): PluginRuntime {
     const cfg = () => ctx.config<DesktopConfig>();
     const binary = () => (cfg().binary ?? "").trim() || "agent-desktop";
+
+    /**
+     * launchd starts a job with a bare PATH (`/usr/bin:/bin:/usr/sbin:/sbin`),
+     * so a name like `agent-desktop` resolves to nothing and the job dies
+     * silently. Resolve the command here, where the node's own PATH applies.
+     */
+    function command(): string {
+      const given = binary();
+      if (given.includes("/")) return given;
+      const dirs = [...(process.env.PATH ?? "").split(":"), "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin"].filter(Boolean);
+      for (const dir of dirs) if (existsSync(join(dir, given))) return join(dir, given);
+      throw new Error(`${given} is not installed on this machine: \`npm install -g agent-desktop\`, or set its path in Settings → Plugins → Desktop apps.`);
+    }
     const allowed = () =>
       (cfg().apps ?? "")
         .split(/[,\n]/)
@@ -219,7 +232,7 @@ export const desktopPlugin: PluginDef = {
       const err = join(dir, `${id}.err`);
       try {
         await new Promise<void>((resolve, reject) => {
-          execFile("/bin/launchctl", ["submit", "-l", label, "-o", out, "-e", err, "--", binary(), ...argv], { timeout: 20_000, signal }, (e, _stdout, stderr) =>
+          execFile("/bin/launchctl", ["submit", "-l", label, "-o", out, "-e", err, "--", command(), ...argv], { timeout: 20_000, signal }, (e, _stdout, stderr) =>
             e ? reject(new Error(`launchctl could not start agent-desktop: ${String(stderr ?? "").trim() || e.message}`)) : resolve(),
           );
         });
@@ -233,7 +246,8 @@ export const desktopPlugin: PluginDef = {
           await new Promise((r) => setTimeout(r, 150));
         }
         const detail = existsSync(err) ? readFileSync(err, "utf8").trim() : "";
-        throw new Error(`agent-desktop did not answer within ${Math.round(ms / 1000)} s.${detail ? ` ${truncate(detail, 300)}` : ""}`);
+        const silent = detail ? "" : " The job printed nothing: check that the command runs by itself.";
+        throw new Error(`agent-desktop did not answer within ${Math.round(ms / 1000)} s.${detail ? ` ${truncate(detail, 300)}` : ""}${silent}`);
       } finally {
         execFile("/bin/launchctl", ["remove", label], () => undefined);
         rmSync(out, { force: true });
@@ -250,7 +264,7 @@ export const desktopPlugin: PluginDef = {
           else reject(new Error("agent-desktop printed no result."));
         };
         if (process.env.VIREO_DESKTOP_SPAWN === "direct") {
-          execFile(binary(), argv, { timeout: ms, maxBuffer: 8 << 20, signal }, (err, stdout, stderr) => {
+          execFile(command(), argv, { timeout: ms, maxBuffer: 8 << 20, signal }, (err, stdout, stderr) => {
             if (parse(String(stdout ?? ""))) receive(String(stdout ?? ""));
             else reject(new Error(why(err, String(stderr ?? ""), ms)));
           });
@@ -260,13 +274,62 @@ export const desktopPlugin: PluginDef = {
       });
     }
 
+    /** What the node resolved the command to, or why it could not. */
+    function safeCommand(): string {
+      try {
+        return command();
+      } catch (err) {
+        return errorMessage(err);
+      }
+    }
+
     async function ok(args: string[], ms: number, signal?: AbortSignal): Promise<Record<string, unknown>> {
+      const error = (env: Envelope) => env.error ?? { code: "UNKNOWN", message: "agent-desktop reported a failure without details." };
       const env = await call(args, ms, signal);
       if (!env.ok) {
-        const error = env.error ?? { code: "UNKNOWN", message: "agent-desktop reported a failure without details." };
-        throw new Error(`${error.code}: ${error.message}${error.suggestion ? ` — ${error.suggestion}` : ""}`);
+        const e = error(env);
+        throw new Error(`${e.code}: ${e.message}${e.suggestion ? ` — ${e.suggestion}` : ""}`);
       }
       return env.data ?? {};
+    }
+
+    /**
+     * An app between windows: macOS drops and rebuilds a settings window's
+     * accessibility tree while a pane changes, so a read right after an action
+     * finds no window at all. Reading again is safe; only writes are not.
+     */
+    const TRANSIENT = new Set(["WINDOW_NOT_FOUND", "APP_NOT_FOUND"]);
+    const READ_WAIT_MS = 8_000;
+
+    async function read(args: string[], ms: number, signal?: AbortSignal, retry = true): Promise<Record<string, unknown>> {
+      const deadline = Date.now() + READ_WAIT_MS;
+      for (;;) {
+        const env = await call(args, ms, signal);
+        if (env.ok) return env.data ?? {};
+        const error = env.error ?? { code: "UNKNOWN", message: "agent-desktop reported a failure without details." };
+        if (!retry || !TRANSIENT.has(error.code) || Date.now() >= deadline) {
+          throw new Error(`${error.code}: ${error.message}${error.suggestion ? ` — ${error.suggestion}` : ""}`);
+        }
+        await new Promise((r) => setTimeout(r, 300));
+        if (signal?.aborted) throw new Error("The read was cancelled.");
+      }
+    }
+
+    /** The app's window as the model reads it, plus its refs. */
+    async function look(app: string, signal?: AbortSignal, depth?: number): Promise<{ text: string; snapshotId?: string }> {
+      const cmd = ["snapshot", "-i", "--compact", "--app", app];
+      if (depth) cmd.push("--max-depth", String(depth));
+      else cmd.push("--skeleton");
+      const data = await read(cmd, 30_000, signal);
+      const owner = String(data.app ?? app);
+      remember(data.snapshot_id, owner);
+      const lines: string[] = [];
+      if (data.tree) renderTree(data.tree as Node, 0, lines);
+      const window = (data.window ?? {}) as { title?: string };
+      const head = [owner, window.title ? `— ${window.title}` : "", `refs: ${data.ref_count ?? 0}`, data.complete === false ? "(partial read: drill into a region)" : ""]
+        .filter(Boolean)
+        .join("  ");
+      return { text: `${head}\n${truncate(lines.join("\n"), TREE_CAP)}`, snapshotId: typeof data.snapshot_id === "string" ? data.snapshot_id : undefined };
     }
 
     return {
@@ -278,7 +341,7 @@ export const desktopPlugin: PluginDef = {
           description: "List the GUI apps running on this machine and mark the ones Vireo may act in. Start here: the other desktop tools take an app name exactly as this prints it.",
           parameters: Type.Object({}),
           async run(_args, tctx) {
-            const data = await ok(["list-apps"], 15_000, tctx.signal);
+            const data = await read(["list-apps"], 15_000, tctx.signal);
             const apps = (data.apps as { name: string; presentation?: string }[] | undefined) ?? [];
             if (!apps.length) return { text: "No GUI app is running that agent-desktop can see." };
             const lines = apps.map((a) => `${a.name}${a.presentation === "background" ? " (background)" : ""}${isAllowed(a.name) ? "  ← Vireo may act here" : ""}`);
@@ -289,7 +352,7 @@ export const desktopPlugin: PluginDef = {
           name: "desktop_snapshot",
           label: "Look at a desktop app",
           description:
-            "Read one app's window as an accessibility tree: role, name, value, states, available actions and a ref for every element. A skeleton (the default) reads three levels and marks cut containers with how many children they have — drill into one with ref. Refs go stale when the window changes, so take a fresh snapshot after acting.",
+            "Read one app's window as an accessibility tree: role, name, value, states, available actions and a ref for every element. A skeleton (the default) reads three levels and marks cut containers with how many children they have — drill into one with ref. desktop_act already returns the window as it is afterwards, so a separate snapshot is only needed when something else changed it.",
           parameters: Type.Object({
             app: Type.String({ description: 'App name as desktop_apps prints it, e.g. "System Settings".' }),
             ref: Type.Optional(Type.String({ description: "Drill into this ref's subtree instead of reading the whole app." })),
@@ -297,26 +360,21 @@ export const desktopPlugin: PluginDef = {
             full: Type.Optional(Type.Boolean({ description: "Read the whole tree rather than a skeleton. Much larger; prefer drilling." })),
           }),
           async run(args, tctx) {
-            const cmd = ["snapshot", "-i", "--compact"];
-            if (args.ref) cmd.push("--root", args.ref);
-            else cmd.push("--app", args.app, ...(args.full ? [] : ["--skeleton"]));
+            if (!args.ref) {
+              const seen = await look(args.app, tctx.signal, args.depth ?? (args.full ? 10 : undefined));
+              return { text: seen.text, source: `desktop:${args.app}` };
+            }
+            const cmd = ["snapshot", "-i", "--compact", "--root", args.ref];
             if (args.depth) cmd.push("--max-depth", String(args.depth));
-            const data = await ok(cmd, 30_000, tctx.signal);
-            const app = String(data.app ?? args.app);
+            // A drill into a dead window gets nowhere by waiting: one read only.
+            const data = await read(cmd, 30_000, tctx.signal, false);
+            const app = String(data.app ?? snapshots()[/^@([A-Za-z0-9_-]+):/.exec(args.ref)?.[1] ?? ""] ?? args.app);
             remember(data.snapshot_id, app);
             const lines: string[] = [];
             if (data.tree) renderTree(data.tree as Node, 0, lines);
-            const window = (data.window ?? {}) as { title?: string };
-            const head = [
-              app,
-              window.title ? `— ${window.title}` : "",
-              `refs: ${data.ref_count ?? 0}`,
-              data.complete === false ? "(partial read: raise depth on a region, or take a skeleton and drill)" : "",
-            ]
-              .filter(Boolean)
-              .join("  ");
+            const head = [app, `refs: ${data.ref_count ?? 0}`].join("  ");
             return {
-              text: lines.length ? `${head}\n${truncate(lines.join("\n"), TREE_CAP)}` : `${head}\nThe window has no accessible elements.`,
+              text: lines.length ? `${head}\n${truncate(lines.join("\n"), TREE_CAP)}` : `${head}\nThat region has no accessible elements.`,
               source: `desktop:${app}`,
             };
           },
@@ -343,7 +401,7 @@ export const desktopPlugin: PluginDef = {
             }
             if (args.exact) cmd.push("--exact");
             cmd.push(...(args.first ? ["--first"] : ["--limit", "20"]));
-            const data = await ok(cmd, 30_000, tctx.signal);
+            const data = await read(cmd, 30_000, tctx.signal);
             remember(data.snapshot_id, args.app);
             const single = data.match as Match | undefined;
             const many = (data.matches as Match[] | undefined) ?? [];
@@ -373,7 +431,7 @@ export const desktopPlugin: PluginDef = {
           }),
           async run(args, tctx) {
             const property = args.property ?? "text";
-            const data = await ok(["get", args.ref, "--property", property], 15_000, tctx.signal);
+            const data = await read(["get", args.ref, "--property", property], 15_000, tctx.signal, false);
             return { text: `${args.ref} ${property}: ${JSON.stringify(data.value ?? null)}`, source: "desktop" };
           },
         }),
@@ -381,7 +439,7 @@ export const desktopPlugin: PluginDef = {
           name: "desktop_act",
           label: "Act in a desktop app",
           description:
-            "Act on one element of a desktop app: click, toggle, check, uncheck, set_value, type or select. Every action waits for the owner's confirmation, and only apps on the allowlist may be touched. The result says whether the app confirmed the change; take a fresh snapshot when it did not.",
+            "Act on one element of a desktop app: click, toggle, check, uncheck, set_value, type or select. Every action waits for the owner's confirmation, and only apps on the allowlist may be touched. It returns the window as it is afterwards, with fresh refs, so work from that instead of taking another snapshot. Leave the app and its windows as the change left them: do not close or tidy up.",
           parameters: Type.Object({
             action: Type.Union(
               [
@@ -408,9 +466,17 @@ export const desktopPlugin: PluginDef = {
             const cmd = [COMMAND[args.action], args.ref.trim()];
             if (args.value !== undefined) cmd.push(args.value);
             const data = await ok(cmd, 60_000, tctx.signal);
+            const report = afterAction(data);
+            let seen: string;
+            try {
+              seen = (await look(app, tctx.signal)).text;
+            } catch (err) {
+              seen = `The window could not be read afterwards: ${errorMessage(err)}`;
+            }
             return {
-              text: [`${args.action.replace("_", " ")} in ${app}: ${args.description}`, ...afterAction(data)].join("\n"),
-              display: { note: args.description, output: afterAction(data).join("\n") },
+              text: [`${args.action.replace("_", " ")} in ${app}: ${args.description}`, ...report, "", seen].join("\n"),
+              source: `desktop:${app}`,
+              display: { note: args.description, output: report.join("\n") },
             };
           },
         }),
@@ -419,7 +485,7 @@ export const desktopPlugin: PluginDef = {
         const apps = allowed();
         const details = [
           { label: "Apps Vireo may act in", value: apps.length ? apps.join(", ") : "none yet — actions are refused" },
-          { label: "Command", value: binary() },
+          { label: "Command", value: safeCommand() },
         ];
         if (platform() !== "darwin") return { state: "error", message: `Desktop apps work on macOS only; this node runs on ${platform()}.`, details };
         try {
