@@ -1,0 +1,34 @@
+# Publishes askvireo to npm from GitHub, so no 2FA code is needed: npm trusts
+# this workflow through OIDC instead of a token. Run it by hand from the
+# Actions tab after bumping the version in apps/node/package.json.
+#
+# One-time setup on npmjs.com: the package's Settings → Trusted publishing →
+# Add a trusted publisher → GitHub Actions, with
+#   Organization or user: abcdlsj
+#   Repository:           Vireo
+#   Workflow filename:    publish.yml
+#   Environment:          (empty)
+
+name: Publish
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - name: npm that knows trusted publishing
+        run: npm install -g npm@latest
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build:node
+      - run: npm publish -w askvireo --provenance
