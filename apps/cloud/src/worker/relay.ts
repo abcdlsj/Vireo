@@ -13,6 +13,59 @@ interface Attachment {
 const PING = JSON.stringify({ t: "ping" } satisfies NodeToCloud);
 const PONG = JSON.stringify({ t: "pong" } satisfies CloudToNode);
 
+const MINUTE = 60_000;
+/** Where the day's busy time is kept, and how much may pile up before it is written. */
+const METER = "meter";
+/** Written out often: the object hibernates between requests, and unsaved counts go with it. */
+const FLUSH_MS = 5_000;
+
+interface Meter {
+  /** The UTC day this adds up within; Cloudflare's free limits reset at its midnight. */
+  day: string;
+  /** Milliseconds requests have held this object awake today. */
+  busyMs: number;
+  /** When the last live-update stream ended, for the pause between streams. */
+  eventsEndedAt: number;
+}
+
+interface Limit {
+  /** From this much busy time today… */
+  at: number;
+  /** …a live-update stream may last this long (0: not at all). */
+  eventsMs: number;
+  /** …and streams must be at least this far apart. */
+  gapMs: number;
+}
+
+/**
+ * Steps down live updates as a day's relay time grows, longest step first.
+ *
+ * Durable Object duration is billed for as long as a request is in flight, so
+ * one stream holds this object awake — and a browser window left open on a
+ * machine nobody is looking at holds one all day. The free plan allows 13,000
+ * GB-s a day, which is 28 hours of this object awake at 128 MB; six hours of
+ * busy time is about 2,765 GB-s and leaves the rest of the day to ordinary
+ * requests. A normal day of use never reaches the first step.
+ */
+const LIMITS: Limit[] = [
+  { at: 6 * 60 * MINUTE, eventsMs: 0, gapMs: 0 },
+  { at: 4 * 60 * MINUTE, eventsMs: 5 * MINUTE, gapMs: 15_000 },
+  { at: 2 * 60 * MINUTE, eventsMs: 20 * MINUTE, gapMs: 0 },
+];
+
+const limitFor = (busyMs: number): Limit => LIMITS.find((l) => busyMs >= l.at) ?? { at: 0, eventsMs: Infinity, gapMs: 0 };
+
+const untilUtcMidnight = (): number => {
+  const now = new Date();
+  return Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1) - now.getTime();
+};
+
+const tooMany = (ms: number): Response =>
+  Response.json(
+    { error: "Live updates are paused for now. The app catches up when they resume." },
+    { status: 429, headers: { "retry-after": String(Math.max(1, Math.ceil(ms / 1000))) } },
+  );
+
 /**
  * One node's relay socket. The node connects at /api/nodes/:nodeId/connect
  * and says hello with its secret; the app's requests then reach it through
@@ -21,10 +74,86 @@ const PONG = JSON.stringify({ t: "pong" } satisfies CloudToNode);
  */
 export class NodeRelay extends DurableObject<WorkerEnv> {
   private bound: { ws: WebSocket; channel: Channel } | undefined;
+  private meter: Meter | undefined;
+  private unwritten = 0;
 
   constructor(ctx: DurableObjectState, env: WorkerEnv) {
     super(ctx, env);
     ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair(PING, PONG));
+  }
+
+  /** Today's meter, loaded from storage and reset when the UTC day turns. */
+  private async today(): Promise<Meter> {
+    const day = new Date().toISOString().slice(0, 10);
+    if (!this.meter || this.meter.day !== day) {
+      const stored = await this.ctx.storage.get<Meter>(METER);
+      this.meter = stored?.day === day ? stored : { day, busyMs: 0, eventsEndedAt: 0 };
+      this.unwritten = 0;
+    }
+    return this.meter;
+  }
+
+  /** Charges time this object was held awake, writing it out every now and then. */
+  private async spend(ms: number): Promise<void> {
+    if (!(ms > 0)) return;
+    const m = await this.today();
+    m.busyMs += ms;
+    this.unwritten += ms;
+    if (this.unwritten >= FLUSH_MS) {
+      this.unwritten = 0;
+      await this.ctx.storage.put(METER, m);
+    }
+  }
+
+  private async eventsEnded(): Promise<void> {
+    const m = await this.today();
+    m.eventsEndedAt = Date.now();
+    await this.ctx.storage.put(METER, m);
+  }
+
+  /**
+   * Passes a response through, charging its lifetime to the day and ending it
+   * at the cap, so one stream cannot hold the object awake without limit.
+   */
+  private capped(answer: Response, started: number, capMs: number, onEnd?: () => void): Response {
+    const body = answer.body;
+    if (!body) {
+      this.ctx.waitUntil(this.spend(Date.now() - started));
+      onEnd?.();
+      return answer;
+    }
+    const reader = body.getReader();
+    let ended = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const end = (): void => {
+      if (ended) return;
+      ended = true;
+      if (timer !== undefined) clearTimeout(timer);
+      this.ctx.waitUntil(this.spend(Date.now() - started));
+      onEnd?.();
+    };
+    if (Number.isFinite(capMs)) timer = setTimeout(() => void reader.cancel("Closed by the cloud").catch(() => undefined), capMs);
+    const pass = new ReadableStream<Uint8Array>({
+      async pull(c) {
+        try {
+          const { value, done } = await reader.read();
+          if (done) {
+            end();
+            c.close();
+            return;
+          }
+          c.enqueue(value);
+        } catch (err) {
+          end();
+          c.error(err);
+        }
+      },
+      cancel(reason) {
+        end();
+        void reader.cancel(reason).catch(() => undefined);
+      },
+    });
+    return new Response(pass, { status: answer.status, statusText: answer.statusText, headers: answer.headers });
   }
 
   private services(): Promise<Cloud> {
@@ -63,7 +192,23 @@ export class NodeRelay extends DurableObject<WorkerEnv> {
     if (url.pathname === "/forward") {
       const ws = this.current();
       if (!ws) return offline();
-      return this.channel(ws).forward(req, req.headers.get("x-vireo-path") ?? "/");
+      const path = req.headers.get("x-vireo-path") ?? "/";
+      const events = path === "/api/events" || path.startsWith("/api/events?");
+      const meter = await this.today();
+      const limit = limitFor(meter.busyMs);
+      if (events) {
+        // Out of the day's allowance, or too soon after the last stream: make the app wait instead.
+        const wait = limit.eventsMs === 0 ? untilUtcMidnight() : limit.gapMs - (Date.now() - meter.eventsEndedAt);
+        if (wait > 0) return tooMany(wait);
+      }
+      const started = Date.now();
+      const answer = await this.channel(ws).forward(req, path);
+      // Only live updates can run long enough to matter; everything else is charged what it took to answer.
+      if (!events) {
+        this.ctx.waitUntil(this.spend(Date.now() - started));
+        return answer;
+      }
+      return this.capped(answer, started, limit.eventsMs, () => void this.eventsEnded());
     }
     return new Response("Not found", { status: 404 });
   }

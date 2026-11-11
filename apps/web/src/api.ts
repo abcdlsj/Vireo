@@ -134,11 +134,17 @@ async function follow(signal: AbortSignal): Promise<void> {
   let wait = 1000;
   while (!signal.aborted) {
     const began = Date.now();
+    let hold = 0;
     try {
       const access = await nodeAccess();
       const res = await fetch(`${access.baseUrl}/api/events`, { headers: { authorization: `Bearer ${access.token}`, accept: "text/event-stream" }, signal });
       if (res.status === 401) await nodeAccess(true);
-      else if (res.ok && res.body) {
+      else if (res.status === 429) {
+        // The cloud is stepping live updates down for the day; wait as long as it asks.
+        const after = Number(res.headers.get("retry-after"));
+        hold = Math.min(Math.max(Number.isFinite(after) && after > 0 ? after * 1000 : 60_000, 5000), 120_000);
+        emit({ type: "thread.updated", threadId: "*" });
+      } else if (res.ok && res.body) {
         await readEvents(res.body, (event, data) => {
           if (event === "ready") {
             // Everything open loads itself as the stream starts; only a gap may have missed something.
@@ -153,6 +159,10 @@ async function follow(signal: AbortSignal): Promise<void> {
       // Dropped or unreachable: try again below.
     }
     if (signal.aborted) return;
+    if (hold > 0) {
+      await new Promise((r) => setTimeout(r, hold));
+      continue;
+    }
     if (Date.now() - began > HEALTHY_MS) wait = 1000;
     await new Promise((r) => setTimeout(r, wait));
     wait = Math.min(wait * 2, 15_000);
