@@ -2,7 +2,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { resolve } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { App } from "../../apps/node/src/app.js";
 import { AGENTS } from "../../apps/node/src/agents.js";
 import { Db } from "../../apps/node/src/db.js";
@@ -275,6 +275,13 @@ describe("google plugin", () => {
 describe("desktop plugin", () => {
   const FAKE_DESKTOP = resolve("tests/fixtures/fake-agent-desktop");
 
+  // In production each call runs as a one-shot launchd job, so the macOS
+  // Accessibility grant attaches to agent-desktop and not to node. A unit test
+  // has no launchd of its own to hand: spawn the fixture directly.
+  beforeEach(() => {
+    process.env.VIREO_DESKTOP_SPAWN = "direct";
+  });
+
   /** The fixture records every call it received, so a test can read what Vireo actually ran. */
   const withLog = () => {
     const file = resolve(tempDir(), "agent-desktop.log");
@@ -284,6 +291,7 @@ describe("desktop plugin", () => {
 
   afterEach(() => {
     delete process.env.AGENT_DESKTOP_LOG;
+    delete process.env.VIREO_DESKTOP_SPAWN;
   });
 
   const setup = async (apps = "System Settings") => {

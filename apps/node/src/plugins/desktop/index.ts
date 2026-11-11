@@ -1,4 +1,6 @@
 import { execFile } from "node:child_process";
+import { randomUUID } from "node:crypto";
+import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { platform } from "node:os";
 import { join } from "node:path";
 import { Type } from "typebox";
@@ -69,6 +71,20 @@ const TREE_CAP = 12_000;
 const FIELD_CAP = 160;
 const LINE_CAP = 400;
 
+/** The envelope, when a command printed one. */
+function parse(text: string): Envelope | undefined {
+  const line = text
+    .split("\n")
+    .map((l) => l.trim())
+    .find((l) => l.startsWith("{"));
+  if (!line) return undefined;
+  try {
+    return JSON.parse(line) as Envelope;
+  } catch {
+    return undefined;
+  }
+}
+
 const quote = (s: string) => JSON.stringify(truncate(s, FIELD_CAP));
 
 /** The tree as the model reads it: one line per element, indented by depth. */
@@ -137,7 +153,6 @@ export const desktopPlugin: PluginDef = {
   create(ctx): PluginRuntime {
     const cfg = () => ctx.config<DesktopConfig>();
     const binary = () => (cfg().binary ?? "").trim() || "agent-desktop";
-    const stateRoot = () => join(ctx.dir, "state");
     const allowed = () =>
       (cfg().apps ?? "")
         .split(/[,\n]/)
@@ -187,28 +202,61 @@ export const desktopPlugin: PluginDef = {
       return `agent-desktop failed (${e.code ?? e.message})${detail ? `: ${truncate(detail, 300)}` : ""}`;
     }
 
+    /**
+     * macOS hands the Accessibility grant to the process that starts the CLI,
+     * not to the CLI itself. Vireo's node is itself started by launchd, so a
+     * plain child of it inherits node's identity, and node holds no grant. A
+     * one-shot launchd job runs the CLI as its own program: the grant lands on
+     * agent-desktop alone, and nothing else on this machine — no node script, no
+     * coding agent's shell command — gains control of the desktop.
+     */
+    async function runAsJob(argv: string[], ms: number, signal?: AbortSignal): Promise<string> {
+      const dir = join(ctx.dir, "calls");
+      mkdirSync(dir, { recursive: true });
+      const id = randomUUID();
+      const label = `com.vireo.desktop.${id}`;
+      const out = join(dir, `${id}.json`);
+      const err = join(dir, `${id}.err`);
+      try {
+        await new Promise<void>((resolve, reject) => {
+          execFile("/bin/launchctl", ["submit", "-l", label, "-o", out, "-e", err, "--", binary(), ...argv], { timeout: 20_000, signal }, (e, _stdout, stderr) =>
+            e ? reject(new Error(`launchctl could not start agent-desktop: ${String(stderr ?? "").trim() || e.message}`)) : resolve(),
+          );
+        });
+        const deadline = Date.now() + ms;
+        while (Date.now() < deadline) {
+          if (signal?.aborted) throw new Error("The action was cancelled.");
+          if (existsSync(out)) {
+            const text = readFileSync(out, "utf8");
+            if (parse(text)) return text;
+          }
+          await new Promise((r) => setTimeout(r, 150));
+        }
+        const detail = existsSync(err) ? readFileSync(err, "utf8").trim() : "";
+        throw new Error(`agent-desktop did not answer within ${Math.round(ms / 1000)} s.${detail ? ` ${truncate(detail, 300)}` : ""}`);
+      } finally {
+        execFile("/bin/launchctl", ["remove", label], () => undefined);
+        rmSync(out, { force: true });
+        rmSync(err, { force: true });
+      }
+    }
+
     function call(args: string[], ms: number, signal?: AbortSignal): Promise<Envelope> {
       return new Promise((resolve, reject) => {
-        execFile(
-          binary(),
-          [...args, "--session", SESSION],
-          { timeout: ms, maxBuffer: 8 << 20, signal, env: { ...process.env, AGENT_DESKTOP_HOME: stateRoot() } },
-          (err, stdout, stderr) => {
-            const first = String(stdout ?? "")
-              .split("\n")
-              .map((l) => l.trim())
-              .find((l) => l.startsWith("{"));
-            if (first) {
-              try {
-                resolve(JSON.parse(first) as Envelope);
-                return;
-              } catch {
-                /* not the envelope: report it as a failure below */
-              }
-            }
-            reject(new Error(why(err, String(stderr ?? ""), ms)));
-          },
-        );
+        const argv = [...args, "--session", SESSION];
+        const receive = (text: string) => {
+          const env = parse(text);
+          if (env) resolve(env);
+          else reject(new Error("agent-desktop printed no result."));
+        };
+        if (process.env.VIREO_DESKTOP_SPAWN === "direct") {
+          execFile(binary(), argv, { timeout: ms, maxBuffer: 8 << 20, signal }, (err, stdout, stderr) => {
+            if (parse(String(stdout ?? ""))) receive(String(stdout ?? ""));
+            else reject(new Error(why(err, String(stderr ?? ""), ms)));
+          });
+          return;
+        }
+        runAsJob(argv, ms, signal).then(receive, reject);
       });
     }
 
