@@ -1,0 +1,79 @@
+#!/usr/bin/env node
+// A stand-in for the agent-desktop CLI used by tests: one pretend macOS
+// window with a Wi-Fi switch, and an envelope per call. Set AGENT_DESKTOP_LOG
+// to record the calls it received.
+import fs from "node:fs";
+
+const argv = process.argv.slice(2);
+const command = argv.find((a) => !a.startsWith("-")) ?? "";
+const flag = (name, fallback = "") => {
+  const i = argv.indexOf(`--${name}`);
+  return i >= 0 && argv[i + 1] && !argv[i + 1].startsWith("-") ? argv[i + 1] : fallback;
+};
+
+if (process.env.AGENT_DESKTOP_LOG) fs.appendFileSync(process.env.AGENT_DESKTOP_LOG, `${JSON.stringify(argv)}\n`);
+
+const snapshotId = "sfake0001";
+const app = flag("app", "System Settings");
+
+const ok = (data) => process.stdout.write(`${JSON.stringify({ version: "2.6", ok: true, command, data })}\n`);
+const fail = (code, message, suggestion) =>
+  process.stdout.write(`${JSON.stringify({ version: "2.6", ok: false, command, error: { code, message, ...(suggestion ? { suggestion } : {}) } })}\n`);
+
+switch (command) {
+  case "status":
+    ok({
+      platform: "macos",
+      version: "1.0.1",
+      permissions: { accessibility: { state: "granted" }, automation: { state: "unknown" }, screen_recording: { state: "granted" } },
+      supported_surfaces: ["window", "focused", "menu", "menubar"],
+      session_id: flag("session", null),
+      state_root: "/tmp/agent-desktop",
+    });
+    break;
+  case "list-apps":
+    ok({
+      apps: [
+        { name: "Mail", bundle_id: "com.apple.mail", presentation: "foreground" },
+        { name: "System Settings", bundle_id: "com.apple.systempreferences", presentation: "foreground" },
+      ],
+    });
+    break;
+  case "snapshot":
+    ok({
+      app,
+      complete: true,
+      ref_count: 2,
+      snapshot_id: snapshotId,
+      window: { id: "w-1", title: app },
+      tree: {
+        role: "window",
+        name: app,
+        children: [
+          { role: "row", name: "Wi-Fi", children_count: 2 },
+          { role: "switch", name: "Wi-Fi", value: "1", states: ["checked"], available_actions: ["Click"], ref_id: `@${snapshotId}:e7` },
+        ],
+      },
+    });
+    break;
+  case "find":
+    ok({
+      snapshot_id: snapshotId,
+      match: { role: "switch", name: flag("name", "Wi-Fi"), value: "1", states: ["checked"], path: [`window:${app}`, `row:${flag("name", "Wi-Fi")}`], ref_id: `@${snapshotId}:e7` },
+    });
+    break;
+  case "get":
+    ok({ property: flag("property", "text"), ref: argv[1] ?? "", value: "1" });
+    break;
+  case "click":
+  case "toggle":
+  case "check":
+  case "uncheck":
+  case "set-value":
+  case "type":
+  case "select":
+    ok({ action: command, disposition: { delivery: "delivered_verified", retry: "safe" }, post_state: { states: ["checked"], value: "1" } });
+    break;
+  default:
+    fail("INVALID_ARGS", `Unknown command "${command}".`);
+}

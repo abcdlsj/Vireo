@@ -11,6 +11,7 @@ import { errorMessage, now } from "../util.js";
 import { VERSION } from "../version.js";
 import type { SearchResult } from "../tools/research.js";
 import { agentsPlugin } from "./agents/index.js";
+import { desktopPlugin } from "./desktop/index.js";
 import { endpointPlugin } from "./endpoint/index.js";
 import { feishuPlugin } from "./feishu/index.js";
 import { googlePlugin } from "./google/index.js";
@@ -24,7 +25,18 @@ import type { ActionResult, ConfigField, McpCaller, PluginDef, PluginHost, Plugi
 export * from "./types.js";
 
 /** The community catalog: every plugin that ships with Vireo. */
-export const CATALOG: PluginDef[] = [googlePlugin, tailscalePlugin, telegramPlugin, feishuPlugin, mcpPlugin, endpointPlugin, nodesPlugin, agentsPlugin, searchPlugin];
+export const CATALOG: PluginDef[] = [
+  googlePlugin,
+  tailscalePlugin,
+  telegramPlugin,
+  feishuPlugin,
+  mcpPlugin,
+  desktopPlugin,
+  endpointPlugin,
+  nodesPlugin,
+  agentsPlugin,
+  searchPlugin,
+];
 
 interface Stored {
   enabled: boolean;

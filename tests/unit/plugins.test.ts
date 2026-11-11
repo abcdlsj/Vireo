@@ -1,4 +1,4 @@
-import { writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { resolve } from "node:path";
@@ -269,5 +269,124 @@ describe("google plugin", () => {
     app.runner.send(t2.id, "In my drive, find the Lisbon trip plan");
     await app.runner.idle();
     expect(lastReply(app, t2.id)).toContain("LX-4821");
+  });
+});
+
+describe("desktop plugin", () => {
+  const FAKE_DESKTOP = resolve("tests/fixtures/fake-agent-desktop");
+
+  /** The fixture records every call it received, so a test can read what Vireo actually ran. */
+  const withLog = () => {
+    const file = resolve(tempDir(), "agent-desktop.log");
+    process.env.AGENT_DESKTOP_LOG = file;
+    return () => (existsSync(file) ? readFileSync(file, "utf8").trim().split("\n").map((l) => JSON.parse(l) as string[]) : []);
+  };
+
+  afterEach(() => {
+    delete process.env.AGENT_DESKTOP_LOG;
+  });
+
+  const setup = async (apps = "System Settings") => {
+    const app = open();
+    await app.plugins.install("desktop", { apps, binary: FAKE_DESKTOP });
+    return { app, thread: app.threads.create({}) };
+  };
+
+  it("adds its tools only while it is installed", async () => {
+    const app = open();
+    expect(app.tools.has("desktop_act")).toBe(false);
+    await app.plugins.install("desktop", { apps: "System Settings", binary: FAKE_DESKTOP });
+    expect([...app.tools.keys()].filter((k) => k.startsWith("desktop_")).sort()).toEqual([
+      "desktop_act",
+      "desktop_apps",
+      "desktop_find",
+      "desktop_get",
+      "desktop_snapshot",
+    ]);
+    await app.plugins.uninstall("desktop");
+    expect(app.tools.has("desktop_act")).toBe(false);
+  });
+
+  it("reports the apps it found and the ones it may touch", async () => {
+    const { app, thread } = await setup();
+    const out = await app.tools.get("desktop_apps")!.run({}, { app, thread, agent: "general" });
+    expect(out.text).toContain("Mail");
+    expect(out.text).toContain("System Settings  ← Vireo may act here");
+    expect(out.text).not.toContain("Mail  ← Vireo may act here");
+  });
+
+  it("reads an app as a tree of refs and acts on one", async () => {
+    const calls = withLog();
+    const { app, thread } = await setup();
+    const seen = await app.tools.get("desktop_snapshot")!.run({ app: "System Settings" }, { app, thread, agent: "general" });
+    expect(seen.text).toContain("@sfake0001:e7");
+    expect(seen.text).toContain("switch \"Wi-Fi\"");
+    expect(seen.source).toBe("desktop:System Settings");
+
+    const found = await app.tools.get("desktop_find")!.run({ app: "System Settings", role: "switch", name: "Wi-Fi", first: true }, { app, thread, agent: "general" });
+    expect(found.text).toContain("@sfake0001:e7");
+    expect(found.text).toContain("row:Wi-Fi");
+
+    const done = await app.tools.get("desktop_act")!.run(
+      { action: "check", ref: "@sfake0001:e7", description: "Turn Wi-Fi on" },
+      { app, thread, agent: "general", confirmed: true },
+    );
+    expect(done.text).toContain("check in System Settings: Turn Wi-Fi on");
+    expect(done.text).toContain("delivered_verified");
+    expect(done.text).toContain("now: checked");
+    // The ref went to the CLI as it was printed, in the same session namespace.
+    const check = calls().find((c) => c[0] === "check")!;
+    expect(check.slice(0, 2)).toEqual(["check", "@sfake0001:e7"]);
+    expect(check).toContain("--session");
+    expect(check).toContain("vireo");
+  });
+
+  it("waits for the owner before touching anything", async () => {
+    const { app, thread } = await setup();
+    const def = app.tools.get("desktop_act")!;
+    expect(def.confirm?.({ action: "uncheck", ref: "@sfake0001:e7", description: "Turn Wi-Fi off" }, { app, thread, agent: "general" })).toBe(true);
+    expect(def.summarize?.({ action: "uncheck", ref: "@sfake0001:e7", description: "Turn Wi-Fi off" })).toBe("Turn Wi-Fi off");
+  });
+
+  it("refuses an app the owner did not allow", async () => {
+    const calls = withLog();
+    const { app, thread } = await setup();
+    await app.tools.get("desktop_snapshot")!.run({ app: "Mail" }, { app, thread, agent: "general" });
+    await expect(
+      app.tools.get("desktop_act")!.run({ action: "click", ref: "@sfake0001:e7", description: "Open a message" }, { app, thread, agent: "general", confirmed: true }),
+    ).rejects.toThrow(/may not act in Mail/);
+    expect(calls().some((c) => c[0] === "click")).toBe(false);
+  });
+
+  it("will not act on a ref from a snapshot it does not know", async () => {
+    const { app, thread } = await setup();
+    await expect(
+      app.tools.get("desktop_act")!.run({ action: "click", ref: "@sold1234:e9", description: "Click" }, { app, thread, agent: "general", confirmed: true }),
+    ).rejects.toThrow(/fresh desktop_snapshot/);
+    await expect(app.tools.get("desktop_act")!.run({ action: "click", ref: "e9", description: "Click" }, { app, thread, agent: "general", confirmed: true })).rejects.toThrow(
+      /not a desktop ref/,
+    );
+  });
+
+  it("needs a value for a text action", async () => {
+    const { app, thread } = await setup();
+    await app.tools.get("desktop_snapshot")!.run({ app: "System Settings" }, { app, thread, agent: "general" });
+    await expect(
+      app.tools.get("desktop_act")!.run({ action: "type", ref: "@sfake0001:e7", description: "Type" }, { app, thread, agent: "general", confirmed: true }),
+    ).rejects.toThrow(/needs a value/);
+  });
+
+  it("says what is missing when agent-desktop is not installed", async () => {
+    const app = open();
+    await app.plugins.install("desktop", { apps: "System Settings", binary: "/nonexistent/agent-desktop" });
+    const thread = app.threads.create({});
+    await expect(app.tools.get("desktop_apps")!.run({}, { app, thread, agent: "general" })).rejects.toThrow(/not installed/);
+  });
+
+  it.runIf(process.platform === "darwin")("reports the permission macOS needs", async () => {
+    const { app } = await setup();
+    const view = (await app.plugins.list({ origin: "http://localhost" })).find((p) => p.id === "desktop")!;
+    expect(view.status).toMatchObject({ state: "ready" });
+    expect(view.status!.message).toContain("System Settings");
   });
 });
