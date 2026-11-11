@@ -48,20 +48,56 @@ export type BusEvent = NodeEvent;
 type Listener = (e: NodeEvent) => void;
 const listeners = new Set<Listener>();
 let stream: AbortController | undefined;
+let watched = false;
+let greeted = false;
+
+/** A stream that lasted this long was healthy; anything shorter backs off. */
+const HEALTHY_MS = 30_000;
 
 /**
- * One shared stream of live updates from the node. Read with fetch rather
- * than EventSource so every reconnect sends a fresh token in a header.
+ * One shared stream of live updates from the node, held only while the page is
+ * visible and something listens. Read with fetch rather than EventSource so
+ * every reconnect sends a fresh token in a header.
+ *
+ * Why the tab matters: a stream left open costs a request every ping, and —
+ * more to the point — it keeps the node's Durable Object awake for as long as
+ * it is open, which is billed as compute duration. A hidden tab holding one
+ * overnight burns roughly a free plan's whole daily allowance.
  */
 export function onEvent(fn: Listener): () => void {
   listeners.add(fn);
-  if (!stream) {
-    stream = new AbortController();
-    void follow(stream.signal);
-  }
+  watchPage();
+  startStream();
   return () => {
     listeners.delete(fn);
+    if (listeners.size === 0) stopStream();
   };
+}
+
+/** Starts and stops the stream as the page is shown, hidden, frozen and restored. */
+function watchPage(): void {
+  if (watched) return;
+  watched = true;
+  const sync = () => (document.visibilityState === "hidden" ? stopStream() : startStream());
+  document.addEventListener("visibilitychange", sync);
+  window.addEventListener("pagehide", stopStream);
+  window.addEventListener("pageshow", startStream);
+}
+
+function startStream(): void {
+  if (stream || listeners.size === 0 || document.visibilityState === "hidden") return;
+  const ctl = new AbortController();
+  stream = ctl;
+  void follow(ctl.signal).finally(() => {
+    if (stream === ctl) stream = undefined;
+  });
+}
+
+function stopStream(): void {
+  const ctl = stream;
+  if (!ctl) return;
+  stream = undefined;
+  ctl.abort();
 }
 
 function emit(e: NodeEvent): void {
@@ -70,19 +106,18 @@ function emit(e: NodeEvent): void {
 
 async function follow(signal: AbortSignal): Promise<void> {
   let wait = 1000;
-  // Everything open loads itself as the stream starts; only a reconnect may have missed something.
-  let first = true;
   while (!signal.aborted) {
+    const began = Date.now();
     try {
       const access = await nodeAccess();
       const res = await fetch(`${access.baseUrl}/api/events`, { headers: { authorization: `Bearer ${access.token}`, accept: "text/event-stream" }, signal });
       if (res.status === 401) await nodeAccess(true);
       else if (res.ok && res.body) {
-        wait = 1000;
         await readEvents(res.body, (event, data) => {
           if (event === "ready") {
-            if (!first) emit({ type: "thread.updated", threadId: "*" });
-            first = false;
+            // Everything open loads itself as the stream starts; only a gap may have missed something.
+            if (greeted) emit({ type: "thread.updated", threadId: "*" });
+            greeted = true;
           }
           else if (event === "message") emit(JSON.parse(data) as NodeEvent);
         });
@@ -91,6 +126,7 @@ async function follow(signal: AbortSignal): Promise<void> {
       // Dropped or unreachable: try again below.
     }
     if (signal.aborted) return;
+    if (Date.now() - began > HEALTHY_MS) wait = 1000;
     await new Promise((r) => setTimeout(r, wait));
     wait = Math.min(wait * 2, 15_000);
   }
