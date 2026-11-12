@@ -5,7 +5,7 @@ import { platform } from "node:os";
 import { join } from "node:path";
 import { Type } from "typebox";
 import { defineTool } from "../../tools/types.js";
-import type { Risk } from "../../tools/types.js";
+import type { Risk, Topic } from "../../tools/types.js";
 import { errorMessage, truncate } from "../../util.js";
 import type { ConfigField, PluginDef, PluginRuntime, PluginStatus } from "../types.js";
 
@@ -276,7 +276,7 @@ export const desktopPlugin: PluginDef = {
      */
     const elements = () => ctx.state.get<Record<string, { role?: string; name?: string }>>("elements") ?? {};
 
-    function rememberElements(found: { ref_id?: string; role?: string; name?: string }[]): void {
+    function rememberElements(found: { ref_id?: string; role?: string; name?: string; states?: string[] }[]): void {
       const map = elements();
       for (const el of found) if (el.ref_id) map[el.ref_id] = { role: el.role, name: el.name };
       const keys = Object.keys(map);
@@ -284,10 +284,10 @@ export const desktopPlugin: PluginDef = {
       ctx.state.set("elements", map);
     }
 
-    function collectElements(node: Node): { ref_id?: string; role?: string; name?: string }[] {
-      const out: { ref_id?: string; role?: string; name?: string }[] = [];
+    function collectElements(node: Node): { ref_id?: string; role?: string; name?: string; states?: string[] }[] {
+      const out: { ref_id?: string; role?: string; name?: string; states?: string[] }[] = [];
       const walk = (n: Node) => {
-        if (n.ref_id) out.push({ ref_id: n.ref_id, role: n.role, name: n.name });
+        if (n.ref_id) out.push({ ref_id: n.ref_id, role: n.role, name: n.name, states: n.states });
         for (const child of n.children ?? []) walk(child);
       };
       walk(node);
@@ -330,6 +330,55 @@ export const desktopPlugin: PluginDef = {
       if (!app) throw new Error("That ref belongs to a snapshot Vireo no longer knows. Take a fresh desktop_snapshot of the app and use the refs it prints.");
       return app;
     }
+
+    /** The element the app reports as focused, per app: for a chat app, the conversation it is in. */
+    const focusOf = () => ctx.state.get<Record<string, { name?: string; ref?: string }>>("focus") ?? {};
+
+    function rememberFocus(app: string, found: { ref_id?: string; name?: string; states?: string[] }[]): void {
+      const focused = found.find((el) => el.states?.includes("focused") && (el.name ?? "").trim());
+      if (!focused) return;
+      const map = focusOf();
+      map[app] = { name: focused.name, ref: focused.ref_id };
+      ctx.state.set("focus", map);
+    }
+
+    /** The text last written into an app, so a send knows what it is sending. */
+    const drafts = () => ctx.state.get<Record<string, string>>("drafts") ?? {};
+
+    function setDraft(app: string, value: string | undefined): void {
+      const map = drafts();
+      if (value) map[app] = value;
+      else delete map[app];
+      ctx.state.set("drafts", map);
+    }
+
+    /**
+     * What a send acts on: the app, the window, and the conversation the app has in
+     * focus, all read from the accessibility tree. A window with no focused name
+     * has no standable identity, so it gets no topic and therefore always a card.
+     */
+    function desktopTopic(app: string, body: string | undefined): Topic | undefined {
+      const name = (focusOf()[app]?.name ?? "").trim();
+      if (!name) return undefined;
+      // The conversation is the identity, not the window: an app can reopen its
+      // window and keep the same chat, and the owner's trust should not lapse then.
+      return { key: `desktop:${app}:${name}`, label: `${app} › ${name}`, body };
+    }
+
+    function topicForRef(ref: string): Topic | undefined {
+      try {
+        const app = appOf(ref);
+        return desktopTopic(app, drafts()[app]);
+      } catch {
+        return undefined;
+      }
+    }
+
+    /** A card that names the conversation it will act in, not just the app. */
+    const withTarget = (summary: string, topic: () => Topic | undefined) => {
+      const t = topic();
+      return t ? `${summary} → ${t.label}` : summary;
+    };
 
     function gate(app: string): void {
       if (isAllowed(app)) return;
@@ -580,7 +629,9 @@ export const desktopPlugin: PluginDef = {
       remember(data.snapshot_id, owner);
       const lines: string[] = [];
       if (data.tree) {
-        rememberElements(collectElements(data.tree as Node));
+        const found = collectElements(data.tree as Node);
+        rememberElements(found);
+        rememberFocus(owner, found);
         renderTree(data.tree as Node, 0, lines);
       }
       const window = (data.window ?? {}) as { title?: string };
@@ -649,7 +700,9 @@ export const desktopPlugin: PluginDef = {
               remember(data.snapshot_id, owner);
               const lines: string[] = [];
               if (data.tree) {
-                rememberElements(collectElements(data.tree as Node));
+                const found = collectElements(data.tree as Node);
+                rememberElements(found);
+                rememberFocus(owner, found);
                 renderTree(data.tree as Node, 0, lines);
               }
               const window = (data.window ?? {}) as { title?: string };
@@ -667,7 +720,9 @@ export const desktopPlugin: PluginDef = {
             remember(data.snapshot_id, app);
             const lines: string[] = [];
             if (data.tree) {
-              rememberElements(collectElements(data.tree as Node));
+              const found = collectElements(data.tree as Node);
+              rememberElements(found);
+              rememberFocus(app, found);
               renderTree(data.tree as Node, 0, lines);
             }
             const head = [app, `refs: ${data.ref_count ?? 0}`].join("  ");
@@ -714,6 +769,7 @@ export const desktopPlugin: PluginDef = {
             const many = (data.matches as Match[] | undefined) ?? [];
             const rows = single ? [single] : many;
             rememberElements(rows);
+            rememberFocus(args.app, rows);
             const lead = notes.length ? `${notes.join(" ")}\n` : "";
             if (!rows.length) {
               const roles = (data.roles_present as string[] | undefined) ?? [];
@@ -774,7 +830,8 @@ export const desktopPlugin: PluginDef = {
             if (args.action === "set_value" || args.action === "type") return "none";
             return elementRisk(args.ref);
           },
-          summarize: (args) => (VALUED.includes(args.action) ? withValue(args.description, args.value) : args.description),
+          topic: (args) => topicForRef(args.ref),
+          summarize: (args) => withTarget(VALUED.includes(args.action) ? withValue(args.description, args.value) : args.description, () => topicForRef(args.ref)),
           async run(args, tctx) {
             const app = appOf(args.ref);
             gate(app);
@@ -782,6 +839,10 @@ export const desktopPlugin: PluginDef = {
             const cmd = [COMMAND[args.action], args.ref.trim()];
             if (args.value !== undefined) cmd.push(args.value);
             const data = await ok(cmd, ACT_MS, tctx.signal);
+            // Remember what was typed (the draft a send would take out), and that a
+            // click or a selection may have consumed it.
+            if (VALUED.includes(args.action)) setDraft(app, args.value);
+            else setDraft(app, undefined);
             const report = afterAction(data);
             let seen: string;
             try {
@@ -801,7 +862,7 @@ export const desktopPlugin: PluginDef = {
           name: "desktop_press",
           label: "Press keys in a desktop app",
           description:
-            "Send a key combination to an app: cmd+enter to send a message in 企业微信, WeChat, Slack or Feishu, cmd+s to save, escape to close a menu, tab to move on. This is how a shortcut is pressed — typing text is desktop_act type or set_value. Every press waits for the owner's confirmation, and only apps on the allowlist may be targeted.",
+            "Send a key combination to an app: cmd+enter to send a message in 企业微信, WeChat, Slack or Feishu, cmd+s to save, escape to close a menu, tab to move on. This is how a shortcut is pressed — typing text is desktop_act type or set_value. A shortcut waits for the owner's confirmation while navigation keys do not, and only apps on the allowlist may be targeted.",
           parameters: Type.Object({
             keys: Type.String({ description: "The combo: cmd+enter, escape, cmd+shift+z, return, tab. Modifiers cmd, ctrl, alt and shift join with +." }),
             app: Type.String({ description: "App name as desktop_apps prints it: which app the keys go to." }),
@@ -817,13 +878,16 @@ export const desktopPlugin: PluginDef = {
             if (/^(escape|tab|space|up|down|left|right|home|end|pageup|pagedown|f\d{1,2})$/.test(key)) return "none";
             return "ask";
           },
-          summarize: (args) => `${args.description} (${args.keys})`,
+          summarize: (args) => withTarget(`${args.description} (${args.keys})`, () => desktopTopic(args.app.trim(), drafts()[args.app.trim()])),
+          topic: (args) => desktopTopic(args.app.trim(), drafts()[args.app.trim()]),
           async run(args, tctx) {
             const app = args.app.trim();
             gate(app);
             const combo = args.keys.trim().replace(/\s+/g, "");
             if (!combo) throw new Error("press needs the keys to send, e.g. cmd+enter.");
             if (args.window_id) rememberWindow(app, args.window_id);
+            // A bare navigation key does not consume a draft; a send does.
+            const sends = combo.includes("+") || /^(return|enter|delete|backspace)$/.test(combo.toLowerCase());
             const send = async (windowId: string | undefined) => {
               const cmd = ["press", combo, "--app", app];
               if (windowId) cmd.push("--window-id", windowId);
@@ -844,6 +908,7 @@ export const desktopPlugin: PluginDef = {
               notes.push(`Brought ${app} forward and used window ${ready}.`);
               data = await send(ready);
             }
+            if (sends) setDraft(app, undefined);
             const report = afterAction(data);
             let seen: string;
             try {

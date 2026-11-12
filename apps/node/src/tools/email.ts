@@ -65,6 +65,14 @@ export const emailTools = [
       reply_to_id: Type.Optional(Type.String({ description: "Id of the email being replied to" })),
     }),
     confirm: () => true,
+    // The people it goes to are the target; the subject and body are the content.
+    topic: (args) => {
+      const to = [...args.to.split(/[,;]/), ...(args.cc ?? "").split(/[,;]/)]
+        .map((s) => s.trim().toLowerCase())
+        .filter(Boolean)
+        .sort();
+      return { key: `email:${to.join(",")}`, label: `Email to ${to.join(", ")}`, body: `${args.subject}\n\n${args.body}` };
+    },
     summarize: (args) => `Send email to ${args.to}: "${args.subject}"`,
     async run(args, ctx) {
       const r = await mail(ctx).send({ to: args.to, subject: args.subject, body: args.body, cc: args.cc, replyToId: args.reply_to_id });

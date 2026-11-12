@@ -391,7 +391,7 @@ describe("desktop plugin", () => {
     // A label that says it deletes is never covered by trust.
     expect(await act.confirm?.({ action: "click", ref: "@sfake0001:e9", description: "Delete all" }, ctx)).toBe("always");
 
-    expect(act.summarize?.({ action: "uncheck", ref: "@sfake0001:e7", description: "Turn Wi-Fi off" })).toBe("Turn Wi-Fi off");
+    expect(act.summarize?.({ action: "click", ref: "@sfake0001:e8", description: "Turn Wi-Fi off" })).toBe("Turn Wi-Fi off → System Settings › 干饭");
   });
 
   it("asks for a shortcut but not for a navigation key", async () => {
@@ -506,6 +506,30 @@ describe("desktop plugin", () => {
       delete process.env.AGENT_DESKTOP_PRESS_NEEDS_FOCUS;
       delete process.env.AGENT_DESKTOP_STATE;
     }
+  });
+
+  it("names the conversation a send acts in, and remembers the draft it sends", async () => {
+    const { app, thread } = await setup();
+    const ctx = { app, thread, agent: "general" };
+    await app.tools.get("desktop_snapshot")!.run({ app: "System Settings" }, ctx);
+    const press = app.tools.get("desktop_press")!;
+    const topic = await press.topic?.({ keys: "cmd+enter", app: "System Settings", description: "Send" }, ctx);
+    expect(topic?.key).toBe("desktop:System Settings:干饭");
+    expect(topic?.label).toBe("System Settings › 干饭");
+    expect(press.summarize?.({ keys: "cmd+enter", app: "System Settings", description: "Send" })).toBe("Send (cmd+enter) → System Settings › 干饭");
+
+    // The text filled into the app is what a send takes out, so the grant covers it.
+    await app.tools.get("desktop_act")!.run({ action: "set_value", ref: "@sfake0001:e7", value: "下午吃啥？", description: "Fill" }, { ...ctx, confirmed: true });
+    const withDraft = await press.topic?.({ keys: "cmd+enter", app: "System Settings", description: "Send" }, ctx);
+    expect(withDraft?.body).toBe("下午吃啥？");
+  });
+
+  it("has no target when the app reports nothing in focus", async () => {
+    const { app, thread } = await setup();
+    const ctx = { app, thread, agent: "general" };
+    // No snapshot read, so no focused element is known: the card must stay.
+    const press = app.tools.get("desktop_press")!;
+    expect(await press.topic?.({ keys: "cmd+enter", app: "Mail", description: "Send" }, ctx)).toBeUndefined();
   });
 
   it("refuses to press keys in an app the owner did not allow", async () => {

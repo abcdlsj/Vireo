@@ -10,6 +10,7 @@ import { Bus } from "./bus.js";
 import type { Config } from "./config.js";
 import { Db } from "./db.js";
 import { Files } from "./files.js";
+import { Grants } from "./grants.js";
 import { Identity } from "./identity.js";
 import { Peers } from "./peers.js";
 import { Integrations } from "./integrations/index.js";
@@ -57,6 +58,8 @@ export interface App {
   audit: Audit;
   gate: ToolGate;
   actions: Actions;
+  /** The owner's standing trust, so a confirmed action does not ask again. */
+  grants: Grants;
   cards: Cards;
   runner: Runner;
   lifecycle: ThreadLifecycle;
@@ -96,6 +99,7 @@ export function createApp(config: Config): App {
   app.audit = new Audit(db, app.vault);
   app.gate = new ToolGate(app);
   app.actions = new Actions(app);
+  app.grants = new Grants(db);
   app.cards = new Cards(app);
   app.memoryWorker = new MemoryWorker(app);
   app.runner = new Runner(app);

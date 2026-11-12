@@ -325,6 +325,8 @@ export const tailscalePlugin: PluginDef = {
           timeout_seconds: Type.Optional(Type.Number({ minimum: 5, maximum: 600 })),
         }),
         confirm: () => true,
+        // One machine is the target; the command is the content.
+        topic: (args) => ({ key: `ssh:${args.machine.trim().toLowerCase()}`, label: `SSH on ${args.machine}`, body: args.command }),
         summarize: (args) => `Run on ${args.machine}: ${truncate(args.command, 160)}`,
         async run(args, tctx) {
           const m = await resolve(args.machine);

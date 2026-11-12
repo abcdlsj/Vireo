@@ -289,6 +289,20 @@ const MIGRATIONS: string[] = [
   `
   ALTER TABLE threads ADD COLUMN archived_at INTEGER;
   `,
+  // What the owner has trusted, so the same action does not ask again (grants.ts).
+  `
+  CREATE TABLE grants (
+    id TEXT PRIMARY KEY,
+    tool TEXT NOT NULL,
+    key TEXT NOT NULL,
+    label TEXT NOT NULL,
+    body_hash TEXT NOT NULL DEFAULT '',
+    thread_id TEXT,
+    created_at INTEGER NOT NULL,
+    last_used_at INTEGER
+  );
+  CREATE UNIQUE INDEX grants_one ON grants(tool, key, body_hash);
+  `,
 ];
 
 function migrate(db: Db): void {

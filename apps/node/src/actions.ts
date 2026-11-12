@@ -1,7 +1,9 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import type { App } from "./app.js";
+import { bodyDigest } from "./grants.js";
+import { attention } from "./tool-gate.js";
 import { APPROVAL_TOOL } from "./tools/approval.js";
-import { forModel } from "./tools/types.js";
+import { forModel, type ToolDef } from "./tools/types.js";
 import { errorMessage, isTruncated, newId, now, safeJson, truncate } from "./util.js";
 import type { Action } from "@vireo/protocol";
 
@@ -210,12 +212,16 @@ export class Actions {
     const audit = this.app.audit.start(action.threadId, { tool: action.tool, agent: "owner", args });
     // What the model is told the call returned, framed as outside content when it is.
     let forAgent: string;
+    let trusted: string | undefined;
     try {
       const out = await tool.run(args as never, { app: this.app, thread, agent: "owner", confirmed: true });
       const clip = (v: string) => this.app.vault.redact(truncate(v, 4000));
       const display = out.display && { output: out.display.output && clip(out.display.output), note: out.display.note && clip(out.display.note) };
       this.setStatus(id, out.failed ? "failed" : "done", clip(out.text), display);
       this.app.audit.end(audit, out.failed ? "error" : "ok", out.text);
+      // The confirmation is the owner's answer to this target: from now on the
+      // same target (and this exact content) does not ask again.
+      if (!out.failed) trusted = await this.learnTrust(tool, args, thread.id);
       forAgent = forModel(truncate(this.app.vault.redact(out.text), 3000), out.source);
     } catch (err) {
       forAgent = `Failed: ${this.app.vault.redact(errorMessage(err))}`;
@@ -225,12 +231,30 @@ export class Actions {
     this.app.threads.addNotice(
       action.threadId,
       "action_result",
-      `The owner ${edited ? "edited and confirmed" : "confirmed"}: ${action.summary}${edited ? ` (final arguments: ${JSON.stringify(args)})` : ""}. Result: ${forAgent}\nContinue the task from here.`,
-      { llm: true, data: { actionId: id } },
+      `The owner ${edited ? "edited and confirmed" : "confirmed"}: ${action.summary}${edited ? ` (final arguments: ${JSON.stringify(args)})` : ""}. Result: ${forAgent}${trusted ? ` Trusted from now on: ${trusted} (Settings → Confirmations to revoke).` : ""}\nContinue the task from here.`,
+      { llm: true, data: { actionId: id, ...(trusted ? { trusted: true } : {}) } },
     );
     this.app.threads.update(action.threadId, { needs_you: 0 });
     if (!tool.settles) this.app.runner.schedule(action.threadId);
     return this.get(id)!;
+  }
+
+  /**
+   * Turns one confirmation into standing trust for that target (and that exact
+   * content), when the tool can name what it acts on. Irreversible tools never
+   * get one: they ask every time.
+   */
+  private async learnTrust(tool: ToolDef, args: Record<string, unknown>, threadId: string): Promise<string | undefined> {
+    if (!tool.topic) return undefined;
+    const thread = this.app.threads.get(threadId);
+    if (!thread) return undefined;
+    const ctx = { app: this.app, thread, agent: "owner", confirmed: true };
+    if ((await attention(tool, args, ctx)) !== "ask") return undefined;
+    const topic = await tool.topic(args as never, ctx);
+    if (!topic) return undefined;
+    this.app.grants.add({ tool: tool.name, key: topic.key, label: topic.label, threadId });
+    this.app.grants.add({ tool: tool.name, key: topic.key, label: topic.label, bodyHash: bodyDigest(topic.body), threadId });
+    return topic.label;
   }
 
   cancel(id: string, reason?: string): Action {

@@ -9,6 +9,16 @@ import type { Thread } from "../threads.js";
  */
 export type Risk = "none" | "ask" | "always";
 
+/** What a call acts on: a stable key for the target, a name the owner reads, and the outgoing content. */
+export interface Topic {
+  /** Stable identity of the target, e.g. `desktop:企业微信:w-42:干饭`. */
+  key: string;
+  /** How the target is named on a card and in Settings, e.g. `企业微信 › 干饭`. */
+  label: string;
+  /** The content about to leave, when there is one; any change makes it a different topic. */
+  body?: string;
+}
+
 export interface ToolContext {
   app: App;
   thread: Thread;
@@ -61,6 +71,14 @@ export interface ToolDef<P extends TSchema = TSchema> {
    * turns out to be navigation — `true` is `ask`.
    */
   confirm?: (args: Static<P>, ctx: ToolContext) => Risk | boolean | Promise<Risk | boolean>;
+  /**
+   * What this call acts on, and with what content, worked out by the tool itself
+   * from the thing it really touches — a window and the conversation in it, the
+   * recipients of a mail — never from the model's description. A target the owner
+   * has trusted runs without a card; a body the owner has not seen does not,
+   * because `body` is hashed and any edit makes a different one.
+   */
+  topic?: (args: Static<P>, ctx: ToolContext) => Topic | undefined | Promise<Topic | undefined>;
   /** One line for the confirmation card, e.g. "Send email to anna@example.com". */
   summarize?: (args: Static<P>) => string;
   /** Not available in temporary threads. */

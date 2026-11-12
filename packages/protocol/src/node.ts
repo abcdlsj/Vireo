@@ -63,6 +63,21 @@ export interface Action {
   resolvedAt: number | null;
 }
 
+/** A target the owner trusts, so the same action does not ask again. */
+export interface Grant {
+  id: string;
+  tool: string;
+  /** Stable identity of what it acts on; the app never needs to read it. */
+  key: string;
+  /** How it is named on a card and in Settings: `企业微信 › 干饭`. */
+  label: string;
+  /** Empty for the target itself; a digest of the content otherwise (shown only for the target). */
+  bodyHash: string;
+  threadId: string | null;
+  createdAt: number;
+  lastUsedAt: number | null;
+}
+
 export interface Related {
   id: number;
   kind: string;

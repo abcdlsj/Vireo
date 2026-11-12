@@ -117,6 +117,88 @@ describe("what needs the owner", () => {
   });
 });
 
+describe("standing trust", () => {
+  const sender = () =>
+    defineTool({
+      name: "send_msg",
+      label: "Send message",
+      description: "Send a message to a chat.",
+      parameters: Type.Object({ body: Type.String(), to: Type.String() }),
+      risk: "ask",
+      // The target is the chat, the content is the text.
+      topic: (args) => ({ key: `chat:${args.to}`, label: `Chat › ${args.to}`, body: args.body }),
+      summarize: (args) => `Send "${args.body}" to ${args.to}`,
+      async run() {
+        return { text: `sent to the chat` };
+      },
+    });
+
+  function setup() {
+    const app = open();
+    const thread = app.threads.create({});
+    const def = sender();
+    app.tools.set(def.name, def);
+    let calls = 0;
+    const original = def.run;
+    def.run = async (...args) => {
+      calls++;
+      return original(...args);
+    };
+    let n = 0;
+    const call = (args: Record<string, unknown>) =>
+      app.gate.wrap(def, { app, thread: app.threads.get(thread.id)!, agent: "general" }).invoke({} as never, JSON.stringify(args), { toolCall: { callId: `call_${++n}` } } as never) as Promise<string>;
+    return { app, thread, call, calls: () => calls };
+  }
+
+  it("asks once, then runs the same target and text without a card", async () => {
+    const { app, thread, call, calls } = setup();
+    expect(await call({ body: "hello there", to: "干饭" })).toContain("confirmation card");
+    const [card] = app.actions.pending();
+    expect(card!.summary).toBe('Send "hello there" to 干饭');
+
+    await app.actions.confirm(card!.id);
+    await app.runner.idle();
+    expect(calls()).toBe(1);
+    // The target itself and this exact text are both remembered.
+    const grants = app.grants.list().filter((g) => g.key === "chat:干饭");
+    expect(grants).toHaveLength(2);
+    expect(grants.filter((g) => g.bodyHash === "")).toHaveLength(1);
+
+    const again = await call({ body: "hello there", to: "干饭" });
+    expect(again).toContain("sent to the chat");
+    expect(calls()).toBe(2);
+    expect(app.actions.pending()).toHaveLength(0);
+    expect(app.threads.messages(thread.id).filter((m) => m.role === "notice").map((m) => JSON.stringify(m.body)).join(" ")).toContain("Ran without a card");
+  });
+
+  it("asks again when the text changed, even on a trusted target", async () => {
+    const { app, thread, call, calls } = setup();
+    app.grants.add({ tool: "send_msg", key: "chat:干饭", label: "Chat › 干饭" });
+    expect(await call({ body: "brand new words", to: "干饭" })).toContain("confirmation card");
+    expect(calls()).toBe(0);
+  });
+
+  it("runs on a trusted target when the owner approved that text in the conversation", async () => {
+    const { app, thread, call, calls } = setup();
+    app.grants.add({ tool: "send_msg", key: "chat:干饭", label: "Chat › 干饭" });
+    app.threads.addMessage(thread.id, { role: "assistant", content: [{ type: "text", text: "我准备发：下午吃啥？" }], timestamp: Date.now() - 2000 });
+    app.threads.addMessage(thread.id, { role: "user", content: "发", timestamp: Date.now() - 1000 });
+    expect(await call({ body: "下午吃啥？", to: "干饭" })).toContain("sent to the chat");
+    expect(calls()).toBe(1);
+    // The text is remembered too, so the same one needs no approval again.
+    expect(app.grants.list().filter((g) => g.key === "chat:干饭" && g.bodyHash !== "")).toHaveLength(1);
+  });
+
+  it("does not count a word that never appeared in the conversation", async () => {
+    const { app, thread, call, calls } = setup();
+    app.grants.add({ tool: "send_msg", key: "chat:干饭", label: "Chat › 干饭" });
+    app.threads.addMessage(thread.id, { role: "assistant", content: [{ type: "text", text: "我准备发：下午吃啥？" }], timestamp: Date.now() - 2000 });
+    app.threads.addMessage(thread.id, { role: "user", content: "发", timestamp: Date.now() - 1000 });
+    expect(await call({ body: "工资条别忘了发", to: "干饭" })).toContain("confirmation card");
+    expect(calls()).toBe(0);
+  });
+});
+
 describe("repeated failing calls", () => {
   it("refuses the third identical call and says what to do instead", async () => {
     const app = open();

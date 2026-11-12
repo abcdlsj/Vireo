@@ -67,6 +67,15 @@ export function settingsRoutes(app: App): Hono {
     return c.json({ ok: true });
   });
 
+  // What the owner has trusted, so the same action no longer asks (grants.ts).
+  r.get("/grants", (c) => c.json({ grants: app.grants.list() }));
+  r.delete("/grants/:id", (c) => {
+    // Forget the whole target: its content digests would otherwise still match.
+    const grant = app.grants.get(c.req.param("id"));
+    if (grant) app.grants.revokeKey(grant.tool, grant.key);
+    return c.json({ ok: true });
+  });
+
   r.post("/push/subscribe", async (c) => {
     app.push.subscribe(await c.req.json());
     return c.json({ ok: true });

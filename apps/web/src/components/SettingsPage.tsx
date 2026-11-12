@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { useGlide } from "../glide";
 import { ChevronLeft } from "../icons";
-import type { Credential, UsageByPurpose, User } from "@vireo/protocol";
+import type { Credential, Grant, UsageByPurpose, User } from "@vireo/protocol";
 import { AccountSettings, NodesSettings } from "./Nodes";
 import { CodingAgents } from "./CodingAgents";
 import { Models } from "./ModelSettings";
 import { PluginsCard } from "./PluginsCard";
 import { api, type Me, type OwnerSettings } from "../api";
+import { dateTime, relTime } from "../format";
 import { setThemeChoice, themeChoice, type ThemeChoice } from "../theme";
 
 const SECTIONS = [
@@ -16,6 +17,7 @@ const SECTIONS = [
   { id: "plugins", label: "Plugins" },
   { id: "nodes", label: "Nodes" },
   { id: "notifications", label: "Notifications" },
+  { id: "confirmations", label: "Confirmations" },
   { id: "sign-ins", label: "Website sign-ins" },
   { id: "usage", label: "Usage" },
   { id: "account", label: "Account" },
@@ -77,6 +79,8 @@ export function SettingsPage({ section, me, user, reload }: { section: string; m
               <Notifications me={me} reload={reload} />
               <Install />
             </>
+          ) : cur.id === "confirmations" ? (
+            <Confirmations />
           ) : cur.id === "sign-ins" ? (
             <SignIns />
           ) : cur.id === "usage" ? (
@@ -273,6 +277,39 @@ function SignIns() {
         <input type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} required autoComplete="new-password" />
         <button className="btn small">Add</button>
       </form>
+    </section>
+  );
+}
+
+function Confirmations() {
+  const [list, setList] = useState<Grant[]>([]);
+  const load = () => api.get<{ grants: Grant[] }>("/api/grants").then((r) => setList(r.grants));
+  useEffect(() => {
+    void load();
+  }, []);
+  // One row per target: the content digests are how a target is recognized, not something to read.
+  const targets = list.filter((g) => !g.bodyHash);
+  return (
+    <section className="card">
+      <p className="muted small">
+        What you confirmed once, so Vireo stops asking about the same thing. A target here runs without a card when the content is the one you
+        confirmed, or when you approved that text in the conversation. Deleting one makes the next same action ask again.
+      </p>
+      {targets.length === 0 ? <p className="muted">Nothing trusted yet. Confirming a card for a target Vireo can name adds it here.</p> : null}
+      {targets.map((g) => (
+        <div key={g.id} className="provider">
+          <span>
+            {g.label}{" "}
+            <span className="muted">
+              · since {dateTime(g.createdAt)}
+              {g.lastUsedAt ? ` · last used ${relTime(g.lastUsedAt)}` : ""}
+            </span>
+          </span>
+          <button className="btn small ghost" onClick={() => void api.del(`/api/grants/${g.id}`).then(load)}>
+            Forget
+          </button>
+        </div>
+      ))}
     </section>
   );
 }
