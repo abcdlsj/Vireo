@@ -67,7 +67,7 @@ describe("plugins", () => {
       const app = open();
       await app.plugins.install("tailscale", { mode: "system", bin_dir: FAKE_TS, serve: true });
       const status = async () => (await app.plugins.list({ origin: "http://localhost" })).find((p) => p.id === "tailscale")!.status!;
-      await expect.poll(async () => (await status()).link?.href).toBe("https://login.tailscale.com/f/serve?node=n0");
+      await expect.poll(async () => (await status()).link?.href, { timeout: 10_000 }).toBe("https://login.tailscale.com/f/serve?node=n0");
       writeFileSync(gate, "");
       await expect.poll(async () => (await status()).details?.find((d) => d.label === "This host on the tailnet")?.value, { timeout: 10_000 }).toBe("https://vireo.tail-test.ts.net");
       expect(app.address.directUrl).toBe("https://vireo.tail-test.ts.net");

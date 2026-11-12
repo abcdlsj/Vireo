@@ -12,6 +12,7 @@ import { Db } from "./db.js";
 import { Files } from "./files.js";
 import { Grants } from "./grants.js";
 import { Identity } from "./identity.js";
+import { Judge } from "./judge.js";
 import { Peers } from "./peers.js";
 import { Integrations } from "./integrations/index.js";
 import { ThreadLifecycle } from "./lifecycle.js";
@@ -60,6 +61,8 @@ export interface App {
   actions: Actions;
   /** The owner's standing trust, so a confirmed action does not ask again. */
   grants: Grants;
+  /** Cloudflare clef-flash: a second opinion on whether an action needs the owner. */
+  judge: Judge;
   cards: Cards;
   runner: Runner;
   lifecycle: ThreadLifecycle;
@@ -84,6 +87,7 @@ export function createApp(config: Config): App {
   app.reminders = new Reminders(db, app.bus);
   app.integrations = new Integrations(config, db, () => app.plugins.providers());
   app.vault = new Vault(db, config.dataDir);
+  app.judge = new Judge(app);
   app.pricing = new Pricing(config);
   app.usage = new UsageLog(db, app.pricing);
   app.models = new ModelService(config, db, app.vault, app.usage);
@@ -92,7 +96,7 @@ export function createApp(config: Config): App {
   app.browser = new BrowserService(app);
   app.peers = new Peers(identity);
   app.plugins = new Plugins(app);
-  app.vault.extraSecrets = () => app.plugins.secrets();
+  app.vault.extraSecrets = () => [...app.plugins.secrets(), app.judge.secret()].filter(Boolean);
   app.push.onNotify = (n) => app.plugins.notify(n);
   app.buildTools = () => buildTools(app.plugins.tools());
   app.tools = app.buildTools();

@@ -282,6 +282,133 @@ function SignIns() {
 }
 
 function Confirmations() {
+  return (
+    <>
+      <RiskJudge />
+      <Trusted />
+    </>
+  );
+}
+
+interface JudgeView {
+  enabled: boolean;
+  ready: boolean;
+  accountId: string;
+  threshold: number;
+  hasToken: boolean;
+  callsToday: number;
+  recent: { at: number; tool: string; need?: number; kind?: string; error?: string }[];
+}
+
+/** Cloudflare's clef-flash: a second opinion on whether an action needs the owner at all. */
+function RiskJudge() {
+  const [view, setView] = useState<JudgeView | null>(null);
+  const [token, setToken] = useState("");
+  const [accountId, setAccountId] = useState("");
+  const [busy, setBusy] = useState(false);
+  const load = () =>
+    api.get<JudgeView>("/api/judge").then((v) => {
+      setView(v);
+      setAccountId(v.accountId);
+    });
+  useEffect(() => {
+    void load();
+  }, []);
+  if (!view) return null;
+  const save = async (patch: Record<string, unknown>) => {
+    setBusy(true);
+    try {
+      setView(await api.patch<JudgeView>("/api/judge", patch));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <section className="card">
+      <h3>Risk judge</h3>
+      <p className="muted small">
+        For an action that would normally show a card and has no standing trust yet, Cloudflare's <code>clef-flash</code> rates whether you would want to
+        see it first. A low rating runs it and writes what happened in the thread instead of interrupting you. It never touches the actions that always
+        ask (deleting, paying, changing access), and if it is off, over its daily budget or unreachable, the card stays.
+      </p>
+      <p className="muted small">
+        {view.ready
+          ? `On. ${view.callsToday} of 500 judgements today.`
+          : view.enabled
+            ? "On, but incomplete: an account id and a token are both needed."
+            : "Off: every action that needs a card still shows one."}
+      </p>
+      <label className="row">
+        <input type="checkbox" checked={view.enabled} disabled={busy} onChange={(e) => void save({ enabled: e.target.checked })} />
+        <span>Ask clef-flash before showing a card</span>
+      </label>
+      <div className="inline-form">
+        <input placeholder="Cloudflare account id" value={accountId} onChange={(e) => setAccountId(e.target.value)} />
+        <button className="btn small" disabled={busy} onClick={() => void save({ accountId })}>
+          Save
+        </button>
+      </div>
+      <div className="inline-form">
+        <input
+          type="password"
+          placeholder={view.hasToken ? "API token saved — paste a new one to replace it" : "API token (Workers AI: Read)"}
+          value={token}
+          onChange={(e) => setToken(e.target.value)}
+          autoComplete="new-password"
+        />
+        <button
+          className="btn small"
+          disabled={busy || !token.trim()}
+          onClick={() =>
+            void save({ token }).then(() => {
+              setToken("");
+            })
+          }
+        >
+          Save token
+        </button>
+      </div>
+      <label className="row">
+        <span>
+          Show a card when the judge rates it above <b>{view.threshold.toFixed(2)}</b>
+        </span>
+        <input
+          type="range"
+          min={0.1}
+          max={0.9}
+          step={0.05}
+          value={view.threshold}
+          disabled={busy}
+          onChange={(e) => void save({ threshold: Number(e.target.value) })}
+        />
+      </label>
+      {view.recent.length ? (
+        <table className="usage">
+          <thead>
+            <tr>
+              <th>When</th>
+              <th>Tool</th>
+              <th>Rated</th>
+              <th>Kind</th>
+            </tr>
+          </thead>
+          <tbody>
+            {view.recent.slice(0, 8).map((r, i) => (
+              <tr key={i}>
+                <td>{relTime(r.at)}</td>
+                <td>{r.tool}</td>
+                <td>{r.need === undefined ? (r.error ? `unavailable (${r.error})` : "—") : r.need.toFixed(2)}</td>
+                <td>{r.kind ?? "—"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : null}
+    </section>
+  );
+}
+
+function Trusted() {
   const [list, setList] = useState<Grant[]>([]);
   const load = () => api.get<{ grants: Grant[] }>("/api/grants").then((r) => setList(r.grants));
   useEffect(() => {

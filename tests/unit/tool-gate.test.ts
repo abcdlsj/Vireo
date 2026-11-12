@@ -199,6 +199,67 @@ describe("standing trust", () => {
   });
 });
 
+describe("the risk judge", () => {
+  const sender = (risk: "ask" | "always" = "ask") => {
+    const def = defineTool({
+      name: "judge_send",
+      label: "Send message",
+      description: "Send a message.",
+      parameters: Type.Object({ body: Type.String() }),
+      risk,
+      summarize: (args) => `Send "${args.body}"`,
+      async run() {
+        return { text: "done" };
+      },
+    });
+    return def;
+  };
+
+  const withJudge = (need: number) => {
+    const app = open();
+    app.settings.update({ judgeEnabled: true, judgeAccountId: "acc", judgeThreshold: 0.5 });
+    app.judge.saveToken("token");
+    app.judge.transport = async () =>
+      new Response(JSON.stringify({ result: { answers: { need: { type: "noul", noul: need }, kind: { type: "choice", choice: "navigate" } } } }), { status: 200 });
+    return app;
+  };
+
+  const run = async (app: App, threadId: string, def: ReturnType<typeof sender>, body: string, id: string) =>
+    app.gate.wrap(def, { app, thread: app.threads.get(threadId)!, agent: "general" }).invoke({} as never, JSON.stringify({ body }), { toolCall: { callId: id } } as never) as Promise<string>;
+
+  it("runs an action it rates low without a card, and records the rating", async () => {
+    const app = withJudge(0.08);
+    const thread = app.threads.create({});
+    const out = await run(app, thread.id, sender(), "hello there", "c1");
+    expect(out).toContain("done");
+    expect(app.actions.pending()).toHaveLength(0);
+    const notices = app.threads.messages(thread.id).filter((m) => m.role === "notice").map((m) => JSON.stringify(m.body)).join(" ");
+    expect(notices).toContain("Ran without a card");
+    expect(notices).toContain("0.08");
+  });
+
+  it("keeps the card when it rates it high", async () => {
+    const app = withJudge(0.72);
+    const thread = app.threads.create({});
+    const out = await run(app, thread.id, sender(), "hello there", "c1");
+    expect(out).toContain("confirmation card");
+    expect(app.actions.pending()).toHaveLength(1);
+  });
+
+  it("is not asked at all about an irreversible action", async () => {
+    const app = withJudge(0.01);
+    let asked = 0;
+    app.judge.transport = async () => {
+      asked++;
+      return new Response("{}", { status: 200 });
+    };
+    const thread = app.threads.create({});
+    const out = await run(app, thread.id, sender("always"), "delete everything", "c1");
+    expect(out).toContain("confirmation card");
+    expect(asked).toBe(0);
+  });
+});
+
 describe("repeated failing calls", () => {
   it("refuses the third identical call and says what to do instead", async () => {
     const app = open();

@@ -80,6 +80,8 @@ A thread asks one thing at a time: a newer question rewrites the card rather tha
 
 Confirming an action teaches Vireo the target it acts on — a conversation in an app, the people a mail goes to, a machine — and the exact text. The same text to the same target then runs without a card, and so does new text to a trusted target once you have approved that text in the conversation (you wrote it, or you answered "send" to a message that showed it). Anything irreversible — deleting, paying, changing permissions — asks every time, and a new target asks once. **Settings → Confirmations** lists what you trusted and forgets it on request.
 
+That list is not the only way to be asked less. **Settings → Confirmations → Risk judge** turns on Cloudflare's [clef-flash](https://developers.cloudflare.com/workers-ai/models/clef-flash/), a small decision model that reads one action — what it would do, its target, its content and your own last request — and rates how likely you are to want to see it first. A rating under the threshold runs the action and writes what happened into the thread, which is how an unnamed button in an app stops asking. It is a second opinion, never the authority: the actions that always ask are never sent to it, an action it fails to rate keeps its card, and it is off until you add a Cloudflare account id and an API token with **Workers AI: Read**. Only that one action leaves the machine (the body is cut short), Cloudflare keeps nothing, and the free tier covers thousands of ratings a day.
+
 ## Self-hosting everything
 
 To run your own cloud and app as well (on one machine, or for others), see [deploy/README.md](deploy/README.md). On one machine:

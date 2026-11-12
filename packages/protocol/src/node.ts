@@ -293,6 +293,16 @@ export interface OwnerSettings {
   watchCalendar: boolean;
   /** HTTP proxy for web search, page fetches and the browser, e.g. "http://127.0.0.1:7890". Empty connects directly. */
   proxyUrl: string;
+  /**
+   * The risk judge: Cloudflare's clef-flash says whether the owner needs to look
+   * at an action before it happens, so routine ones stop asking. Off by default;
+   * the actions that always ask are never judged.
+   */
+  judgeEnabled: boolean;
+  /** Cloudflare account id for Workers AI. The API token is stored encrypted, not here. */
+  judgeAccountId: string;
+  /** How likely the judge must be that the owner cares before a card is shown (0–1). */
+  judgeThreshold: number;
 }
 
 export type LlmApi = "chat" | "responses";

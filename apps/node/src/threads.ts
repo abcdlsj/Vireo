@@ -249,6 +249,15 @@ export class ThreadStore {
     this.changed(threadId);
   }
 
+  /** The owner's latest message as plain text: what they asked for, as the judge reads it. */
+  lastOwnerText(threadId: string): string | undefined {
+    const last = this.messages(threadId, { limit: 12 })
+      .filter((m) => m.role === "user")
+      .at(-1);
+    const text = last ? messageText(last.body).trim() : "";
+    return text || undefined;
+  }
+
   messages(threadId: string, opts: { llmOnly?: boolean; limit?: number } = {}): StoredMessage[] {
     const rows = this.db.all<{ id: number; thread_id: string; role: string; agent: string | null; body: string; llm: number; created_at: number }>(
       `SELECT * FROM (SELECT * FROM messages WHERE thread_id = ? ${opts.llmOnly ? "AND llm = 1" : ""} ORDER BY id DESC LIMIT ?) ORDER BY id ASC`,

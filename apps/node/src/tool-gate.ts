@@ -160,19 +160,39 @@ export class ToolGate {
           const risk = await attention(t, args, ctx);
           const label = t.summarize?.(args as never) ?? t.label;
           let trusted: string | undefined;
+          let judged: { need: number; kind?: string } | undefined;
           if (risk !== "none") {
             // What the tool really acts on, and with what content. Only tools that
             // can derive it (a window and its focused conversation, mail recipients)
             // take part; everything else keeps its card.
             const topic = await t.topic?.(args as never, ctx);
             const bodyHash = bodyDigest(topic?.body);
-            if (topic && risk === "ask") {
-              if (this.app.grants.match(t.name, topic.key, bodyHash)) {
+            if (risk === "ask") {
+              if (topic && this.app.grants.match(t.name, topic.key, bodyHash)) {
                 trusted = `${topic.label} is one you trust, and this text is the one you confirmed`;
-              } else if (this.app.grants.trusts(t.name, topic.key) && approvedInChat(this.app, ctx.thread, topic.body)) {
+              } else if (topic && this.app.grants.trusts(t.name, topic.key) && approvedInChat(this.app, ctx.thread, topic.body)) {
                 // The target is trusted and this text was already in front of the owner.
                 this.app.grants.add({ tool: t.name, key: topic.key, label: topic.label, bodyHash, threadId });
                 trusted = `${topic.label} is one you trust, and you approved this text in the conversation`;
+              } else {
+                // No trust to lean on: the risk judge gets one look. It may lower the
+                // card, never raise what the tool already decided, and a judge that is
+                // off, over budget or unreachable leaves the card in place.
+                const verdict = await this.app.judge.attention({
+                  tool: t.name,
+                  risk,
+                  summary: label,
+                  target: topic?.label,
+                  body: topic?.body,
+                  request: this.app.threads.lastOwnerText(threadId),
+                  threadId,
+                  signature,
+                });
+                const threshold = this.app.judge.settings().threshold;
+                if (verdict && verdict.need < threshold) {
+                  judged = verdict;
+                  trusted = `the risk judge rated it ${verdict.need.toFixed(2)} (${verdict.kind ?? "unspecified"})`;
+                }
               }
             }
             const summary = label;
@@ -194,15 +214,18 @@ export class ToolGate {
           if (trusted) {
             // The owner was not interrupted, so the transcript says what left and
             // that it went out under their trust, not because the agent decided.
-            this.app.threads.addNotice(threadId, "action_result", `Ran without a card: ${label} (${trusted}). Revoke it in Settings → Confirmations.`, {
-              data: { trusted: true },
-            });
+            this.app.threads.addNotice(
+              threadId,
+              "action_result",
+              `Ran without a card: ${label} (${trusted}). ${judged ? "Adjust or turn off the risk judge in Settings → Confirmations." : "Revoke it in Settings → Confirmations."}`,
+              { data: { trusted: true, ...(judged ? { judged: true, need: judged.need } : {}) } },
+            );
           }
           return finish(out.failed ? "error" : "ok", {
             text: out.text,
             source: out.source,
             isError: Boolean(out.failed),
-            details: { ...(out.details ?? {}), ...(trusted ? { trusted: true } : {}) },
+            details: { ...(out.details ?? {}), ...(trusted ? { trusted: true } : {}), ...(judged ? { judged: true, need: judged.need } : {}) },
           });
         } catch (err) {
           const text = `Error: ${errorMessage(err)}`;

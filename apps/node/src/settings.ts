@@ -14,6 +14,9 @@ const DEFAULTS: OwnerSettings = {
   inboxQuery: "in:inbox is:unread category:primary",
   watchCalendar: true,
   proxyUrl: "",
+  judgeEnabled: false,
+  judgeAccountId: "",
+  judgeThreshold: 0.5,
 };
 
 export class Settings {

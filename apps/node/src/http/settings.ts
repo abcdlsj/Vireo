@@ -1,4 +1,4 @@
-import type { Me } from "@vireo/protocol";
+import type { Me, OwnerSettings } from "@vireo/protocol";
 import { Hono, type Context } from "hono";
 import type { App } from "../app.js";
 import type { RequestInfo } from "../plugins/types.js";
@@ -74,6 +74,32 @@ export function settingsRoutes(app: App): Hono {
     const grant = app.grants.get(c.req.param("id"));
     if (grant) app.grants.revokeKey(grant.tool, grant.key);
     return c.json({ ok: true });
+  });
+
+  // The risk judge (judge.ts): Cloudflare's clef-flash on Workers AI. The token
+  // is encrypted and never returned, only whether one is saved.
+  const judgeView = () => {
+    const s = app.settings.get();
+    return {
+      enabled: Boolean(s.judgeEnabled),
+      ready: app.judge.settings().enabled,
+      accountId: s.judgeAccountId ?? "",
+      threshold: s.judgeThreshold ?? 0.5,
+      hasToken: app.judge.hasToken(),
+      callsToday: app.judge.callsToday(),
+      recent: app.judge.recent(),
+    };
+  };
+  r.get("/judge", (c) => c.json(judgeView()));
+  r.patch("/judge", async (c) => {
+    const body = await c.req.json<{ enabled?: boolean; accountId?: string; threshold?: number; token?: string }>();
+    const patch: Partial<OwnerSettings> = {};
+    if (typeof body.enabled === "boolean") patch.judgeEnabled = body.enabled;
+    if (typeof body.accountId === "string") patch.judgeAccountId = body.accountId.trim();
+    if (typeof body.threshold === "number" && Number.isFinite(body.threshold)) patch.judgeThreshold = Math.min(0.99, Math.max(0.01, body.threshold));
+    if (Object.keys(patch).length) app.settings.update(patch);
+    if (typeof body.token === "string") app.judge.saveToken(body.token);
+    return c.json(judgeView());
   });
 
   r.post("/push/subscribe", async (c) => {
