@@ -40,6 +40,7 @@ export class Scheduler {
       await this.maybeNudge();
       await this.maybeCheckInbox();
       await this.maybeCheckCalendar();
+      await this.app.memorySweep.maybeRun();
     } catch (err) {
       console.warn(`[scheduler] ${errorMessage(err)}`);
     } finally {

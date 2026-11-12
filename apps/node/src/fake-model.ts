@@ -77,6 +77,9 @@ function routine(task: string, system: string, prompt: string): string {
       });
     case "email_triage":
       return JSON.stringify({ needs_reply: !/newsletter|unsubscribe|receipt|no-?reply|digest/i.test(prompt), reason: "scripted" });
+    case "memory_sweep":
+      // The scripted model deletes nothing: a cleanup has to be asked for by a real one.
+      return JSON.stringify({ delete: [] });
     default:
       return "OK";
   }

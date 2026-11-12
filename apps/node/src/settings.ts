@@ -17,6 +17,7 @@ const DEFAULTS: OwnerSettings = {
   judgeEnabled: false,
   judgeAccountId: "",
   judgeThreshold: 0.5,
+  memorySweep: false,
 };
 
 export class Settings {

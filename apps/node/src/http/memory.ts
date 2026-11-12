@@ -31,6 +31,10 @@ export function memoryRoutes(app: App): Hono {
   });
 
   r.get("/procedures", (c) => c.json({ procedures: app.procedures.list() }));
+
+  // The weekly cleanup of stale memories (memory-sweep.ts): on, and what it did last.
+  r.get("/memory/sweep", (c) => c.json({ enabled: Boolean(app.settings.get().memorySweep), last: app.memorySweep.last() ?? null, due: app.memorySweep.due() }));
+  r.post("/memory/sweep", async (c) => c.json(await app.memorySweep.run()));
   r.post("/procedures/:id/:decision{approve|reject}", (c) => {
     const ok = app.procedures.decide(c.req.param("id"), c.req.param("decision") === "approve" ? "approved" : "rejected");
     return ok ? c.json({ ok }) : c.json({ error: "Not found" }, 404);

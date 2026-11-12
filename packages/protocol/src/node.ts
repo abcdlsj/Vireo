@@ -303,6 +303,8 @@ export interface OwnerSettings {
   judgeAccountId: string;
   /** How likely the judge must be that the owner cares before a card is shown (0–1). */
   judgeThreshold: number;
+  /** Clean stale memories once a week, in the quiet hours. Off by default. */
+  memorySweep: boolean;
 }
 
 export type LlmApi = "chat" | "responses";

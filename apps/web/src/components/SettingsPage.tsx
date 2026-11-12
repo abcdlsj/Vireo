@@ -64,6 +64,7 @@ export function SettingsPage({ section, me, user, reload }: { section: string; m
           {cur.id === "general" ? (
             <>
               <Preferences settings={me.settings} reload={reload} />
+              <MemoryCleanup />
               <Appearance />
             </>
           ) : cur.id === "model" ? (
@@ -205,6 +206,73 @@ function Preferences({ settings, reload }: { settings: OwnerSettings; reload: ()
       </label>
       <button className="btn primary" onClick={() => void save()}>
         {saved ? "Saved" : "Save"}
+      </button>
+    </section>
+  );
+}
+
+interface SweepView {
+  enabled: boolean;
+  due: boolean;
+  last: { at: number; considered: number; removed: { id: string; statement: string }[] } | null;
+}
+
+/** Weekly cleanup of what memory no longer needs (memory-sweep.ts on the node). */
+function MemoryCleanup() {
+  const [state, setState] = useState<SweepView | null>(null);
+  const [busy, setBusy] = useState(false);
+  const load = () => api.get<SweepView>("/api/memory/sweep").then(setState);
+  useEffect(() => {
+    void load();
+  }, []);
+  if (!state) return null;
+  const toggle = async (enabled: boolean) => {
+    setBusy(true);
+    try {
+      await api.patch("/api/settings", { memorySweep: enabled });
+      await load();
+    } finally {
+      setBusy(false);
+    }
+  };
+  const run = async () => {
+    setBusy(true);
+    try {
+      await api.post("/api/memory/sweep");
+      await load();
+    } finally {
+      setBusy(false);
+    }
+  };
+  const last = state.last;
+  return (
+    <section className="card">
+      <h3>Memory cleanup</h3>
+      <p className="muted small">
+        Once a week, in the quiet hours (01:00–06:00 your time), Vireo asks the cheaper model which older memories are one-off details of matters that are
+        over — a single booking, a task's progress, a temporary arrangement — and deletes those. Preferences, identity, contact details and anything
+        recent are never considered, and neither is how-to knowledge.
+      </p>
+      <label className="check">
+        <input type="checkbox" checked={state.enabled} disabled={busy} onChange={(e) => void toggle(e.target.checked)} /> Clean up stale memories every
+        week
+      </label>
+      <p className="muted small">
+        {last
+          ? `Last run ${relTime(last.at)}: looked at ${last.considered} older ${last.considered === 1 ? "memory" : "memories"} and removed ${last.removed.length}.`
+          : state.enabled
+            ? "No cleanup yet; the first one runs a week after you turned it on."
+            : "Off: memory only changes when you or the agent say so."}
+      </p>
+      {last && last.removed.length ? (
+        <ul className="muted small">
+          {last.removed.slice(0, 8).map((r) => (
+            <li key={r.id}>{r.statement}</li>
+          ))}
+        </ul>
+      ) : null}
+      <button className="btn small ghost" disabled={busy} onClick={() => void run()}>
+        Clean up now
       </button>
     </section>
   );

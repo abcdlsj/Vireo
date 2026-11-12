@@ -17,6 +17,7 @@ import { Peers } from "./peers.js";
 import { Integrations } from "./integrations/index.js";
 import { ThreadLifecycle } from "./lifecycle.js";
 import { MemoryStore } from "./memory.js";
+import { MemorySweep } from "./memory-sweep.js";
 import { MemoryWorker } from "./memory-worker.js";
 import { ModelService } from "./models.js";
 import { Plugins } from "./plugins/index.js";
@@ -63,6 +64,8 @@ export interface App {
   grants: Grants;
   /** Cloudflare clef-flash: a second opinion on whether an action needs the owner. */
   judge: Judge;
+  /** The weekly cleanup of stale memories, when the owner turns it on. */
+  memorySweep: MemorySweep;
   cards: Cards;
   runner: Runner;
   lifecycle: ThreadLifecycle;
@@ -83,6 +86,7 @@ export function createApp(config: Config): App {
   app.settings = new Settings(db);
   app.threads = new ThreadStore(db, app.bus);
   app.memory = new MemoryStore(db, app.bus);
+  app.memorySweep = new MemorySweep(app);
   app.procedures = new Procedures(db, app.bus);
   app.reminders = new Reminders(db, app.bus);
   app.integrations = new Integrations(config, db, () => app.plugins.providers());
