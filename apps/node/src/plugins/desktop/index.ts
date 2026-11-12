@@ -5,6 +5,7 @@ import { platform } from "node:os";
 import { join } from "node:path";
 import { Type } from "typebox";
 import { defineTool } from "../../tools/types.js";
+import type { Risk } from "../../tools/types.js";
 import { errorMessage, truncate } from "../../util.js";
 import type { ConfigField, PluginDef, PluginRuntime, PluginStatus } from "../types.js";
 
@@ -106,6 +107,15 @@ const AFTER_ACTIVATE_MS = 5_000;
 
 /** An app between windows: reading again is safe, only writes are not. */
 const TRANSIENT = new Set(["WINDOW_NOT_FOUND", "APP_NOT_FOUND"]);
+
+/**
+ * Element names that mean the click does something the owner cannot undo or would
+ * want to see: deleting, paying, quitting. Words are matched on the visible label,
+ * which is what a person reads before clicking.
+ */
+const IRREVERSIBLE = /\b(delete|erase|discard|remove|reset|quit|sign out|log out|uninstall|revoke|empty|clear all)\b|删除|移除|清空|重置|注销|退出登录|卸载|解绑|撤销授权|退出群/i;
+/** Outward but recoverable: sending, submitting, buying, publishing, inviting. */
+const OUTWARD = /\b(send|submit|pay|purchase|buy|order|checkout|book|reserve|share|publish|post|invite|approve|transfer)\b|发送|提交|支付|付款|购买|下单|预订|预定|发布|分享|转发|邀请|审批|转账/i;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -212,7 +222,7 @@ export const desktopPlugin: PluginDef = {
   id: "desktop",
   name: "Desktop apps",
   description:
-    "Reads and operates native macOS apps — System Settings, Notes, Preview and others — through the system accessibility tree. Vireo may act only in the apps you list, and every action waits for your confirmation.",
+    "Reads and operates native macOS apps — System Settings, Notes, Preview and others — through the system accessibility tree. Vireo may act only in the apps you list; reading and navigating happen at once, outward actions wait for your confirmation.",
   author: "Vireo community",
   homepage: "https://agent-browser.dev/desktop",
   fields: [
@@ -258,6 +268,41 @@ export const desktopPlugin: PluginDef = {
 
     /** Which app each snapshot belongs to, so an action can be checked against the allowlist. */
     const snapshots = () => ctx.state.get<Record<string, string>>("snapshots") ?? {};
+
+    /**
+     * What each ref is called, as the app presents it. A word like "삭제" or
+     * "发送" is the only clue an element's action is outward, so the name is kept
+     * from the read that produced the ref; an unknown ref is treated as risky.
+     */
+    const elements = () => ctx.state.get<Record<string, { role?: string; name?: string }>>("elements") ?? {};
+
+    function rememberElements(found: { ref_id?: string; role?: string; name?: string }[]): void {
+      const map = elements();
+      for (const el of found) if (el.ref_id) map[el.ref_id] = { role: el.role, name: el.name };
+      const keys = Object.keys(map);
+      for (const key of keys.slice(0, Math.max(0, keys.length - 600))) delete map[key];
+      ctx.state.set("elements", map);
+    }
+
+    function collectElements(node: Node): { ref_id?: string; role?: string; name?: string }[] {
+      const out: { ref_id?: string; role?: string; name?: string }[] = [];
+      const walk = (n: Node) => {
+        if (n.ref_id) out.push({ ref_id: n.ref_id, role: n.role, name: n.name });
+        for (const child of n.children ?? []) walk(child);
+      };
+      walk(node);
+      return out;
+    }
+
+    /** How much attention a click, toggle or selection needs, from the element's own label. */
+    function elementRisk(ref: string): Risk {
+      const name = (elements()[ref.trim()]?.name ?? "").trim();
+      if (!name) return "ask";
+      if (IRREVERSIBLE.test(name)) return "always";
+      if (OUTWARD.test(name)) return "ask";
+      // A named row, tab or menu item that says nothing outward is navigation.
+      return "none";
+    }
 
     function remember(snapshotId: unknown, app: string): void {
       if (typeof snapshotId !== "string" || !snapshotId) return;
@@ -534,7 +579,10 @@ export const desktopPlugin: PluginDef = {
       const owner = String(data.app ?? app);
       remember(data.snapshot_id, owner);
       const lines: string[] = [];
-      if (data.tree) renderTree(data.tree as Node, 0, lines);
+      if (data.tree) {
+        rememberElements(collectElements(data.tree as Node));
+        renderTree(data.tree as Node, 0, lines);
+      }
       const window = (data.window ?? {}) as { title?: string };
       const head = [owner, window.title ? `— ${window.title}` : "", `refs: ${data.ref_count ?? 0}`, data.complete === false ? "(partial read: drill into a region)" : ""]
         .filter(Boolean)
@@ -600,7 +648,10 @@ export const desktopPlugin: PluginDef = {
               const owner = String(data.app ?? args.app);
               remember(data.snapshot_id, owner);
               const lines: string[] = [];
-              if (data.tree) renderTree(data.tree as Node, 0, lines);
+              if (data.tree) {
+                rememberElements(collectElements(data.tree as Node));
+                renderTree(data.tree as Node, 0, lines);
+              }
               const window = (data.window ?? {}) as { title?: string };
               const head = [owner, window.title ? `— ${window.title}` : "", `refs: ${data.ref_count ?? 0}`, data.complete === false ? "(partial read: drill into a region)" : ""]
                 .filter(Boolean)
@@ -615,7 +666,10 @@ export const desktopPlugin: PluginDef = {
             const app = String(data.app ?? snapshots()[/^@([A-Za-z0-9_-]+):/.exec(args.ref)?.[1] ?? ""] ?? args.app);
             remember(data.snapshot_id, app);
             const lines: string[] = [];
-            if (data.tree) renderTree(data.tree as Node, 0, lines);
+            if (data.tree) {
+              rememberElements(collectElements(data.tree as Node));
+              renderTree(data.tree as Node, 0, lines);
+            }
             const head = [app, `refs: ${data.ref_count ?? 0}`].join("  ");
             return {
               text: lines.length ? `${head}\n${truncate(lines.join("\n"), TREE_CAP)}` : `${head}\nThat region has no accessible elements.`,
@@ -659,6 +713,7 @@ export const desktopPlugin: PluginDef = {
             const single = data.match as Match | undefined;
             const many = (data.matches as Match[] | undefined) ?? [];
             const rows = single ? [single] : many;
+            rememberElements(rows);
             const lead = notes.length ? `${notes.join(" ")}\n` : "";
             if (!rows.length) {
               const roles = (data.roles_present as string[] | undefined) ?? [];
@@ -696,7 +751,7 @@ export const desktopPlugin: PluginDef = {
           name: "desktop_act",
           label: "Act in a desktop app",
           description:
-            "Act on one element of a desktop app: click, toggle, check, uncheck, set_value, type or select. Every action waits for the owner's confirmation, and only apps on the allowlist may be touched. It returns the window as it is afterwards, with fresh refs, so work from that instead of taking another snapshot. Leave the app and its windows as the change left them: do not close or tidy up. There is no keyboard action here: a shortcut such as cmd+enter is desktop_press.",
+            "Act on one element of a desktop app: click, toggle, check, uncheck, set_value, type or select. Filling a field and clicking a named row, tab or menu item happen at once; an unnamed control or one whose label says send, submit, delete or pay waits for the owner's confirmation, and only apps on the allowlist may be touched. It returns the window as it is afterwards, with fresh refs, so work from that instead of taking another snapshot. Leave the app and its windows as the change left them: do not close or tidy up. There is no keyboard action here: a shortcut such as cmd+enter is desktop_press.",
           parameters: Type.Object({
             action: Type.Union(
               [
@@ -714,7 +769,11 @@ export const desktopPlugin: PluginDef = {
             value: Type.Optional(Type.String({ description: "The text for type and set_value, or the option for select." })),
             description: Type.String({ description: "What this does, for the owner's confirmation card: 'Turn Wi-Fi off'." }),
           }),
-          confirm: () => true,
+          confirm: (args) => {
+            // Typing into a field is not outward: it goes away by typing again.
+            if (args.action === "set_value" || args.action === "type") return "none";
+            return elementRisk(args.ref);
+          },
           summarize: (args) => (VALUED.includes(args.action) ? withValue(args.description, args.value) : args.description),
           async run(args, tctx) {
             const app = appOf(args.ref);
@@ -749,7 +808,15 @@ export const desktopPlugin: PluginDef = {
             window_id: Type.Optional(Type.String({ description: "One window id from desktop_windows, when the app has several windows." })),
             description: Type.String({ description: "What this does, for the owner's confirmation card: 'Send the message in 干饭'." }),
           }),
-          confirm: () => true,
+          confirm: (args) => {
+            const parts = args.keys.trim().toLowerCase().split("+");
+            const key = parts.at(-1) ?? "";
+            // A chord can do anything a menu can; a bare navigation key does nothing outward.
+            if (parts.length > 1) return "ask";
+            if (key === "return" || key === "enter" || key === "delete" || key === "backspace") return "ask";
+            if (/^(escape|tab|space|up|down|left|right|home|end|pageup|pagedown|f\d{1,2})$/.test(key)) return "none";
+            return "ask";
+          },
           summarize: (args) => `${args.description} (${args.keys})`,
           async run(args, tctx) {
             const app = args.app.trim();

@@ -394,6 +394,8 @@ export const tailscalePlugin: PluginDef = {
           routes: Type.Optional(Type.Array(Type.String())),
           name: Type.Optional(Type.String()),
         }),
+        // Removing, rebooting or re-tagging a machine is not a repeat action to trust.
+        risk: "always",
         confirm: () => true,
         summarize: (args) =>
           `${args.action.replace(/_/g, " ")} ${args.machine}${args.tags ? ` → ${args.tags.join(", ")}` : ""}${args.routes ? ` → ${args.routes.join(", ")}` : ""}${args.name ? ` → ${args.name}` : ""}`,

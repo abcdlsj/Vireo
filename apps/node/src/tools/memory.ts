@@ -82,6 +82,8 @@ export const memoryTools = [
     label: "Forget",
     description: "Delete a fact from long-term memory by id (from recall_memory). Requires the owner's confirmation.",
     parameters: Type.Object({ fact_id: Type.String() }),
+    // Deleting a fact cannot be undone, so it is never covered by a standing trust.
+    risk: "always",
     confirm: () => true,
     summarize: (args) => `Delete memory ${args.fact_id}`,
     async run(args, ctx) {

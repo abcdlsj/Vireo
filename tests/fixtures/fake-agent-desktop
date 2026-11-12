@@ -98,6 +98,8 @@ switch (command) {
         children: [
           { role: "row", name: "Wi-Fi", children_count: 2 },
           { role: "switch", name: "Wi-Fi", value: "1", states: ["checked"], available_actions: ["Click"], ref_id: `@${snapshotId}:e7` },
+          { role: "button", ref_id: `@${snapshotId}:e8` },
+          { role: "button", name: "删除全部", ref_id: `@${snapshotId}:e9` },
         ],
       },
     });

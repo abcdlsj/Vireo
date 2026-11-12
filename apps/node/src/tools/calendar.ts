@@ -130,6 +130,8 @@ export const calendarTools = [
     label: "Cancel event",
     description: "Cancel (delete) a calendar event. Always waits for the owner's confirmation.",
     parameters: Type.Object({ event_id: Type.String(), title: Type.Optional(Type.String({ description: "For the confirmation card" })) }),
+    // Cancelling is not undoable for the other people on the invitation.
+    risk: "always",
     confirm: () => true,
     summarize: (args) => `Cancel event ${args.title ? `"${args.title}"` : args.event_id}`,
     async run(args, ctx) {

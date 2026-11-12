@@ -65,7 +65,7 @@ export function createHttp(app: App): Hono<Env> {
   // One-tap Confirm / Decline on a push notification: the link is signed for that action and that answer.
   http.post("/public/decide/:id/:decision", async (c) => {
     const { id, decision } = c.req.param();
-    if (!app.actions.verifyDecision(id, decision, c.req.query("sig"))) return c.json({ error: "This link is not valid." }, 403);
+    if (!app.actions.verifyDecision(id, decision, c.req.query("sig"))) return c.json({ error: "This link is out of date or not valid. Open Vireo to see the current card." }, 403);
     const action = app.actions.get(id);
     if (!action) return c.json({ error: "Not found" }, 404);
     if (action.status !== "pending") return c.json({ status: action.status, summary: action.summary });

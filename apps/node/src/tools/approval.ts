@@ -14,6 +14,8 @@ export const approvalTools = [
     label: "Approve an agent's request",
     description: "An approval an agent asked the owner for over MCP. Only the owner's confirmation card runs it.",
     parameters: Type.Object({ from: Type.String(), description: Type.Optional(Type.String()) }),
+    // Another agent is waiting on this answer: it is a decision, not a repeat action.
+    risk: "always",
     confirm: () => true,
     settles: true,
     async run(args) {

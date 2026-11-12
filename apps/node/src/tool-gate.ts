@@ -1,6 +1,6 @@
 import { tool, type FunctionTool } from "@openai/agents";
 import type { App } from "./app.js";
-import { forModel, type ToolContext, type ToolDef } from "./tools/types.js";
+import { forModel, type Risk, type ToolContext, type ToolDef } from "./tools/types.js";
 import { errorMessage, newId, safeJson, truncate } from "./util.js";
 
 /** What a call produced, kept for the stored tool result the runner writes. */
@@ -34,6 +34,19 @@ function stableJson(value: unknown): string {
     return `{${entries.join(",")}}`;
   }
   return JSON.stringify(value) ?? "null";
+}
+
+/**
+ * How much of the owner's attention one call needs: declared by the tool, or
+ * answered per call when the same tool can be navigation or an outward action.
+ */
+async function attention(t: ToolDef, args: Record<string, unknown>, ctx: ToolContext): Promise<Risk> {
+  if (t.risk) return t.risk;
+  if (!t.confirm) return "none";
+  const verdict = await t.confirm(args as never, ctx);
+  if (verdict === true) return "ask";
+  if (verdict === false) return "none";
+  return verdict;
 }
 
 /**
@@ -105,14 +118,18 @@ export class ToolGate {
         }
 
         try {
-          if (t.confirm && (await t.confirm(args as never, ctx))) {
+          const risk = await attention(t, args, ctx);
+          if (risk !== "none") {
             const summary = t.summarize?.(args as never) ?? t.label;
-            const action = this.app.actions.create(threadId, t.name, args, summary);
+            const { action, replaced } = this.app.actions.upsert(threadId, t.name, args, summary);
             this.record(threadId, signature, false, "");
+            const state = replaced
+              ? `The thread's confirmation card was rewritten: it now asks for "${summary}" instead of "${replaced}" (action ${action.id}).`
+              : `A confirmation card is now shown to the owner (action ${action.id}: "${summary}").`;
             return finish("awaiting_confirmation", {
-              text: `Not executed yet: this needs the owner's confirmation. A confirmation card is now shown to the owner (action ${action.id}: "${summary}"). Do not call this tool again for this action. In one or two sentences, tell the owner what is ready and awaiting their confirmation, then stop.`,
+              text: `Not executed yet: this needs the owner's confirmation. ${state} Do not call this tool again for this action. In one or two sentences, tell the owner what is ready and awaiting their confirmation, then stop.`,
               isError: false,
-              details: { awaitingConfirmation: action.id },
+              details: { awaitingConfirmation: action.id, risk },
             });
           }
           const out = await t.run(args as never, { ...ctx, signal: details?.signal });

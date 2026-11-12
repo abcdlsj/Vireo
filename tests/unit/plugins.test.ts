@@ -377,11 +377,31 @@ describe("desktop plugin", () => {
     expect(calls().slice(before).map((c) => c[0])).toEqual(["check", "snapshot"]);
   });
 
-  it("waits for the owner before touching anything", async () => {
+  it("asks for what is outward, and not for navigation", async () => {
     const { app, thread } = await setup();
-    const def = app.tools.get("desktop_act")!;
-    expect(def.confirm?.({ action: "uncheck", ref: "@sfake0001:e7", description: "Turn Wi-Fi off" }, { app, thread, agent: "general" })).toBe(true);
-    expect(def.summarize?.({ action: "uncheck", ref: "@sfake0001:e7", description: "Turn Wi-Fi off" })).toBe("Turn Wi-Fi off");
+    const act = app.tools.get("desktop_act")!;
+    const ctx = { app, thread, agent: "general" };
+    await app.tools.get("desktop_snapshot")!.run({ app: "System Settings" }, ctx);
+
+    // Filling a field can be undone by typing again; a named row is navigation.
+    expect(await act.confirm?.({ action: "set_value", ref: "@sfake0001:e7", value: "x", description: "Type" }, ctx)).toBe("none");
+    expect(await act.confirm?.({ action: "click", ref: "@sfake0001:e7", description: "Open Wi-Fi" }, ctx)).toBe("none");
+    // An unnamed icon could be anything, so it is not navigation.
+    expect(await act.confirm?.({ action: "click", ref: "@sfake0001:e8", description: "Click" }, ctx)).toBe("ask");
+    // A label that says it deletes is never covered by trust.
+    expect(await act.confirm?.({ action: "click", ref: "@sfake0001:e9", description: "Delete all" }, ctx)).toBe("always");
+
+    expect(act.summarize?.({ action: "uncheck", ref: "@sfake0001:e7", description: "Turn Wi-Fi off" })).toBe("Turn Wi-Fi off");
+  });
+
+  it("asks for a shortcut but not for a navigation key", async () => {
+    const { app, thread } = await setup();
+    const press = app.tools.get("desktop_press")!;
+    const ctx = { app, thread, agent: "general" };
+    expect(await press.confirm?.({ keys: "escape", app: "System Settings", description: "Close the menu" }, ctx)).toBe("none");
+    expect(await press.confirm?.({ keys: "tab", app: "System Settings", description: "Move on" }, ctx)).toBe("none");
+    expect(await press.confirm?.({ keys: "cmd+enter", app: "System Settings", description: "Send" }, ctx)).toBe("ask");
+    expect(await press.confirm?.({ keys: "return", app: "System Settings", description: "Send" }, ctx)).toBe("ask");
   });
 
   it("shows what will be written on the confirmation card, not only where", async () => {

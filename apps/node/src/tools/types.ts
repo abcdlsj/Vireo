@@ -2,6 +2,13 @@ import type { Static, TSchema } from "typebox";
 import type { App } from "../app.js";
 import type { Thread } from "../threads.js";
 
+/**
+ * How much of the owner's attention a tool call needs. Three levels, one meaning
+ * each: `none` never asks, `ask` may be covered by the owner's standing trust for
+ * the same target and content, `always` asks without exception.
+ */
+export type Risk = "none" | "ask" | "always";
+
 export interface ToolContext {
   app: App;
   thread: Thread;
@@ -38,11 +45,22 @@ export interface ToolDef<P extends TSchema = TSchema> {
   description: string;
   parameters: P;
   /**
-   * Outward-facing or irreversible calls return true here. They are never run
-   * directly by the model: Vireo shows a confirmation card and runs the call
-   * only after the owner confirms (S1).
+   * How much of the owner's attention this call needs:
+   * - `none`: reading and navigation — run at once, still audited.
+   * - `ask`: outward or changing — the owner sees one card, and a standing trust
+   *   for the same target and content can answer it once (not yet: until trust
+   *   exists, ask names a card every time).
+   * - `always`: irreversible or high-stakes — a card every time, whatever the
+   *   agent says and whichever trust the owner gave before.
    */
-  confirm?: (args: Static<P>, ctx: ToolContext) => boolean | Promise<boolean>;
+  risk?: Risk;
+  /**
+   * Outward-facing or irreversible calls return true (or a risk level) here. They
+   * are never run directly by the model: Vireo shows a confirmation card and runs
+   * the call only after the owner confirms (S1). Return "none" for a call that
+   * turns out to be navigation — `true` is `ask`.
+   */
+  confirm?: (args: Static<P>, ctx: ToolContext) => Risk | boolean | Promise<Risk | boolean>;
   /** One line for the confirmation card, e.g. "Send email to anna@example.com". */
   summarize?: (args: Static<P>) => string;
   /** Not available in temporary threads. */

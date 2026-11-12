@@ -60,6 +60,42 @@ export class Actions {
   create(threadId: string, tool: string, args: Record<string, unknown>, summary: string): Action {
     // One thread asks one thing at a time: a new confirmation retires the one still waiting.
     this.supersede(threadId);
+    return this.insert(threadId, tool, args, summary);
+  }
+
+  /**
+   * The gate's way in: a thread keeps one card, and a newer call rewrites that
+   * card instead of stacking a second one behind it. Same id, same place in the
+   * thread, so the owner answers what is in front of them; anything the card
+   * replaced stays in the audit trail.
+   */
+  upsert(threadId: string, tool: string, args: Record<string, unknown>, summary: string): { action: Action; replaced?: string } {
+    const open = this.app.db.get<ActionRow>("SELECT * FROM actions WHERE thread_id = ? AND status = 'pending' ORDER BY created_at DESC LIMIT 1", threadId);
+    if (!open) return { action: this.insert(threadId, tool, args, summary) };
+    const previous = open.summary;
+    this.app.db.run(
+      "UPDATE actions SET tool = ?, args = ?, summary = ? WHERE id = ? AND status = 'pending'",
+      tool,
+      JSON.stringify(args),
+      summary,
+      open.id,
+    );
+    this.app.bus.publish({ type: "action.updated", threadId, actionId: open.id });
+    this.app.threads.update(threadId, { needs_you: 1 });
+    const thread = this.app.threads.get(threadId);
+    // The same tag replaces the earlier notification on the phone rather than adding one.
+    const whole = !isTruncated(summary);
+    void this.app.push.notify({
+      title: thread ? `Confirm: ${thread.title}` : "Vireo needs your confirmation",
+      body: whole ? summary : `${summary}\nOpen Vireo to read it in full before you confirm.`,
+      url: `/#thread/${threadId}`,
+      tag: `action-${open.id}`,
+      decide: whole ? { confirm: this.decisionUrl(open.id, "confirm"), cancel: this.decisionUrl(open.id, "cancel") } : undefined,
+    });
+    return { action: this.get(open.id)!, replaced: previous === summary ? undefined : previous };
+  }
+
+  private insert(threadId: string, tool: string, args: Record<string, unknown>, summary: string): Action {
     const id = newId("act");
     this.app.db.run(
       "INSERT INTO actions (id, thread_id, tool, args, summary, status, created_at) VALUES (?, ?, ?, ?, ?, 'pending', ?)",
@@ -96,22 +132,33 @@ export class Actions {
     return key;
   }
 
-  private signature(id: string, decision: "confirm" | "cancel"): string {
-    return createHmac("sha256", this.decisionKey()).update(`${id}:${decision}`).digest("base64url");
+  private signature(id: string, decision: "confirm" | "cancel", content = ""): string {
+    return createHmac("sha256", this.decisionKey()).update(`${id}:${decision}:${content}`).digest("base64url");
+  }
+
+  /**
+   * What the card said when the notification was sent. A card rewritten since
+   * then must not be confirmable from the older notification: the owner would
+   * be answering text they never read.
+   */
+  private content(id: string): string {
+    const row = this.app.db.get<{ tool: string; args: string; summary: string }>("SELECT tool, args, summary FROM actions WHERE id = ?", id);
+    return row ? `${row.tool}\u0000${row.args}\u0000${row.summary}` : "";
   }
 
   /**
    * A link that confirms or declines one pending action with no sign-in, for
-   * the buttons on a push notification. It is signed for that action and that
-   * decision, and only reaches the owner inside their encrypted push.
+   * the buttons on a push notification. It is signed for that action, that
+   * decision and that card's content, and only reaches the owner inside their
+   * encrypted push.
    */
   decisionUrl(id: string, decision: "confirm" | "cancel"): string {
-    return `${this.app.address.publicUrl().replace(/\/$/, "")}/public/decide/${id}/${decision}?sig=${this.signature(id, decision)}`;
+    return `${this.app.address.publicUrl().replace(/\/$/, "")}/public/decide/${id}/${decision}?sig=${this.signature(id, decision, this.content(id))}`;
   }
 
   verifyDecision(id: string, decision: string, sig: string | undefined): decision is "confirm" | "cancel" {
     if ((decision !== "confirm" && decision !== "cancel") || !sig) return false;
-    const want = Buffer.from(this.signature(id, decision));
+    const want = Buffer.from(this.signature(id, decision, this.content(id)));
     const got = Buffer.from(sig);
     return want.length === got.length && timingSafeEqual(want, got);
   }

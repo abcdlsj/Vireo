@@ -37,11 +37,13 @@ beforeAll(async () => {
   app = testApp();
 });
 
+// Closing a Chromium under a loaded machine can take a while; the default 10 s
+// hook budget turned that into a flaky red build.
 afterAll(async () => {
   await app.browser.shutdown();
   app.db.close();
   server.close();
-});
+}, 60_000);
 
 const ref = (tree: string, pattern: RegExp) => tree.split("\n").find((l) => pattern.test(l))?.match(/\[ref=(\w+)\]/)?.[1];
 

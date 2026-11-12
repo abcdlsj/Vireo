@@ -42,6 +42,81 @@ function open(): App {
   return app;
 }
 
+describe("what needs the owner", () => {
+  const tool = (name: string, risk: "none" | "ask" | "always" | undefined, summary: string) =>
+    defineTool({
+      name,
+      label: name,
+      description: name,
+      parameters: Type.Object({ app: Type.String() }),
+      risk,
+      summarize: () => summary,
+      async run() {
+        return { text: `${name} ran` };
+      },
+    });
+
+  const call = (app: App, threadId: string, def: ReturnType<typeof tool>, args: Record<string, unknown>, id: string) =>
+    app.gate.wrap(def, { app, thread: app.threads.get(threadId)!, agent: "general" }).invoke({} as never, JSON.stringify(args), { toolCall: { callId: id } } as never) as Promise<string>;
+
+  it("runs a read without a card", async () => {
+    const app = open();
+    const thread = app.threads.create({});
+    expect(await call(app, thread.id, tool("look", "none", "Look"), { app: "Notes" }, "c1")).toContain("look ran");
+    expect(app.actions.pending()).toHaveLength(0);
+  });
+
+  it("asks for an outward call", async () => {
+    const app = open();
+    const thread = app.threads.create({});
+    const out = await call(app, thread.id, tool("send", "ask", "Send the message"), { app: "Notes" }, "c1");
+    expect(out).toContain("confirmation card");
+    expect(app.actions.pending()).toHaveLength(1);
+  });
+
+  it("keeps one card and rewrites it instead of stacking a second", async () => {
+    const app = open();
+    const thread = app.threads.create({});
+    const first = await call(app, thread.id, tool("send", "ask", "Send \"hello\" to 干饭"), { app: "Notes" }, "c1");
+    expect(first).toContain('A confirmation card is now shown');
+    const [card] = app.actions.pending();
+
+    const second = await call(app, thread.id, tool("send", "ask", "Send \"lunch?\" to 干饭"), { app: "Notes" }, "c2");
+    expect(second).toContain("was rewritten");
+    expect(second).toContain("Send \"hello\" to 干饭");
+
+    const pending = app.actions.pending();
+    expect(pending).toHaveLength(1);
+    expect(pending[0]!.id).toBe(card!.id);
+    expect(pending[0]!.summary).toBe('Send "lunch?" to 干饭');
+    // Nothing was cancelled on the way: the owner never sees a card disappear.
+    const cancelled = app.db.all<{ n: number }>("SELECT COUNT(*) AS n FROM actions WHERE thread_id = ? AND status = 'cancelled'", thread.id)[0]!.n;
+    expect(cancelled).toBe(0);
+  });
+
+  it("asks every time for an irreversible call, whatever the tool says", async () => {
+    const app = open();
+    const thread = app.threads.create({});
+    await call(app, thread.id, tool("wipe", "always", "Delete the room"), { app: "Notes" }, "c1");
+    expect(app.actions.pending()).toHaveLength(1);
+    expect(app.actions.pending()[0]).toMatchObject({ tool: "wipe", summary: "Delete the room" });
+  });
+
+  it("stops a notification button from confirming a card that was rewritten since", async () => {
+    const app = open();
+    const thread = app.threads.create({});
+    const card = app.actions.create(thread.id, "send", { text: "hello" }, 'Send "hello"');
+    const link = new URL(app.actions.decisionUrl(card.id, "confirm"));
+    expect(app.actions.verifyDecision(card.id, "confirm", link.searchParams.get("sig"))).toBe(true);
+
+    app.actions.upsert(thread.id, "send", { text: "lunch?" }, 'Send "lunch?"');
+    // The phone still shows the first text; its button must not answer the second.
+    expect(app.actions.verifyDecision(card.id, "confirm", link.searchParams.get("sig"))).toBe(false);
+    const fresh = new URL(app.actions.decisionUrl(card.id, "confirm"));
+    expect(app.actions.verifyDecision(card.id, "confirm", fresh.searchParams.get("sig"))).toBe(true);
+  });
+});
+
 describe("repeated failing calls", () => {
   it("refuses the third identical call and says what to do instead", async () => {
     const app = open();
