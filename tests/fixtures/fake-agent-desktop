@@ -27,9 +27,18 @@ if (failures && counter) {
 const snapshotId = "sfake0001";
 const app = flag("app", "System Settings");
 
+// AGENT_DESKTOP_AMBIGUOUS=1 stands for an app with two windows: reads that do
+// not name a window are refused the way agent-desktop refuses them.
+const ambiguous = process.env.AGENT_DESKTOP_AMBIGUOUS === "1";
+// AGENT_DESKTOP_NEEDS_LAUNCH, with AGENT_DESKTOP_STATE naming a file, stands for
+// an app running in the background with no window until it is brought forward.
+const stateFile = process.env.AGENT_DESKTOP_STATE;
+const needsLaunch = () => Boolean(process.env.AGENT_DESKTOP_NEEDS_LAUNCH && stateFile && !fs.existsSync(stateFile));
+const windowed = () => argv.includes("--window-id");
+
 const ok = (data) => process.stdout.write(`${JSON.stringify({ version: "2.6", ok: true, command, data })}\n`);
-const fail = (code, message, suggestion) =>
-  process.stdout.write(`${JSON.stringify({ version: "2.6", ok: false, command, error: { code, message, ...(suggestion ? { suggestion } : {}) } })}\n`);
+const fail = (code, message, suggestion, details) =>
+  process.stdout.write(`${JSON.stringify({ version: "2.6", ok: false, command, error: { code, message, ...(suggestion ? { suggestion } : {}), ...(details ? { details } : {}) } })}\n`);
 
 switch (command) {
   case "status":
@@ -50,9 +59,31 @@ switch (command) {
       ],
     });
     break;
+  case "list-windows":
+    ok(
+      ambiguous
+        ? [
+            { id: "w-1", title: `${app} 设置`, app_name: app, is_focused: false, minimized: false, visible: true, accessible: true, bounds: { x: 0, y: 0, width: 800, height: 600 } },
+            { id: "w-2", title: `${app} 主窗口`, app_name: app, is_focused: true, minimized: false, visible: true, accessible: true, bounds: { x: 100, y: 50, width: 1024, height: 768 } },
+          ]
+        : [{ id: "w-1", title: app, app_name: app, is_focused: true, minimized: false, visible: true, accessible: true, bounds: { x: 0, y: 0, width: 800, height: 600 } }],
+    );
+    break;
   case "snapshot":
+    if (needsLaunch() && !argv.includes("--root")) {
+      fail("WINDOW_NOT_FOUND", `Application '${app}' is running but has no matching window.`);
+      break;
+    }
     if (windowGone && !argv.includes("--root")) {
       fail("WINDOW_NOT_FOUND", `Application '${app}' is running but has no matching window.`);
+      break;
+    }
+    if (ambiguous && !windowed()) {
+      fail("AMBIGUOUS_TARGET", `${app} has multiple visible windows and no exact focused window.`, "Run 'list-windows' and retry with --window-id <id>.", { candidate_window_ids: ["w-1", "w-2"] });
+      break;
+    }
+    if (ambiguous && flag("window-id") === "w-1") {
+      ok({ app, complete: true, ref_count: 1, snapshot_id: snapshotId, window: { id: "w-1", title: `${app} 设置` }, tree: { role: "window", name: `${app} 设置` } });
       break;
     }
     ok({
@@ -72,6 +103,14 @@ switch (command) {
     });
     break;
   case "find":
+    if (needsLaunch()) {
+      fail("WINDOW_NOT_FOUND", `Application '${app}' is running but has no matching window.`);
+      break;
+    }
+    if (ambiguous && !windowed()) {
+      fail("AMBIGUOUS_TARGET", `${app} has multiple visible windows and no exact focused window.`, "Run 'list-windows' and retry with --window-id <id>.", { candidate_window_ids: ["w-1", "w-2"] });
+      break;
+    }
     ok({
       snapshot_id: snapshotId,
       match: { role: "switch", name: flag("name", "Wi-Fi"), value: "1", states: ["checked"], path: [`window:${app}`, `row:${flag("name", "Wi-Fi")}`], ref_id: `@${snapshotId}:e7` },
@@ -88,6 +127,31 @@ switch (command) {
   case "type":
   case "select":
     ok({ action: command, disposition: { delivery: "delivered_verified", retry: "safe" }, post_state: { states: ["checked"], value: "1" } });
+    break;
+  case "press":
+    // AGENT_DESKTOP_PRESS_NEEDS_FOCUS=1 stands for physical keys being refused
+    // until the app's window is actually active.
+    if (process.env.AGENT_DESKTOP_PRESS_NEEDS_FOCUS && stateFile && !fs.existsSync(stateFile)) {
+      fail("ACTION_FAILED", "a headless scoped press needs an active window", "Bring the window forward, or pass --headed if focus changes are permitted.");
+      break;
+    }
+    if (ambiguous && !windowed()) {
+      fail("AMBIGUOUS_TARGET", `${app} has multiple visible windows and no exact focused window.`, "Run 'list-windows' and retry with --window-id <id>.", { candidate_window_ids: ["w-1", "w-2"] });
+      break;
+    }
+    ok({ action: "press", disposition: { delivery: "delivered_unverified", retry: "unsafe" }, steps: [{ label: "CGEvent.post", mechanism: "physical_synthetic", outcome: "succeeded", verified: false }] });
+    break;
+  case "wait":
+    if (flag("text") === "never appears") fail("TIMEOUT", "The text wait expired.", "Raise --timeout.");
+    else ok({ found: true, waited_ms: Number(argv.find((a) => /^\d+$/.test(a)) ?? 0) });
+    break;
+  case "launch":
+    if (stateFile) fs.writeFileSync(stateFile, "1");
+    ok({ action: "launch", app_name: app, activated: true });
+    break;
+  case "focus-window":
+    if (stateFile) fs.writeFileSync(stateFile, "1");
+    ok({ focused: { id: flag("window-id"), app_name: app, title: `${app} 设置`, is_focused: true } });
     break;
   default:
     fail("INVALID_ARGS", `Unknown command "${command}".`);

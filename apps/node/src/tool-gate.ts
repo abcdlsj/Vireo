@@ -1,7 +1,7 @@
 import { tool, type FunctionTool } from "@openai/agents";
 import type { App } from "./app.js";
 import { forModel, type ToolContext, type ToolDef } from "./tools/types.js";
-import { errorMessage, newId, safeJson } from "./util.js";
+import { errorMessage, newId, safeJson, truncate } from "./util.js";
 
 /** What a call produced, kept for the stored tool result the runner writes. */
 export interface CallResult {
@@ -9,6 +9,31 @@ export interface CallResult {
   source?: string;
   isError: boolean;
   details: Record<string, unknown>;
+}
+
+/** The last call a thread made, so one that keeps failing the same way stops instead of burning the run. */
+interface Attempt {
+  signature: string;
+  failures: number;
+  last: string;
+  at: number;
+}
+
+/** Two identical failures are a signal; the call after them is refused rather than run a third time. */
+const REPEAT_LIMIT = 2;
+/** After this long, an identical call is a new attempt again (the owner asked to retry, the window changed). */
+const REPEAT_WINDOW_MS = 10 * 60_000;
+
+/** Argument order should not make two identical calls look different. */
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    const entries = Object.keys(value as Record<string, unknown>)
+      .sort()
+      .map((k) => `${JSON.stringify(k)}:${stableJson((value as Record<string, unknown>)[k])}`);
+    return `{${entries.join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "null";
 }
 
 /**
@@ -19,8 +44,20 @@ export interface CallResult {
  */
 export class ToolGate {
   private readonly results = new Map<string, CallResult>();
+  private readonly attempts = new Map<string, Attempt>();
 
   constructor(private readonly app: App) {}
+
+  /** Records how the call ended, so the next identical one can be recognised. */
+  private record(threadId: string, signature: string, failed: boolean, text: string): void {
+    const prior = this.attempts.get(threadId);
+    if (!failed) {
+      this.attempts.set(threadId, { signature, failures: 0, last: "", at: Date.now() });
+      return;
+    }
+    const failures = prior && prior.signature === signature ? prior.failures + 1 : 1;
+    this.attempts.set(threadId, { signature, failures, last: truncate(text, 300), at: Date.now() });
+  }
 
   /** The result of a finished call, once; undefined for calls that did not pass through the gate (handoffs). */
   take(callId: string): CallResult | undefined {
@@ -41,6 +78,7 @@ export class ToolGate {
         const args = (typeof input === "string" ? safeJson(input, {}) : (input ?? {})) as Record<string, unknown>;
         const callId = details?.toolCall?.callId ?? newId("call");
         const threadId = ctx.thread.id;
+        const signature = `${t.name}:${stableJson(args)}`;
         const row = this.app.audit.start(threadId, { toolCallId: callId, tool: t.name, agent: ctx.agent, args });
         this.app.threads.setStatus(threadId, `${t.label}…`);
         const step = (status: string) => this.app.bus.publish({ type: "step", threadId, step: { tool: t.name, label: t.label, status, toolCallId: callId } });
@@ -54,10 +92,23 @@ export class ToolGate {
           return forModel(text, result.source);
         };
 
+        // A model that repeats an identical failing call learns nothing new from a
+        // third result; it needs to be told to change approach. This is what kept
+        // a desktop task retrying "snapshot 企业微信" twenty times.
+        const prior = this.attempts.get(threadId);
+        if (prior && prior.signature === signature && prior.failures >= REPEAT_LIMIT && Date.now() - prior.at < REPEAT_WINDOW_MS) {
+          return finish("error", {
+            text: `Not run: this exact call (${t.name}, same arguments) already failed ${prior.failures} times in a row. Last error: ${prior.last} Repeating it will fail the same way — change approach: different arguments, another tool that can answer the same question, or tell the owner what is blocking you.`,
+            isError: true,
+            details: { repeated: true, failures: prior.failures },
+          });
+        }
+
         try {
           if (t.confirm && (await t.confirm(args as never, ctx))) {
             const summary = t.summarize?.(args as never) ?? t.label;
             const action = this.app.actions.create(threadId, t.name, args, summary);
+            this.record(threadId, signature, false, "");
             return finish("awaiting_confirmation", {
               text: `Not executed yet: this needs the owner's confirmation. A confirmation card is now shown to the owner (action ${action.id}: "${summary}"). Do not call this tool again for this action. In one or two sentences, tell the owner what is ready and awaiting their confirmation, then stop.`,
               isError: false,
@@ -65,6 +116,7 @@ export class ToolGate {
             });
           }
           const out = await t.run(args as never, { ...ctx, signal: details?.signal });
+          this.record(threadId, signature, Boolean(out.failed), out.text);
           return finish(out.failed ? "error" : "ok", {
             text: out.text,
             source: out.source,
@@ -72,7 +124,9 @@ export class ToolGate {
             details: out.details ?? {},
           });
         } catch (err) {
-          return finish("error", { text: `Error: ${errorMessage(err)}`, isError: true, details: {} });
+          const text = `Error: ${errorMessage(err)}`;
+          this.record(threadId, signature, true, text);
+          return finish("error", { text, isError: true, details: {} });
         }
       },
     });

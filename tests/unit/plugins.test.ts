@@ -309,7 +309,10 @@ describe("desktop plugin", () => {
       "desktop_apps",
       "desktop_find",
       "desktop_get",
+      "desktop_press",
       "desktop_snapshot",
+      "desktop_wait",
+      "desktop_windows",
     ]);
     await app.plugins.uninstall("desktop");
     expect(app.tools.has("desktop_act")).toBe(false);
@@ -379,6 +382,124 @@ describe("desktop plugin", () => {
     const def = app.tools.get("desktop_act")!;
     expect(def.confirm?.({ action: "uncheck", ref: "@sfake0001:e7", description: "Turn Wi-Fi off" }, { app, thread, agent: "general" })).toBe(true);
     expect(def.summarize?.({ action: "uncheck", ref: "@sfake0001:e7", description: "Turn Wi-Fi off" })).toBe("Turn Wi-Fi off");
+  });
+
+  it("shows what will be written on the confirmation card, not only where", async () => {
+    const { app } = await setup();
+    const act = app.tools.get("desktop_act")!;
+    expect(act.summarize?.({ action: "set_value", ref: "@sfake0001:e7", value: "下午吃啥？\n--- 🩷来自大肥鱼", description: "在干饭群输入框填入消息" })).toBe(
+      "在干饭群输入框填入消息: “下午吃啥？ --- 🩷来自大肥鱼”",
+    );
+    const press = app.tools.get("desktop_press")!;
+    expect(press.summarize?.({ keys: "cmd+enter", app: "System Settings", description: "发送消息" })).toBe("发送消息 (cmd+enter)");
+  });
+
+  it("lists a window id for every window, so a call can name one", async () => {
+    process.env.AGENT_DESKTOP_AMBIGUOUS = "1";
+    try {
+      const { app, thread } = await setup();
+      const out = await app.tools.get("desktop_windows")!.run({ app: "System Settings" }, { app, thread, agent: "general" });
+      expect(out.text).toContain("2 windows of System Settings");
+      expect(out.text).toContain("w-1");
+      expect(out.text).toContain("w-2");
+      expect(out.text).toContain("(focused)");
+    } finally {
+      delete process.env.AGENT_DESKTOP_AMBIGUOUS;
+    }
+  });
+
+  it("takes the focused window when an app has several, instead of giving up", async () => {
+    process.env.AGENT_DESKTOP_AMBIGUOUS = "1";
+    const calls = withLog();
+    try {
+      const { app, thread } = await setup();
+      const seen = await app.tools.get("desktop_snapshot")!.run({ app: "System Settings" }, { app, thread, agent: "general" });
+      expect(seen.text).toContain("Several windows matched; used w-2");
+      expect(seen.text).toContain("@sfake0001:e7");
+      const snapshots = calls().filter((c) => c[0] === "snapshot");
+      expect(snapshots[0]).not.toContain("--window-id");
+      expect(snapshots[1]).toContain("--window-id");
+      expect(snapshots[1]).toContain("w-2");
+
+      // The window is remembered: the next read does not have to list windows again.
+      await app.tools.get("desktop_snapshot")!.run({ app: "System Settings" }, { app, thread, agent: "general" });
+      expect(calls().filter((c) => c[0] === "list-windows")).toHaveLength(1);
+    } finally {
+      delete process.env.AGENT_DESKTOP_AMBIGUOUS;
+    }
+  });
+
+  it("brings forward an app that is running with no window, then reads it", async () => {
+    const dir = tempDir();
+    process.env.AGENT_DESKTOP_NEEDS_LAUNCH = "1";
+    process.env.AGENT_DESKTOP_STATE = resolve(dir, "launched");
+    const calls = withLog();
+    try {
+      const { app, thread } = await setup();
+      const seen = await app.tools.get("desktop_snapshot")!.run({ app: "System Settings" }, { app, thread, agent: "general" });
+      expect(seen.text).toContain("Brought System Settings forward");
+      expect(seen.text).toContain("@sfake0001:e7");
+      const launch = calls().find((c) => c[0] === "launch")!;
+      expect(launch.slice(0, 2)).toEqual(["launch", "System Settings"]);
+      expect(launch).toContain("--activate");
+    } finally {
+      delete process.env.AGENT_DESKTOP_NEEDS_LAUNCH;
+      delete process.env.AGENT_DESKTOP_STATE;
+    }
+  });
+
+  it("presses a key combination in the app, in one window", async () => {
+    process.env.AGENT_DESKTOP_AMBIGUOUS = "1";
+    const calls = withLog();
+    try {
+      const { app, thread } = await setup();
+      const out = await app.tools.get("desktop_press")!.run(
+        { keys: "cmd+enter", app: "System Settings", description: "发送消息" },
+        { app, thread, agent: "general", confirmed: true },
+      );
+      expect(out.text).toContain("pressed cmd+enter in System Settings: 发送消息");
+      expect(out.text).toContain("delivered_unverified");
+      const press = calls().find((c) => c[0] === "press")!;
+      expect(press.slice(0, 4)).toEqual(["press", "cmd+enter", "--app", "System Settings"]);
+      expect(press).toContain("--window-id");
+    } finally {
+      delete process.env.AGENT_DESKTOP_AMBIGUOUS;
+    }
+  });
+
+  it("brings the window forward when keys would land in a background app, then presses again", async () => {
+    const dir = tempDir();
+    process.env.AGENT_DESKTOP_PRESS_NEEDS_FOCUS = "1";
+    process.env.AGENT_DESKTOP_STATE = resolve(dir, "focused");
+    const calls = withLog();
+    try {
+      const { app, thread } = await setup();
+      const out = await app.tools.get("desktop_press")!.run(
+        { keys: "cmd+enter", app: "System Settings", description: "发送消息" },
+        { app, thread, agent: "general", confirmed: true },
+      );
+      expect(out.text).toContain("Brought System Settings forward");
+      expect(out.text).toContain("pressed cmd+enter in System Settings");
+      expect(calls().map((c) => c[0])).toContain("focus-window");
+      expect(calls().filter((c) => c[0] === "press")).toHaveLength(2);
+    } finally {
+      delete process.env.AGENT_DESKTOP_PRESS_NEEDS_FOCUS;
+      delete process.env.AGENT_DESKTOP_STATE;
+    }
+  });
+
+  it("refuses to press keys in an app the owner did not allow", async () => {
+    const { app, thread } = await setup();
+    await expect(
+      app.tools.get("desktop_press")!.run({ keys: "cmd+enter", app: "Mail", description: "Send the draft" }, { app, thread, agent: "general", confirmed: true }),
+    ).rejects.toThrow(/may not act in Mail/);
+  });
+
+  it("answers whether something appeared, without an error to retry", async () => {
+    const { app, thread } = await setup();
+    const waited = await app.tools.get("desktop_wait")!.run({ app: "System Settings", text: "never appears" }, { app, thread, agent: "general" });
+    expect(waited.text).toContain("did not appear within 30 s");
+    expect(waited.details).toMatchObject({ found: false });
   });
 
   it("refuses an app the owner did not allow", async () => {
