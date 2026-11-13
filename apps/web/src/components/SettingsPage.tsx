@@ -391,6 +391,11 @@ function RiskJudge() {
       setBusy(false);
     }
   };
+  // One button for both fields: the account id is not a secret and the token is.
+  const saveSetup = async () => {
+    await save({ accountId: accountId.trim(), ...(token.trim() ? { token: token.trim() } : {}) });
+    setToken("");
+  };
   return (
     <section className="card">
       <h3>Risk judge</h3>
@@ -406,40 +411,45 @@ function RiskJudge() {
             ? "On, but incomplete: an account id and a token are both needed."
             : "Off: every action that needs a card still shows one."}
       </p>
-      <label className="row">
+      <label className="check">
         <input type="checkbox" checked={view.enabled} disabled={busy} onChange={(e) => void save({ enabled: e.target.checked })} />
         <span>Ask clef-flash before showing a card</span>
       </label>
-      <div className="inline-form">
-        <input placeholder="Cloudflare account id" value={accountId} onChange={(e) => setAccountId(e.target.value)} />
-        <button className="btn small" disabled={busy} onClick={() => void save({ accountId })}>
+      <div className="grid2">
+        <label>
+          Cloudflare account ID
+          <input value={accountId} placeholder="e.g. 023e105f4ecef8ad9ca31a8372d0c353" onChange={(e) => setAccountId(e.target.value)} spellCheck={false} />
+        </label>
+        <label>
+          API token
+          <input
+            type="password"
+            placeholder={view.hasToken ? "Saved — paste a new one to replace it" : "Workers AI: Read"}
+            value={token}
+            onChange={(e) => setToken(e.target.value)}
+            autoComplete="new-password"
+          />
+        </label>
+      </div>
+      <p className="muted small">
+        The token needs one permission: <b>Account → Workers AI → Read</b>.{" "}
+        <a href="https://dash.cloudflare.com/profile/api-tokens" target="_blank" rel="noreferrer">
+          Create a token
+        </a>
+        {" · "}
+        <a href="https://dash.cloudflare.com/" target="_blank" rel="noreferrer">
+          Find your account ID
+        </a>{" "}
+        (right-hand column of the dashboard).
+      </p>
+      <div className="row-buttons">
+        <button className="btn primary" disabled={busy || (!accountId.trim() && !token.trim())} onClick={() => void saveSetup()}>
           Save
         </button>
+        {view.hasToken ? <span className="muted small">A token is saved.</span> : null}
       </div>
-      <div className="inline-form">
-        <input
-          type="password"
-          placeholder={view.hasToken ? "API token saved — paste a new one to replace it" : "API token (Workers AI: Read)"}
-          value={token}
-          onChange={(e) => setToken(e.target.value)}
-          autoComplete="new-password"
-        />
-        <button
-          className="btn small"
-          disabled={busy || !token.trim()}
-          onClick={() =>
-            void save({ token }).then(() => {
-              setToken("");
-            })
-          }
-        >
-          Save token
-        </button>
-      </div>
-      <label className="row">
-        <span>
-          Show a card when the judge rates it above <b>{view.threshold.toFixed(2)}</b>
-        </span>
+      <label>
+        Show a card when the judge rates it above <b>{view.threshold.toFixed(2)}</b>
         <input
           type="range"
           min={0.1}
@@ -486,6 +496,7 @@ function Trusted() {
   const targets = list.filter((g) => !g.bodyHash);
   return (
     <section className="card">
+      <h3>Trusted targets</h3>
       <p className="muted small">
         What you confirmed once, so Vireo stops asking about the same thing. A target here runs without a card when the content is the one you
         confirmed, or when you approved that text in the conversation. Deleting one makes the next same action ask again.
