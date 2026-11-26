@@ -113,5 +113,16 @@ describe("attached documents", () => {
 
     const read = await app.tools.get("read_file")!.run({ file_id: f.id } as never, { app, thread: app.threads.get(thread.id)!, agent: "general" });
     expect(read.text).toContain("Day one");
+
+    // File metadata endpoint returns FileInfo for cards and global previewer.
+    const { browserRoutes } = await import("../../apps/node/src/http/browser.js");
+    const routes = browserRoutes(app);
+    const metaRes = await routes.request(`/files/${f.id}/meta`);
+    expect(metaRes.status).toBe(200);
+    const metaJson = (await metaRes.json()) as { file: { id: string; name: string; mime: string } };
+    expect(metaJson.file.id).toBe(f.id);
+    expect(metaJson.file.name).toBe("plan, v2.pdf");
+    expect(metaJson.file.mime).toBe("application/pdf");
+    expect((await routes.request("/files/missing/meta")).status).toBe(404);
   });
 });

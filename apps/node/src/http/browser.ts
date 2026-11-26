@@ -34,6 +34,12 @@ export function browserRoutes(app: App): Hono {
     });
   });
 
+  r.get("/files/:id/meta", (c) => {
+    const info = app.files.get(c.req.param("id"));
+    if (!info) return c.json({ error: "Not found" }, 404);
+    return c.json({ file: info });
+  });
+
   // The text Vireo reads from a file, for previewing documents the browser can't show by itself.
   r.get("/files/:id/text", async (c) => {
     const id = c.req.param("id");
