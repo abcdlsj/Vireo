@@ -4,12 +4,11 @@ import { defineCard } from "../registry";
 import { clock, parseDate, until } from "../util";
 
 /**
- * A scheduled reminder: Swiss precision alarm slip with a crisp porcelain
- * clock band, glowing armed indicator, and recessed note tray.
+ * Minimal horology reminder object: quiet armed indicator, oversized crisp clock
+ * numerals, botanical countdown, and clean hairline footer.
  */
 export default defineCard({
   kind: "reminder",
-  height: "medium",
   render: ({ card, expanded, refresh }) => {
     const due = parseDate(card.data.due);
     const today = due && due.toDateString() === new Date().toDateString();
@@ -22,39 +21,33 @@ export default defineCard({
       : "";
     const hasCancel = Boolean(card.data.reminderId);
     return (
-      <Frame card={card} expanded={expanded} tone="paper" flush label={null} buttons={null} className="reminder">
-        <div className="reminder-dial">
-          <div className="reminder-kicker">
+      <Frame card={card} expanded={expanded} tone="paper" label={null} buttons={null} className="reminder">
+        <div className="reminder-top">
+          <span className="reminder-kicker">
             <span className="reminder-led" aria-hidden="true" />
             <span>Reminder</span>
-          </div>
-          <div className="reminder-when">
-            <span className="reminder-time">{due ? clock(due) : "—"}</span>
-            {countdown ? <span className="reminder-pill">{countdown}</span> : null}
-          </div>
+          </span>
+          {dateLine ? <span className="reminder-date">{dateLine}</span> : null}
         </div>
-        <div className="reminder-note">
-          <p className="reminder-text fit" data-lines={2}>
-            {card.title}
-          </p>
-          {dateLine || hasCancel ? (
-            <div className="reminder-foot">
-              <span className="reminder-date">{dateLine}</span>
-              {hasCancel ? (
-                <button
-                  type="button"
-                  className="reminder-cancel"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    void api.post(`/api/reminders/${String(card.data.reminderId)}/cancel`).then(refresh);
-                  }}
-                >
-                  Cancel
-                </button>
-              ) : null}
-            </div>
-          ) : null}
+        <div className="reminder-when">
+          <span className="reminder-time">{due ? clock(due) : "—"}</span>
+          {countdown ? <span className="reminder-pill">{countdown}</span> : null}
         </div>
+        <p className="reminder-text">{card.title}</p>
+        {hasCancel ? (
+          <div className="reminder-foot">
+            <button
+              type="button"
+              className="reminder-cancel"
+              onClick={(e) => {
+                e.stopPropagation();
+                void api.post(`/api/reminders/${String(card.data.reminderId)}/cancel`).then(refresh);
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        ) : null}
       </Frame>
     );
   },

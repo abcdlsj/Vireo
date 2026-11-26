@@ -5,7 +5,7 @@ import { defineCard } from "../registry";
 import type { Card } from "@vireo/protocol";
 import { clock, field, monthShort, parseDate, span, weekday } from "../util";
 
-/** A sculpted tear-off desk calendar page beside the time, people and place. Proposals for invites reuse it. */
+/** Clean Swiss calendar sheet: bold typographic date column beside time, venue, and people. */
 export function EventBody({
   card,
   title,
@@ -30,17 +30,9 @@ export function EventBody({
   return (
     <div className="tearoff-wrap">
       <div className={`tearoff ${card.status}`}>
-        <div className="tearoff-top">
-          <span className="tearoff-rings" aria-hidden="true">
-            <i />
-            <i />
-          </span>
-          <span className="tearoff-month">{s ? monthShort(s) : ""}</span>
-        </div>
-        <div className="tearoff-body">
-          <span className="tearoff-day">{s ? s.getDate() : "?"}</span>
-          <span className="tearoff-wk">{s ? weekday(s) : ""}</span>
-        </div>
+        <span className="tearoff-month">{s ? monthShort(s) : ""}</span>
+        <span className="tearoff-day">{s ? s.getDate() : "?"}</span>
+        <span className="tearoff-wk">{s ? weekday(s) : ""}</span>
       </div>
       <div className="event-main">
         <div className="event-time">
@@ -58,7 +50,7 @@ export function EventBody({
           <div className="people">
             <span className="c-stack">
               {people.slice(0, 4).map((p) => (
-                <Avatar key={p} name={p} size={26} />
+                <Avatar key={p} name={p} size={24} />
               ))}
             </span>
             <span className="c-sub">{people.length === 1 ? people[0] : `${people[0]} and ${people.length - 1} more`}</span>
@@ -74,7 +66,7 @@ export default defineCard({
   kind: "event",
   size: "l",
   render: ({ card, expanded }) => (
-    <Frame card={card} expanded={expanded} flush className="event-card">
+    <Frame card={card} expanded={expanded} className="event-card">
       <EventBody
         card={card}
         title={card.title}

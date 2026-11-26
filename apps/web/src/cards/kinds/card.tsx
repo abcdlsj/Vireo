@@ -140,8 +140,11 @@ function Rows({ items, expanded }: { items: Row[]; expanded: boolean }) {
   return (
     <>
       <RowList shown={shown} more={hidden} />
-      {/* Its count is set when the board fits the card (Frame): rows it had no room for are left out too. */}
-      {expanded ? null : <p className="c-more" data-testid="card-more" hidden={!hidden} />}
+      {expanded ? null : (
+        <p className="c-more" data-testid="card-more" hidden={!hidden}>
+          {hidden ? `${hidden} more` : ""}
+        </p>
+      )}
     </>
   );
 }

@@ -13,6 +13,7 @@ import { ThreadList } from "./components/ThreadList";
 import { ThreadView } from "./components/ThreadView";
 import { HomeIcon, MemoryIcon, MoonIcon, PlusIcon, SearchIcon, SettingsIcon, SunIcon } from "./icons";
 import { CardShareHost } from "./cards/CardShare";
+import { FileViewerHost } from "./components/Attachments";
 import { QuickJump } from "./components/QuickJump";
 import { go, useRoute } from "./route";
 import { useGlide } from "./glide";
@@ -290,6 +291,7 @@ function Shell({ user }: { user: User | null }) {
       </main>
       {jump ? <QuickJump threads={threads} onClose={() => setJump(false)} /> : null}
       <CardShareHost />
+      <FileViewerHost />
     </div>
   );
 }

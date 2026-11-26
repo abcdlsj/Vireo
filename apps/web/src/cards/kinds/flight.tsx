@@ -2,7 +2,10 @@ import { Frame, Sparkline } from "../Frame";
 import { defineCard } from "../registry";
 import { dayLabel, field } from "../util";
 
-/** A Flighty-grade boarding pass: monumental IATA route, curved flight arc, perforated stub with barcode or live price curve. */
+/**
+ * Curated architectural boarding pass poster: monumental IATA route, whisper-light
+ * dotted flight arc, and crisp hairline telemetry footer (zero faux barcode clutter).
+ */
 export default defineCard({
   kind: "flight",
   size: "l",
@@ -16,67 +19,55 @@ export default defineCard({
     const date = dayLabel(field(card, "date", ""));
     const duration = field(card, "duration", "");
     const done = card.status === "done";
+
     return (
-      <Frame card={card} expanded={expanded} className={`pass ${booked ? "booked" : ""}`}>
-        <div className="pass-main">
+      <Frame card={card} expanded={expanded} label={null} className={`pass ${booked ? "booked" : ""}`}>
+        <div className="pass-top">
           <div className="pass-airline">
             {airline ? <b className="pass-carrier">{airline}</b> : null}
             {flight ? <span className="pass-flight-no">{flight}</span> : null}
-            {card.title ? <span className="pass-route-note">{card.title}</span> : null}
+            {booked ? <span className="pass-state">{done ? "Flown" : "Confirmed"}</span> : <span className="pass-state quiet">{card.status === "watching" ? "Watching fare" : "Best option"}</span>}
           </div>
-          <div className="pass-route">
-            <div className="pass-port">
-              <span className="pass-code">{field(card, "from", "")}</span>
-              <span className="pass-time">{field(card, "departs", "")}</span>
-            </div>
-            <div className="pass-path">
-              <span className="pass-dot" aria-hidden="true" />
-              <span className="dash" />
-              <span className="pass-plane" aria-hidden="true">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M21 15.5v-2l-8-5V3.5a1.5 1.5 0 0 0-3 0V8.5l-8 5v2l8-2.5V18l-2 1.5V21l3.5-1 3.5 1v-1.5L13 18v-5z" transform="rotate(90 12 12)" />
-                </svg>
-              </span>
-              <span className="dash" />
-              <span className="pass-dot end" aria-hidden="true" />
-              {duration ? <small>{duration}</small> : null}
-            </div>
-            <div className="pass-port end">
-              <span className="pass-code">{field(card, "to", "")}</span>
-              <span className="pass-time">{field(card, "arrives", "")}</span>
-            </div>
+          {booked?.seat ? <span className="pass-seat-pill">Seat {booked.seat}</span> : date ? <span className="pass-seat-pill">{date}</span> : null}
+        </div>
+
+        <div className="pass-route">
+          <div className="pass-port">
+            <span className="pass-code">{field(card, "from", "")}</span>
+            <span className="pass-time">{field(card, "departs", "")}</span>
           </div>
-          <div className="pass-details">
-            {date ? <span className="pass-pill">{date}</span> : null}
-            {details.slice(0, 3).map((d, i) => (
-              <span key={i} className="pass-detail-item">
-                {d}
-              </span>
-            ))}
+          <div className="pass-arc">
+            <div className="pass-arc-track" aria-hidden="true">
+              <span className="pass-arc-dot start" />
+              <svg className="pass-arc-svg" viewBox="0 0 180 24" preserveAspectRatio="none">
+                <path d="M2,19 Q90,-3 178,19" fill="none" stroke="currentColor" strokeOpacity="0.3" strokeWidth="1.5" strokeDasharray="3 3" vectorEffect="non-scaling-stroke" />
+              </svg>
+              <span className="pass-arc-dot end" />
+            </div>
+            {duration ? <span className="pass-dur">{duration}</span> : null}
+          </div>
+          <div className="pass-port end">
+            <span className="pass-code">{field(card, "to", "")}</span>
+            <span className="pass-time">{field(card, "arrives", "")}</span>
           </div>
         </div>
-        <div className="pass-stub">
-          {booked ? (
-            <>
-              <span className="stub-seal">{done ? "Flown" : "Confirmed"}</span>
-              <div className="stub-seat-block">
-                <span className="stub-caption">Seat</span>
-                <span className="stub-big">{booked.seat || "—"}</span>
-              </div>
-              {booked.ref ? <span className="stub-ref">PNR · {booked.ref}</span> : null}
-              <div className="pass-barcode" aria-hidden="true" />
-            </>
-          ) : (
-            <>
-              <span className="stub-label">{card.status === "watching" ? "Watching fare" : "Best fare"}</span>
-              <span className="stub-big">{price || "—"}</span>
-              {trend.length > 1 ? (
-                <span className="accent-ink stub-spark">
-                  <Sparkline values={trend} width={156} height={32} />
-                </span>
-              ) : null}
-            </>
-          )}
+
+        <div className="pass-foot">
+          <div className="pass-meta">
+            {date && booked?.seat ? <span>{date}</span> : null}
+            {booked?.ref ? <span className="pass-ref">PNR {booked.ref}</span> : null}
+            {details.slice(0, 3).map((d, i) => (
+              <span key={i}>{d}</span>
+            ))}
+          </div>
+          <div className="pass-price-wrap">
+            {!booked && trend.length > 1 ? (
+              <span className="accent-ink pass-spark">
+                <Sparkline values={trend} width={86} height={24} />
+              </span>
+            ) : null}
+            {price ? <span className="pass-price">{price}</span> : null}
+          </div>
         </div>
       </Frame>
     );

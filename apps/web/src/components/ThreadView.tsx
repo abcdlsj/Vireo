@@ -4,7 +4,7 @@ import { BROWSER_HIDDEN_ARGS, browserPage, dateTime, isBrowserTool, prettyDates,
 import { cjkLang, Markdown, StreamingMarkdown } from "../markdown";
 import { go } from "../route";
 import { ActionCard } from "./ActionCard";
-import { Attachments, FileViewer } from "./Attachments";
+import { Attachments, FilePreviewDrawer, FileViewer, registerSplitPreviewHandler, toPreviewTarget, type FilePreviewTarget } from "./Attachments";
 import { Composer } from "./Composer";
 import { Eyes, nowLine } from "./Eyes";
 import { ProcedureCard } from "./ProcedureCard";
@@ -154,7 +154,9 @@ export function ThreadView({ id, onArchiveChange }: { id: string; onArchiveChang
   // The owner's own open/close for this thread; until they choose, the panel follows its content.
   const [panelChoice, setPanelChoice] = useState<boolean | null>(null);
   const [editingTitle, setEditingTitle] = useState(false);
-  const [viewing, setViewing] = useState<FileInfo | null>(null);
+  const [viewing, setViewing] = useState<FilePreviewTarget | null>(null);
+  const [viewerFullscreen, setViewerFullscreen] = useState(false);
+  const [wideSplit, setWideSplit] = useState(() => window.matchMedia("(min-width: 1025px)").matches);
   // The browser full size over the thread, for doing what Vireo asked there.
   const [browserOpen, setBrowserOpen] = useState(false);
   // What the owner just sent, shown before the node has it.
@@ -169,7 +171,40 @@ export function ThreadView({ id, onArchiveChange }: { id: string; onArchiveChang
   const latest = useRef(detail);
 
   const browsing = Boolean(detail?.thread.running) && liveSteps.some((s) => s.tool.startsWith("browser_"));
-  useEffect(() => setPanelChoice(null), [id]);
+  useEffect(() => {
+    setPanelChoice(null);
+    setViewing(null);
+    setViewerFullscreen(false);
+  }, [id]);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 1025px)");
+    const on = () => setWideSplit(mq.matches);
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, []);
+
+  const openFile = useCallback(
+    (f: FileInfo) => {
+      setViewing(toPreviewTarget(f));
+      setViewerFullscreen(false);
+    },
+    [],
+  );
+
+  // Intercept openFilePreview() calls from file/document cards inside this thread into the split drawer on desktop.
+  useEffect(() => {
+    if (!wideSplit) return;
+    registerSplitPreviewHandler((target) => {
+      setViewing(target);
+      setViewerFullscreen(false);
+      return true;
+    });
+    return () => registerSplitPreviewHandler(null);
+  }, [wideSplit]);
+
+  const activeFileId = viewing ? (viewing.kind === "info" ? viewing.file.id : viewing.kind === "id" ? viewing.fileId : null) : null;
+  const splitOpen = Boolean(viewing && wideSplit && !viewerFullscreen);
   // When the agent starts working in the browser the live view opens, whatever was chosen
   // before; closing it then keeps it closed. On a phone it would cover the conversation, so it waits to be asked for.
   useEffect(() => {
@@ -377,7 +412,7 @@ export function ThreadView({ id, onArchiveChange }: { id: string; onArchiveChang
   };
 
   return (
-    <div className={`thread-view ${panel ? "with-panel" : ""}`} data-testid="thread-view" data-thread-id={t.id}>
+    <div className={`thread-view ${panel || splitOpen ? "with-panel" : ""} ${splitOpen ? "with-file-drawer" : ""}`} data-testid="thread-view" data-thread-id={t.id}>
       <p className="sr-only" role="status" aria-live="polite" aria-atomic="true" data-testid="announce">
         {announce}
       </p>
@@ -503,7 +538,8 @@ export function ThreadView({ id, onArchiveChange }: { id: string; onArchiveChang
                 made={made}
                 actions={actions}
                 files={filesById}
-                onOpen={setViewing}
+                activeFileId={activeFileId}
+                onOpen={openFile}
                 onOpenBrowser={openBrowser}
                 threadId={t.id}
                 running={t.running}
@@ -549,10 +585,29 @@ export function ThreadView({ id, onArchiveChange }: { id: string; onArchiveChang
             placeholder={t.state === "done" ? "Message to reopen this thread" : isOverview ? "Ask Vireo anything" : "Message Vireo"}
           />
         </div>
-        {panel ? <Panel detail={detail} running={t.running} browsing={browsing} asking={asking?.request} onClose={closePanel} onOpenFile={setViewing} /> : null}
+        {splitOpen && viewing ? (
+          <FilePreviewDrawer
+            target={viewing}
+            onClose={() => {
+              setViewing(null);
+              setViewerFullscreen(false);
+            }}
+            onExpand={() => setViewerFullscreen(true)}
+          />
+        ) : panel ? (
+          <Panel detail={detail} running={t.running} browsing={browsing} asking={asking?.request} onClose={closePanel} onOpenFile={openFile} />
+        ) : null}
       </div>
       {browserOpen ? <BrowserView threadId={t.id} running={t.running} asking={asking?.request} overlay onClose={() => setBrowserOpen(false)} /> : null}
-      {viewing ? <FileViewer file={viewing} onClose={() => setViewing(null)} /> : null}
+      {viewing && (!wideSplit || viewerFullscreen) ? (
+        <FileViewer
+          target={viewing}
+          onClose={() => {
+            if (viewerFullscreen && wideSplit) setViewerFullscreen(false);
+            else setViewing(null);
+          }}
+        />
+      ) : null}
     </div>
   );
 }
@@ -589,6 +644,7 @@ const History = memo(function History({
   made,
   actions,
   files,
+  activeFileId,
   onOpen,
   onOpenBrowser,
   threadId,
@@ -602,6 +658,7 @@ const History = memo(function History({
   made: FileInfo[];
   actions: Map<string, Action>;
   files: Map<string, FileInfo>;
+  activeFileId?: string | null;
   onOpen: (f: FileInfo) => void;
   onOpenBrowser: () => void;
   threadId: string;
@@ -613,14 +670,14 @@ const History = memo(function History({
     <>
       {placeCards(items, cards, made).map((it) =>
         "files" in it ? (
-          <Attachments key={`files${it.files[0]!.id}`} files={it.files} onOpen={onOpen} produced />
+          <Attachments key={`files${it.files[0]!.id}`} files={it.files} onOpen={onOpen} activeId={activeFileId} produced />
         ) : "card" in it ? (
           <div key={`card${it.card.id}`} className="thread-cards" data-testid="thread-cards" data-card-id={it.card.id}>
             <CardSlot card={it.card} expanded refresh={onChange} />
             <div className="thread-card-bar">
               <button type="button" className="thread-card-share" onClick={() => openCardShare(it.card)} title="Share card as poster">
                 <SharePosterIcon />
-                Share poster
+                Poster Studio
               </button>
             </div>
           </div>
@@ -630,6 +687,7 @@ const History = memo(function History({
             item={it}
             actions={actions}
             files={files}
+            activeFileId={activeFileId}
             onOpen={onOpen}
             onOpenBrowser={onOpenBrowser}
             threadId={threadId}
@@ -667,6 +725,7 @@ function ItemView({
   item,
   actions,
   files,
+  activeFileId,
   onOpen,
   onOpenBrowser,
   threadId,
@@ -677,6 +736,7 @@ function ItemView({
   item: Item;
   actions: Map<string, Action>;
   files: Map<string, FileInfo>;
+  activeFileId?: string | null;
   onOpen: (f: FileInfo) => void;
   onOpenBrowser: () => void;
   threadId: string;
@@ -699,7 +759,7 @@ function ItemView({
           {inline.map((src, i) => (
             <img key={i} src={src} alt="" className="msg-image" />
           ))}
-          <Attachments files={attached} onOpen={onOpen} />
+          <Attachments files={attached} onOpen={onOpen} activeId={activeFileId} />
           {item.m.text ? <div className="bubble" lang={cjkLang(item.m.text)}>{item.m.text}</div> : null}
         </div>
       );

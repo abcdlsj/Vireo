@@ -4,6 +4,7 @@ import { api, onEvent, type ThreadDetail } from "../api";
 import { relTime } from "../format";
 import { ArrowUpIcon, ArrowUpRightIcon, CheckIcon, CloseIcon, SharePosterIcon, StopIcon } from "../icons";
 import { attentionOf, Eyes, nowLine } from "../components/Eyes";
+import { Attachments, openFilePreview } from "../components/Attachments";
 import { Markdown, StreamingMarkdown } from "../markdown";
 import { openCardShare } from "./CardShare";
 import { cardView } from "./registry";
@@ -100,8 +101,8 @@ export function Peek({ card, onClose, refresh }: { card: Card; onClose: () => vo
     const previous = document.activeElement as HTMLElement | null;
     sheet.current?.focus();
     const onKey = (e: KeyboardEvent) => {
-      // Poster Studio sits above Peek; let it handle Escape first without closing Peek underneath.
-      if (e.key === "Escape" && !document.querySelector('[data-testid="card-share"]')) close();
+      // Poster Studio and File Viewer sit above Peek; let them handle Escape first without closing Peek underneath.
+      if (e.key === "Escape" && !document.querySelector('[data-testid="card-share"]') && !document.querySelector('[data-testid="file-viewer"]')) close();
     };
     window.addEventListener("keydown", onKey);
     return () => {
@@ -174,6 +175,15 @@ export function Peek({ card, onClose, refresh }: { card: Card; onClose: () => vo
               refresh,
             })}
           </div>
+          {(() => {
+            const peekFiles = (detail?.files ?? []).filter((f) => f.id !== String(card.data.file_id ?? ""));
+            return peekFiles.length ? (
+              <div className="peek-files">
+                <span className="peek-latest-head">Files · {peekFiles.length}</span>
+                <Attachments files={peekFiles} onOpen={(f) => openFilePreview(f, { forceFullscreen: true })} produced />
+              </div>
+            ) : null;
+          })()}
           {live?.text ? (
             <div className="peek-latest" data-testid="peek-live">
               <span className="peek-latest-head">Vireo · writing…</span>

@@ -51,7 +51,6 @@ const BOARD: Record<string, { size?: CardSize | ((card: Card) => CardSize); heig
   compare: { size: "l" },
   // An invite and an email have a page of their own; any other action is a line.
   proposal: { size: (card) => (["create_event", "send_email"].includes(String(card.data.tool)) ? "l" : "s") },
-  reminder: { height: "medium" },
 };
 
 /** The three kinds on the first screen; every other kind is a file loaded the first time it is drawn. */

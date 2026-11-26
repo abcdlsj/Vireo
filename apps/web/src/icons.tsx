@@ -262,3 +262,28 @@ export const DocIcon = () => (
     <path d="M9.2 2.4v3.4h3.4M6 8.2h4M6 10.6h2.6" />
   </Icon>
 );
+
+export const EyeIcon = () => (
+  <Icon size={14}>
+    <path d="M1.8 8s2.3-4.2 6.2-4.2S14.2 8 14.2 8s-2.3 4.2-6.2 4.2S1.8 8 1.8 8z" />
+    <circle cx="8" cy="8" r="1.8" />
+  </Icon>
+);
+
+export const CodeIcon = () => (
+  <Icon size={14}>
+    <path d="M5.4 4.6 2.2 8l3.2 3.4M10.6 4.6 13.8 8l-3.2 3.4M9 3.4 7 12.6" />
+  </Icon>
+);
+
+export const PlayIcon = () => (
+  <Icon size={15}>
+    <path d="M5 3.6 12.6 8 5 12.4z" fill="currentColor" stroke="none" />
+  </Icon>
+);
+
+export const AudioIcon = () => (
+  <Icon size={15}>
+    <path d="M3 9.5v-3M6 11.5v-7M9 13V3M12 10.5v-5" />
+  </Icon>
+);

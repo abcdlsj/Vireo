@@ -243,6 +243,10 @@ async function readEvents(body: ReadableStream<Uint8Array>, on: (event: string, 
 
 /** A file or image on the current node, loadable by the browser. */
 export const fileUrl = (id: string) => authedUrl(`/api/files/${id}`);
+export const fileInlineUrl = (id: string) => {
+  const url = authedUrl(`/api/files/${id}`);
+  return url.includes("?") ? `${url}&inline=1` : `${url}?inline=1`;
+};
 
 export function closeEvents(): void {
   stream?.abort();

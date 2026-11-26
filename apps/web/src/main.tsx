@@ -7,6 +7,7 @@ import "./styles.css";
 import "./cards/cards.css";
 import "./cards/poster.css";
 import "./shell.css";
+import "./curated.css";
 import { takeSignIn } from "./cloud";
 import { initTheme } from "./theme";
 import { ErrorBoundary, reloadForUpdate } from "./components/ErrorBoundary";

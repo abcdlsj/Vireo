@@ -1,27 +1,23 @@
-import { GlobeIcon } from "../../icons";
+import { ArrowUpRightIcon, GlobeIcon } from "../../icons";
 import { Frame, hostOf } from "../Frame";
 import { defineCard } from "../registry";
 import { field, isHttp } from "../util";
 
-/** A curated web snapshot: refined mini-browser top bar with address pill and editorial excerpt. */
+/** Minimalist web reading card: clean domain masthead and crisp editorial excerpt (no faux browser dots). */
 export default defineCard({
   kind: "web_page",
   render: ({ card, expanded }) => {
     const url = field(card, "url", "");
     const site = field(card, "site", "") || hostOf(url);
     return (
-      <Frame card={card} expanded={expanded} className="webpage">
+      <Frame card={card} expanded={expanded} label={null} className="webpage">
         <div className="chrome">
-          <span className="chrome-dots" aria-hidden="true">
-            <i />
-            <i />
-            <i />
-          </span>
           <span className="chrome-pill">
             <GlobeIcon />
             {isHttp(url) ? (
               <a className="chrome-url" href={url} target="_blank" rel="noreferrer">
                 {site}
+                <ArrowUpRightIcon />
               </a>
             ) : (
               <span className="chrome-url">{site}</span>

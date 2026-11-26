@@ -1,11 +1,11 @@
-import { fileUrl } from "../../api";
-import { DocIcon } from "../../icons";
+import { openFilePreview } from "../../components/Attachments";
+import { DocIcon, EyeIcon } from "../../icons";
 import { Markdown } from "../../markdown";
 import { Frame } from "../Frame";
 import { defineCard } from "../registry";
 import { field } from "../util";
 
-/** Something written to keep: a published manuscript page with editorial stationery polish. */
+/** Editorial manuscript object: calm paper typography with in-app file preview. */
 export default defineCard({
   kind: "document",
   render: ({ card, expanded }) => {
@@ -25,9 +25,17 @@ export default defineCard({
         buttons={
           fileId && !card.buttons.length ? (
             <div className="vcard-buttons">
-              <a className="cbtn" href={fileUrl(fileId)} target="_blank" rel="noreferrer">
-                Open file
-              </a>
+              <button
+                type="button"
+                className="cbtn"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openFilePreview({ fileId, name: card.title });
+                }}
+              >
+                <EyeIcon />
+                Preview file
+              </button>
             </div>
           ) : undefined
         }

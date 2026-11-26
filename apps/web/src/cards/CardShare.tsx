@@ -1,28 +1,52 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Card } from "@vireo/protocol";
-import { CheckIcon, CloseIcon, CopyIcon, DownloadIcon } from "../icons";
+import { CheckIcon, CloseIcon, CopyIcon, DownloadIcon, FullscreenIcon } from "../icons";
 import { cardView } from "./registry";
 import { resolvedTheme } from "../theme";
 
-type Ratio = "auto" | "xhs" | "x" | "square";
-type Backdrop = "botanical" | "alabaster" | "sunset" | "obsidian" | "forest" | "mist";
+type Ratio = "auto" | "xhs" | "x" | "square" | "story";
+type Backdrop = "alabaster" | "botanical" | "sand" | "slate" | "obsidian" | "forest";
 type CardSurface = "auto" | "light" | "dark";
+type PosterStyle = "gallery" | "editorial";
 
-const RATIOS: { id: Ratio; label: string; hint: string }[] = [
-  { id: "auto", label: "Auto", hint: "Fit card" },
-  { id: "xhs", label: "XHS 3:4", hint: "Xiaohongshu" },
-  { id: "x", label: "X 16:9", hint: "Twitter / Cover" },
-  { id: "square", label: "1:1", hint: "Square" },
+const RATIOS: { id: Ratio; label: string; hint: string; w: number; minH?: number }[] = [
+  { id: "auto", label: "Auto", hint: "Fit", w: 540 },
+  { id: "xhs", label: "3:4", hint: "小红书", w: 480, minH: 640 },
+  { id: "x", label: "16:9", hint: "封面", w: 720, minH: 405 },
+  { id: "square", label: "1:1", hint: "方图", w: 560, minH: 560 },
+  { id: "story", label: "9:16", hint: "竖屏", w: 450, minH: 800 },
 ];
 
 const BACKDROPS: { id: Backdrop; label: string; swatch: string; dark?: boolean }[] = [
-  { id: "botanical", label: "Botanical", swatch: "linear-gradient(135deg, #dcebe0, #eef4ef)" },
-  { id: "alabaster", label: "Alabaster", swatch: "linear-gradient(135deg, #f7f4ec, #e8e2d5)" },
-  { id: "sunset", label: "Warm Dawn", swatch: "linear-gradient(135deg, #fbe8d8, #f2ddd9)" },
-  { id: "mist", label: "Nordic Mist", swatch: "linear-gradient(135deg, #e7eef6, #dde5ef)" },
-  { id: "obsidian", label: "Obsidian", swatch: "linear-gradient(135deg, #1f221f, #0d0e0d)", dark: true },
-  { id: "forest", label: "Deep Pine", swatch: "linear-gradient(135deg, #1a3b2a, #0b1811)", dark: true },
+  { id: "alabaster", label: "Alabaster", swatch: "linear-gradient(145deg, #f7f5ef, #eae5d9)" },
+  { id: "botanical", label: "Botanical", swatch: "linear-gradient(145deg, #e7f0ea, #d3e3d8)" },
+  { id: "sand", label: "Warm Sand", swatch: "linear-gradient(145deg, #f6ece0, #ead8c7)" },
+  { id: "slate", label: "Nordic", swatch: "linear-gradient(145deg, #eceff4, #dce2ec)" },
+  { id: "obsidian", label: "Obsidian", swatch: "linear-gradient(145deg, #20211f, #0d0e0d)", dark: true },
+  { id: "forest", label: "Deep Pine", swatch: "linear-gradient(145deg, #1b3a29, #0a1710)", dark: true },
 ];
+
+const KIND_EDITION: Record<string, string> = {
+  flight: "BOARDING PASS",
+  trip: "ITINERARY",
+  watch: "TELEMETRY",
+  reminder: "SCHEDULE",
+  file: "ARTIFACT",
+  document: "MANUSCRIPT",
+  email: "CORRESPONDENCE",
+  event: "CALENDAR",
+  compare: "DECISION MATRIX",
+  summary: "BRIEFING",
+  answer: "INSIGHT",
+  github_pr: "PULL REQUEST",
+  github_repo: "REPOSITORY",
+  place: "CITY GUIDE",
+  person: "DOSSIER",
+  web_page: "CLIPPING",
+  proposal: "PROPOSAL",
+  card: "DISPATCH",
+  thread: "NOTE",
+};
 
 const SHARE_EVENT = "vireo:card-share";
 
@@ -44,18 +68,23 @@ export function CardShareHost() {
 }
 
 /**
- * Turns any Vireo card into a curated, screenshot-ready poster for Xiaohongshu,
- * X, covers, or direct PNG download.
+ * Museum-grade Poster Studio: frames any Vireo card as a Gallery Print or Editorial
+ * Poster with auto-fit scaled preview and crisp 2x Retina PNG export.
  */
 function CardShareModal({ card, onClose }: { card: Card; onClose: () => void }) {
-  const [ratio, setRatio] = useState<Ratio>("auto");
-  const [backdrop, setBackdrop] = useState<Backdrop>(() => (resolvedTheme() === "dark" ? "obsidian" : "botanical"));
+  const [ratio, setRatio] = useState<Ratio>("xhs");
+  const [style, setStyle] = useState<PosterStyle>("gallery");
+  const [backdrop, setBackdrop] = useState<Backdrop>(() => (resolvedTheme() === "dark" ? "obsidian" : "alabaster"));
   const [surface, setSurface] = useState<CardSurface>("auto");
   const [brand, setBrand] = useState(true);
+  const [caption, setCaption] = useState("");
   const [cleanStage, setCleanStage] = useState(false);
   const [busy, setBusy] = useState<"" | "save" | "copy">("");
   const [copied, setCopied] = useState(false);
   const [note, setNote] = useState("");
+  const [scale, setScale] = useState(1);
+
+  const stageWrapRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -69,9 +98,32 @@ function CardShareModal({ card, onClose }: { card: Card; onClose: () => void }) 
     return () => window.removeEventListener("keydown", onKey);
   }, [cleanStage, onClose]);
 
+  // Smoothly auto-fit the poster canvas inside the preview viewport so tall 3:4 / 9:16 posters never clip.
+  useLayoutEffect(() => {
+    const wrap = stageWrapRef.current;
+    const canvas = stageRef.current;
+    if (!wrap || !canvas) return;
+    const measure = () => {
+      const pad = cleanStage ? 48 : 56;
+      const availW = Math.max(180, wrap.clientWidth - pad);
+      const availH = Math.max(180, wrap.clientHeight - pad);
+      const cw = canvas.offsetWidth || 500;
+      const ch = canvas.offsetHeight || 500;
+      const next = Math.min(1, availW / cw, availH / ch);
+      setScale(Math.max(0.35, Number(next.toFixed(3))));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(wrap);
+    ro.observe(canvas);
+    return () => ro.disconnect();
+  }, [ratio, style, backdrop, surface, brand, caption, cleanStage]);
+
   const effectiveSurface = surface === "auto" ? (BACKDROPS.find((b) => b.id === backdrop)?.dark ? "dark" : "light") : surface;
   const view = cardView(card.kind);
   const isWide = (typeof view.size === "function" ? view.size(card) : view.size) === "l";
+  const edition = KIND_EDITION[card.kind] ?? "CURATED";
+  const dateStr = new Date(card.updatedAt || Date.now()).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 
   const exportImage = useCallback(
     async (mode: "save" | "copy") => {
@@ -81,7 +133,6 @@ function CardShareModal({ card, onClose }: { card: Card; onClose: () => void }) 
       setNote("");
       try {
         if (mode === "copy" && navigator.clipboard && typeof ClipboardItem !== "undefined") {
-          // Pass the Promise<Blob> straight into ClipboardItem so Safari preserves the user gesture across async rendering.
           const pngPromise = renderNodeToPng(el, 2);
           await navigator.clipboard.write([new ClipboardItem({ "image/png": pngPromise })]);
           setCopied(true);
@@ -90,7 +141,12 @@ function CardShareModal({ card, onClose }: { card: Card; onClose: () => void }) 
           const blob = await renderNodeToPng(el, 2);
           const url = URL.createObjectURL(blob);
           const a = document.createElement("a");
-          const slug = (card.title || card.kind).toLowerCase().replace(/[^a-z0-9\u4e00-\u9fff]+/gi, "-").replace(/^-|-$/g, "").slice(0, 40) || "vireo-card";
+          const slug =
+            (card.title || card.kind)
+              .toLowerCase()
+              .replace(/[^a-z0-9\u4e00-\u9fff]+/gi, "-")
+              .replace(/^-|-$/g, "")
+              .slice(0, 40) || "vireo-poster";
           a.href = url;
           a.download = `vireo-${slug}.png`;
           a.click();
@@ -105,7 +161,8 @@ function CardShareModal({ card, onClose }: { card: Card; onClose: () => void }) 
     [busy, card.kind, card.title],
   );
 
-  const dateStr = new Date(card.updatedAt || Date.now()).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+  const canvasH = stageRef.current?.offsetHeight ?? 540;
+  const canvasW = stageRef.current?.offsetWidth ?? 480;
 
   return (
     <div
@@ -121,20 +178,24 @@ function CardShareModal({ card, onClose }: { card: Card; onClose: () => void }) 
         {!cleanStage ? (
           <header className="poster-head">
             <div className="poster-head-title">
-              <span className="poster-head-eyebrow">Poster Studio</span>
+              <span className="poster-head-eyebrow">Poster Studio · {edition}</span>
               <h2>{card.title}</h2>
             </div>
             <div className="poster-head-actions">
+              <span className="poster-zoom-pill" title="Live preview scale">
+                {Math.round(scale * 100)}%
+              </span>
               <button type="button" className="peek-btn" onClick={() => setCleanStage(true)} title="Hide controls for a clean native screenshot">
-                Clean stage
+                <FullscreenIcon />
+                <span>Clean stage</span>
               </button>
               <button type="button" className="peek-btn" disabled={busy !== ""} onClick={() => void exportImage("copy")}>
                 {copied ? <CheckIcon /> : <CopyIcon />}
-                {copied ? "Copied" : busy === "copy" ? "Copying…" : "Copy PNG"}
+                <span>{copied ? "Copied" : busy === "copy" ? "Copying…" : "Copy PNG"}</span>
               </button>
               <button type="button" className="cbtn primary small" disabled={busy !== ""} onClick={() => void exportImage("save")}>
                 <DownloadIcon />
-                {busy === "save" ? "Saving…" : "Save PNG"}
+                <span>{busy === "save" ? "Saving…" : "Save PNG"}</span>
               </button>
               <button type="button" className="peek-btn icon" onClick={onClose} aria-label="Close">
                 <CloseIcon />
@@ -148,30 +209,57 @@ function CardShareModal({ card, onClose }: { card: Card; onClose: () => void }) 
         )}
 
         <div className="poster-workspace">
-          <div className="poster-stage-wrap">
+          <div className="poster-stage-wrap" ref={stageWrapRef}>
             <div
-              ref={stageRef}
-              className={`poster-canvas ratio-${ratio} bg-${backdrop} ${isWide ? "wide-card" : "compact-card"}`}
-              data-theme={effectiveSurface}
+              className="poster-scale-box"
+              style={{
+                width: Math.round(canvasW * scale),
+                height: Math.round(canvasH * scale),
+              }}
             >
-              <div className="poster-grain" aria-hidden="true" />
-              <div className="poster-card-shell">{view.render({ card, expanded: true, refresh: () => undefined })}</div>
-              {brand ? (
-                <footer className="poster-colophon">
-                  <span className="poster-brand">
-                    <img src="/icon.svg" alt="" width={16} height={16} />
-                    <span>Vireo</span>
-                  </span>
-                  <span className="poster-meta">{dateStr}</span>
-                </footer>
-              ) : null}
+              <div
+                ref={stageRef}
+                className={`poster-canvas style-${style} ratio-${ratio} bg-${backdrop} ${isWide ? "wide-card" : "compact-card"}`}
+                data-theme={effectiveSurface}
+                style={{ transform: `scale(${scale})`, transformOrigin: "top left" }}
+              >
+                <div className="poster-grain" aria-hidden="true" />
+                {style === "editorial" ? (
+                  <header className="poster-masthead">
+                    <span className="poster-edition-tag">{edition}</span>
+                    <span className="poster-edition-date">{dateStr}</span>
+                  </header>
+                ) : null}
+                <div className="poster-card-shell">{view.render({ card, expanded: true, refresh: () => undefined })}</div>
+                {brand ? (
+                  <footer className="poster-colophon">
+                    <span className="poster-brand">
+                      <img src="/icon.svg" alt="" width={16} height={16} />
+                      <span>Vireo</span>
+                    </span>
+                    <span className="poster-meta">{caption.trim() || dateStr}</span>
+                  </footer>
+                ) : null}
+              </div>
             </div>
           </div>
 
           {!cleanStage ? (
             <aside className="poster-controls">
               <div className="poster-ctrl-group">
-                <span className="poster-ctrl-label">Format</span>
+                <span className="poster-ctrl-label">Composition</span>
+                <div className="poster-seg two">
+                  <button type="button" className={style === "gallery" ? "on" : ""} onClick={() => setStyle("gallery")}>
+                    Gallery Print
+                  </button>
+                  <button type="button" className={style === "editorial" ? "on" : ""} onClick={() => setStyle("editorial")}>
+                    Editorial Poster
+                  </button>
+                </div>
+              </div>
+
+              <div className="poster-ctrl-group">
+                <span className="poster-ctrl-label">Aspect Ratio</span>
                 <div className="poster-pills">
                   {RATIOS.map((r) => (
                     <button key={r.id} type="button" className={`poster-pill ${ratio === r.id ? "on" : ""}`} onClick={() => setRatio(r.id)}>
@@ -183,7 +271,7 @@ function CardShareModal({ card, onClose }: { card: Card; onClose: () => void }) 
               </div>
 
               <div className="poster-ctrl-group">
-                <span className="poster-ctrl-label">Studio Backdrop</span>
+                <span className="poster-ctrl-label">Backdrop</span>
                 <div className="poster-swatches">
                   {BACKDROPS.map((b) => (
                     <button
@@ -202,7 +290,7 @@ function CardShareModal({ card, onClose }: { card: Card; onClose: () => void }) 
               </div>
 
               <div className="poster-ctrl-group">
-                <span className="poster-ctrl-label">Card Theme</span>
+                <span className="poster-ctrl-label">Card Surface</span>
                 <div className="poster-seg">
                   {(["auto", "light", "dark"] as const).map((m) => (
                     <button key={m} type="button" className={surface === m ? "on" : ""} onClick={() => setSurface(m)}>
@@ -212,10 +300,22 @@ function CardShareModal({ card, onClose }: { card: Card; onClose: () => void }) 
                 </div>
               </div>
 
-              <label className="poster-toggle">
-                <input type="checkbox" checked={brand} onChange={(e) => setBrand(e.target.checked)} />
-                <span>Show Vireo editorial signature</span>
-              </label>
+              <div className="poster-ctrl-group">
+                <label className="poster-toggle">
+                  <input type="checkbox" checked={brand} onChange={(e) => setBrand(e.target.checked)} />
+                  <span>Editorial colophon</span>
+                </label>
+                {brand ? (
+                  <input
+                    type="text"
+                    className="poster-caption-input"
+                    placeholder={`Custom note (default: ${dateStr})`}
+                    value={caption}
+                    maxLength={48}
+                    onChange={(e) => setCaption(e.target.value)}
+                  />
+                ) : null}
+              </div>
 
               {note ? <p className="poster-note">{note}</p> : null}
             </aside>
@@ -227,21 +327,32 @@ function CardShareModal({ card, onClose }: { card: Card; onClose: () => void }) 
 }
 
 /**
- * Renders a DOM node to a crisp Retina PNG Blob using an inlined SVG foreignObject,
- * requiring zero external dependencies and working completely offline.
+ * Renders the unscaled poster DOM node to a crisp Retina PNG Blob using an inlined
+ * SVG foreignObject, requiring zero external dependencies and working completely offline.
  */
 async function renderNodeToPng(node: HTMLElement, scale = 2): Promise<Blob> {
-  const rect = node.getBoundingClientRect();
-  const w = Math.ceil(rect.width);
-  const h = Math.ceil(rect.height);
+  const w = Math.ceil(node.offsetWidth);
+  const h = Math.ceil(node.offsetHeight);
 
   const clone = node.cloneNode(true) as HTMLElement;
   inlineComputedStyles(node, clone);
   clone.style.margin = "0";
+  clone.style.transform = "none";
   clone.style.width = `${w}px`;
   clone.style.height = `${h}px`;
 
-  // Embed inline SVG images as data URLs so foreignObject renders them without tainting the canvas.
+  // Strip iframes (which foreignObject cannot render) to clean placeholders if present
+  for (const frame of clone.querySelectorAll("iframe")) {
+    const placeholder = document.createElement("div");
+    placeholder.setAttribute(
+      "style",
+      "width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:12px;color:#747269;background:#f7f7f4;",
+    );
+    placeholder.textContent = frame.getAttribute("title") || "Interactive preview";
+    frame.replaceWith(placeholder);
+  }
+
+  // Embed inline SVG/bitmap images as data URLs so foreignObject renders them without tainting the canvas.
   const imgs = [...clone.querySelectorAll("img")];
   await Promise.all(
     imgs.map(async (img) => {
@@ -258,7 +369,7 @@ async function renderNodeToPng(node: HTMLElement, scale = 2): Promise<Blob> {
         });
         img.setAttribute("src", dataUrl);
       } catch {
-        // Ignore non-fetchable cross-origin images
+        // Ignore cross-origin images
       }
     }),
   );
@@ -290,7 +401,6 @@ async function renderNodeToPng(node: HTMLElement, scale = 2): Promise<Blob> {
   }
 }
 
-/** Visual CSS properties needed to faithfully snapshot a card without bloating SVG size with 350+ defaults per node. */
 const EXPORT_PROPS = [
   "display", "position", "inset", "top", "right", "bottom", "left", "z-index",
   "box-sizing", "width", "min-width", "max-width", "height", "min-height", "max-height",
