@@ -4020,15 +4020,178 @@
   object-position: top;
 }
 
-/* ---------- reminder (Braun sunlit poster) ---------- */
+/* ---------- reminder (Swiss precision alarm slip) ---------- */
 .vcard.reminder {
-  padding: 20px 22px;
-  gap: 10px;
+  padding: 0;
+  gap: 0;
 }
 
-.vcard.reminder.expanded {
-  padding: 24px 26px;
+.vcard.reminder > .vcard-body {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 0;
+}
+
+.reminder-dial {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 17px 22px 15px;
+  background: radial-gradient(95% 130% at 6% 0%, color-mix(in srgb, var(--c-needs) 9%, transparent) 0%, transparent 64%);
+}
+
+:root[data-theme="dark"] .reminder-dial,
+[data-theme="dark"] .reminder-dial {
+  background: radial-gradient(95% 130% at 6% 0%, color-mix(in srgb, var(--c-needs) 14%, transparent) 0%, transparent 66%);
+}
+
+.vcard.reminder.expanded .reminder-dial {
+  padding: 22px 26px 20px;
+  gap: 12px;
+}
+
+.reminder-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--c-ink-3);
+}
+
+.reminder-led {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--c-needs);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--c-needs) 20%, transparent);
+  flex-shrink: 0;
+}
+
+.reminder-when {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  min-width: 0;
+}
+
+.reminder-time {
+  font-family: var(--c-display);
+  font-size: 40px;
+  line-height: 40px;
+  font-weight: 800;
+  letter-spacing: -0.045em;
+  font-variant-numeric: tabular-nums;
+  color: var(--c-ink);
+  flex-shrink: 0;
+}
+
+.vcard.reminder.expanded .reminder-time {
+  font-size: 52px;
+  line-height: 50px;
+}
+
+.reminder-pill {
+  min-width: 0;
+  max-width: 100%;
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--c-needs) 11%, transparent);
+  border: 1px solid color-mix(in srgb, var(--c-needs) 22%, transparent);
+  color: var(--c-needs);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transform: translateY(-4px);
+}
+
+.vcard.reminder.expanded .reminder-pill {
+  height: 26px;
+  padding: 0 11px;
+  font-size: 12px;
+  transform: translateY(-6px);
+}
+
+/* Recessed tactile note tray */
+.reminder-note {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 13px 22px 14px;
+  border-top: 1px solid var(--c-line);
+  background: color-mix(in srgb, var(--c-surface) 72%, var(--c-paper));
+}
+
+:root[data-theme="dark"] .reminder-note,
+[data-theme="dark"] .reminder-note {
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.vcard.reminder.expanded .reminder-note {
+  padding: 18px 26px 20px;
   gap: 14px;
+}
+
+.reminder-text {
+  margin: 0;
+  font-size: 14.5px;
+  line-height: 20px;
+  font-weight: 560;
+  letter-spacing: -0.012em;
+  color: var(--c-ink);
+}
+
+.vcard.reminder.expanded .reminder-text {
+  font-size: 16px;
+  line-height: 23px;
+}
+
+.reminder-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 20px;
+}
+
+.reminder-date {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--c-ink-3);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.reminder-cancel {
+  height: 22px;
+  padding: 0 8px;
+  margin-right: -8px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--c-ink-3);
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.14s ease, color 0.14s ease;
+}
+
+.reminder-cancel:hover {
+  background: color-mix(in srgb, var(--c-danger, #c44332) 10%, transparent);
+  color: var(--c-danger, #c44332);
 }
 
 .bell {
@@ -4045,62 +4208,6 @@
 .bell svg {
   width: 13px;
   height: 13px;
-}
-
-/* The time on the left, countdown pill & date stack balanced on the right: a physical desk-clock face. */
-.reminder-when {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  min-width: 0;
-  color: var(--c-warm-ink);
-}
-
-.reminder-time {
-  font-family: var(--c-display);
-  font-size: 48px;
-  line-height: 46px;
-  font-weight: 800;
-  letter-spacing: -0.05em;
-  font-variant-numeric: tabular-nums;
-  flex-shrink: 0;
-}
-
-.vcard.reminder.expanded .reminder-time {
-  font-size: 58px;
-  line-height: 54px;
-}
-
-.reminder-meta {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 4px;
-  min-width: 0;
-}
-
-.reminder-day {
-  min-width: 0;
-  max-width: 100%;
-  display: inline-flex;
-  align-items: center;
-  height: 24px;
-  padding: 0 10px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--c-warm-ink) 12%, transparent);
-  font-size: 11.5px;
-  font-weight: 700;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.reminder-date {
-  font-size: 12px;
-  font-weight: 600;
-  opacity: 0.72;
-  white-space: nowrap;
 }
 
 /*
@@ -4156,39 +4263,6 @@
 .vcard.tone-warm .c-corner-act:hover {
   opacity: 1;
   background: color-mix(in srgb, var(--c-warm-ink) 12%, transparent);
-}
-
-.reminder-text {
-  position: relative;
-  margin: 0;
-  padding: 10px 0 0 12px;
-  border-top: 1px solid color-mix(in srgb, var(--c-warm-ink) 13%, transparent);
-  font-size: 14.5px;
-  line-height: 20px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-}
-
-.reminder-text::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 13px;
-  bottom: 3px;
-  width: 3px;
-  border-radius: 2px;
-  background: var(--c-needs);
-  opacity: 0.72;
-}
-
-/* The reminder is the point of the card, so it keeps its full ink. */
-.vcard.reminder:not(.expanded) .reminder-text {
-  color: var(--c-ink);
-}
-
-/* A reminder has one fixed height: the time sits at its top, the matter on its bottom edge. */
-.vcard.reminder > .vcard-body {
-  justify-content: space-between;
 }
 
 /* On warm paper a quiet button is tinted with the paper's ink, so it reads as a button. */

@@ -207,6 +207,7 @@
 .poster-card-shell .c-answer-wrap,
 .poster-card-shell .c-answer,
 .poster-card-shell .c-corner-act,
+.poster-card-shell .reminder-cancel,
 .poster-card-shell .vcard-actions {
   display: none;
 }
