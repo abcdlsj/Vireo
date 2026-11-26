@@ -5,8 +5,9 @@ import { defineCard } from "../registry";
 import { clock, parseDate, until } from "../util";
 
 /**
- * A scheduled reminder: sunlit parchment gradient, monumental Braun-inspired
- * clock display with a countdown pill, and crisp editorial reminder text.
+ * A scheduled reminder: Braun-inspired warm sunlit desk clock poster.
+ * Monumental display time paired horizontally with a countdown pill & date
+ * stack (no empty right void), over a crisp accent-lined reminder strip.
  */
 export default defineCard({
   kind: "reminder",
@@ -25,6 +26,12 @@ export default defineCard({
         Cancel
       </button>
     ) : null;
+    const countdown = due ? until(due) : "";
+    const dateLine = due
+      ? today
+        ? "Today"
+        : due.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })
+      : "";
     return (
       <Frame
         card={card}
@@ -43,9 +50,10 @@ export default defineCard({
         <div className="reminder-when">
           <span className="reminder-time">{due ? clock(due) : ""}</span>
           {due ? (
-            <span className="reminder-day">
-              {today ? `Today · ${until(due)}` : due.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}
-            </span>
+            <div className="reminder-meta">
+              {countdown ? <span className="reminder-day">{countdown}</span> : null}
+              {dateLine ? <span className="reminder-date">{dateLine}</span> : null}
+            </div>
           ) : null}
         </div>
         <p className="reminder-text fit" data-lines={2}>

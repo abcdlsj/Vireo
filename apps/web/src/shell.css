@@ -1890,6 +1890,182 @@ button.attach:active {
   border-top: 1px solid var(--c-hairline);
 }
 
+/* Remembered card inside ThreadView: bespoke botanical memory slip */
+.shell .remembered {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 6px 0 10px;
+  padding: 14px 18px 15px;
+  border-radius: 18px;
+  background:
+    radial-gradient(90% 90% at 0% 0%, color-mix(in srgb, var(--c-accent) 8%, transparent), transparent 65%),
+    var(--c-paper);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.8),
+    0 0 0 1px var(--c-accent-line),
+    var(--c-shadow);
+  font-size: 13.5px;
+  color: var(--c-ink);
+}
+
+:root[data-theme="dark"] .shell .remembered {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 0 0 1px var(--c-accent-line),
+    0 10px 26px -14px rgba(0, 0, 0, 0.55);
+}
+
+.remembered-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.shell .remembered-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--c-accent);
+}
+
+.remembered-badge {
+  width: 24px;
+  height: 24px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 8px;
+  background: var(--c-accent-soft);
+  color: var(--c-accent);
+}
+
+.remembered-badge svg {
+  width: 13px;
+  height: 13px;
+}
+
+.remembered-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 19px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--c-accent-soft);
+  color: var(--c-accent);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.remembered-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--c-ink-3);
+  text-decoration: none;
+  padding: 3px 8px;
+  border-radius: 999px;
+  transition: background 0.14s ease, color 0.14s ease;
+}
+
+.remembered-all:hover {
+  background: var(--c-soft);
+  color: var(--c-ink);
+  text-decoration: none;
+}
+
+.shell .remembered ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.shell .remembered li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 0;
+  border-top: 1px solid var(--c-hairline);
+}
+
+.shell .remembered li:first-child {
+  padding-top: 8px;
+}
+
+.shell .remembered li:last-child {
+  padding-bottom: 1px;
+}
+
+.remembered-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--c-accent);
+  opacity: 0.75;
+  flex-shrink: 0;
+}
+
+.shell .remembered li.forgotten .remembered-dot {
+  background: var(--c-ink-3);
+  opacity: 0.35;
+}
+
+.shell .remembered .statement {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 500;
+  color: var(--c-ink);
+}
+
+.shell .remembered li.forgotten .statement {
+  color: var(--c-ink-3);
+  text-decoration: line-through;
+}
+
+.remembered-forget {
+  flex: none;
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--c-hairline);
+  border-radius: 999px;
+  background: var(--c-soft);
+  color: var(--c-ink-2);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.14s ease, color 0.14s ease, border-color 0.14s ease;
+}
+
+.remembered-forget:hover {
+  background: color-mix(in srgb, var(--c-minus) 12%, var(--c-paper));
+  border-color: color-mix(in srgb, var(--c-minus) 30%, transparent);
+  color: var(--c-minus);
+}
+
+.shell .remembered .state {
+  flex: none;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: var(--c-soft);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--c-ink-3);
+}
+
 /* Markdown code blocks, quotes, and tables in conversations */
 .shell .md pre {
   position: relative;

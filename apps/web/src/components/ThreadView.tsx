@@ -786,20 +786,31 @@ function AssistantMessage({ m }: { m: Extract<Message, { role: "assistant" }> })
 /** What Vireo now remembers from this thread, each fact one tap from being taken back. */
 function Remembered({ facts, onChange }: { facts: Learned[]; onChange: () => void }) {
   if (facts.length === 0) return null;
+  const active = facts.filter((f) => !f.forgotten).length;
   return (
     <div className="remembered" data-testid="remembered">
-      <span className="remembered-head">
-        <MemoryIcon />
-        Remembered
-      </span>
+      <div className="remembered-bar">
+        <span className="remembered-head">
+          <span className="remembered-badge" aria-hidden="true">
+            <MemoryIcon />
+          </span>
+          <span>Remembered</span>
+          <span className="remembered-count">{active || facts.length}</span>
+        </span>
+        <a className="remembered-all" href="#memory">
+          Memory
+          <ArrowUpRightIcon />
+        </a>
+      </div>
       <ul>
         {facts.map((f) => (
           <li key={f.id} className={f.forgotten ? "forgotten" : ""}>
+            <span className="remembered-dot" aria-hidden="true" />
             <span className="statement">{f.statement}</span>
             {f.forgotten ? (
               <span className="state">Forgotten</span>
             ) : (
-              <button className="link" onClick={() => void api.del(`/api/memory/facts/${f.id}`).then(onChange)} data-testid="forget-fact">
+              <button className="remembered-forget" onClick={() => void api.del(`/api/memory/facts/${f.id}`).then(onChange)} data-testid="forget-fact">
                 Forget
               </button>
             )}

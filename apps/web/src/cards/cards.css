@@ -4047,28 +4047,37 @@
   height: 13px;
 }
 
-/* The time, and the day directly under it: a sculpted clock block. */
+/* The time on the left, countdown pill & date stack balanced on the right: a physical desk-clock face. */
 .reminder-when {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 6px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   min-width: 0;
   color: var(--c-warm-ink);
 }
 
 .reminder-time {
   font-family: var(--c-display);
-  font-size: 46px;
-  line-height: 44px;
+  font-size: 48px;
+  line-height: 46px;
   font-weight: 800;
   letter-spacing: -0.05em;
   font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
 }
 
 .vcard.reminder.expanded .reminder-time {
-  font-size: 56px;
+  font-size: 58px;
   line-height: 54px;
+}
+
+.reminder-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  min-width: 0;
 }
 
 .reminder-day {
@@ -4076,15 +4085,22 @@
   max-width: 100%;
   display: inline-flex;
   align-items: center;
-  height: 22px;
-  padding: 0 9px;
+  height: 24px;
+  padding: 0 10px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--c-warm-ink) 10%, transparent);
+  background: color-mix(in srgb, var(--c-warm-ink) 12%, transparent);
   font-size: 11.5px;
-  font-weight: 600;
+  font-weight: 700;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.reminder-date {
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0.72;
+  white-space: nowrap;
 }
 
 /*
@@ -4143,13 +4159,26 @@
 }
 
 .reminder-text {
+  position: relative;
   margin: 0;
-  padding-top: 8px;
-  border-top: 1px solid color-mix(in srgb, var(--c-warm-ink) 12%, transparent);
+  padding: 10px 0 0 12px;
+  border-top: 1px solid color-mix(in srgb, var(--c-warm-ink) 13%, transparent);
   font-size: 14.5px;
   line-height: 20px;
   font-weight: 600;
   letter-spacing: -0.01em;
+}
+
+.reminder-text::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 13px;
+  bottom: 3px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--c-needs);
+  opacity: 0.72;
 }
 
 /* The reminder is the point of the card, so it keeps its full ink. */

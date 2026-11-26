@@ -203,9 +203,10 @@
   background-image: radial-gradient(rgba(255, 255, 255, 0.14) 0.6px, transparent 0.6px);
 }
 
-/* Interactive reply inputs and hover actions don't belong in a shared poster. */
+/* Interactive reply inputs, corner actions, and hover actions don't belong in a shared poster. */
 .poster-card-shell .c-answer-wrap,
 .poster-card-shell .c-answer,
+.poster-card-shell .c-corner-act,
 .poster-card-shell .vcard-actions {
   display: none;
 }
