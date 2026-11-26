@@ -185,7 +185,7 @@ function Preferences({ settings, reload }: { settings: OwnerSettings; reload: ()
           Workday ends
           <input type="time" value={s.workdayEnd} onChange={(e) => setS({ ...s, workdayEnd: e.target.value })} />
         </label>
-        <label>
+        <label className="span-2">
           Proxy for the web and browser
           <input
             value={s.proxyUrl ?? ""}
@@ -278,27 +278,40 @@ function MemoryCleanup() {
   );
 }
 
+const THEME_OPTIONS: { id: ThemeChoice; label: string; hint: string }[] = [
+  { id: "system", label: "Match system", hint: "Follows OS setting" },
+  { id: "light", label: "Light", hint: "Warm porcelain paper" },
+  { id: "dark", label: "Dark", hint: "Obsidian studio" },
+];
+
 function Appearance() {
   const [choice, setChoice] = useState<ThemeChoice>(themeChoice);
+  const pick = (v: ThemeChoice) => {
+    setChoice(v);
+    setThemeChoice(v);
+  };
   return (
     <section className="card">
       <h3>Appearance</h3>
-      <label>
-        Theme
-        <select
-          value={choice}
-          onChange={(e) => {
-            const v = e.target.value as ThemeChoice;
-            setChoice(v);
-            setThemeChoice(v);
-          }}
-          data-testid="theme-select"
-        >
-          <option value="system">Match system</option>
-          <option value="light">Light</option>
-          <option value="dark">Dark</option>
-        </select>
-      </label>
+      <div className="theme-cards" role="radiogroup" aria-label="Theme" data-testid="theme-select">
+        {THEME_OPTIONS.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            role="radio"
+            aria-checked={choice === t.id}
+            className={`theme-card ${choice === t.id ? "on" : ""}`}
+            onClick={() => pick(t.id)}
+          >
+            <span className={`theme-preview is-${t.id}`} aria-hidden="true">
+              <i className="tp-rail" />
+              <i className="tp-card" />
+            </span>
+            <span className="theme-card-label">{t.label}</span>
+            <span className="theme-card-hint">{t.hint}</span>
+          </button>
+        ))}
+      </div>
       <p className="muted small">Saved on this device.</p>
     </section>
   );

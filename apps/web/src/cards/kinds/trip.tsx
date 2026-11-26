@@ -1,7 +1,6 @@
 import { Frame } from "../Frame";
 import { defineCard } from "../registry";
-import { field } from "../util";
-import { dayLabel, parseDate } from "../util";
+import { dayLabel, field, parseDate } from "../util";
 
 interface Leg {
   from?: string;
@@ -24,9 +23,9 @@ interface ReturnOption {
 const amount = (price?: string) => Number(String(price ?? "").replace(/[^\d.]/g, "")) || 0;
 
 /**
- * A round trip: each chosen leg as a line of a ticket. While the return is
- * open, the board says only the cheapest return, as a leg of its own; the
- * peek lays out every date as bars, the cheapest one picked out.
+ * A round trip itinerary pass: chosen legs as crisp ticket ribbons, and
+ * when the return is open, a visual fare-comparison bar strip right on the
+ * card with the cheapest date picked out in botanical emerald.
  */
 export default defineCard({
   kind: "trip",
@@ -52,11 +51,7 @@ export default defineCard({
         {back ? (
           <LegRow leg={back} label="Back" expanded={expanded} />
         ) : options.length ? (
-          expanded ? (
-            <ReturnBars options={options} />
-          ) : (
-            <CheapestReturn options={options} />
-          )
+          <ReturnBars options={options} compact={!expanded} />
         ) : null}
         {note && expanded ? <p className="c-sub">{note}</p> : null}
       </Frame>
@@ -64,7 +59,7 @@ export default defineCard({
   },
 });
 
-/** The flight number and airline are detail for the peek; the board keeps the day, the route and the price. */
+/** The flight number and airline show inline when there is room. */
 function LegRow({ leg, label, expanded }: { leg: Leg; label: string; expanded: boolean }) {
   return (
     <div className="leg">
@@ -75,51 +70,43 @@ function LegRow({ leg, label, expanded }: { leg: Leg; label: string; expanded: b
         <span className="leg-arrow">→</span>
         <b>{leg.to}</b> {leg.arrives}
       </span>
-      {expanded ? <span className="leg-flight">{[leg.airline, leg.flight].filter(Boolean).join(" ")}</span> : null}
+      {expanded && (leg.airline || leg.flight) ? <span className="leg-flight">{[leg.airline, leg.flight].filter(Boolean).join(" ")}</span> : null}
       <span className="leg-price">{leg.price}</span>
     </div>
   );
 }
 
-function CheapestReturn({ options }: { options: ReturnOption[] }) {
-  const prices = options.map((o) => amount(o.price));
-  const best = options[prices.indexOf(Math.min(...prices.filter((p) => p > 0)))] ?? options[0]!;
-  return (
-    <div className="leg open">
-      <span className="leg-label">Back</span>
-      <span className="leg-date">{dayLabel(best.date!)}</span>
-      <span className="leg-route leg-note">Cheapest of {options.length} dates</span>
-      <span className="leg-price">{best.price}</span>
-    </div>
-  );
-}
-
-function ReturnBars({ options }: { options: ReturnOption[] }) {
+function ReturnBars({ options, compact }: { options: ReturnOption[]; compact?: boolean }) {
   const prices = options.map((o) => amount(o.price));
   const max = Math.max(...prices, 1);
   const min = Math.min(...prices.filter((p) => p > 0));
   const best = options[prices.indexOf(min)];
+  const maxBar = compact ? 18 : 44;
   return (
-    <div className="returns">
+    <div className={`returns ${compact ? "compact" : ""}`}>
       <div className="returns-head">
         <span className="leg-label">Back</span>
         {best ? (
           <span className="returns-best">
-            Cheapest <b>{dayLabel(best.date!)}</b> {best.flight ? <span>· {best.flight}</span> : null}
+            Best fare <b>{dayLabel(best.date!)}</b> {best.flight ? <span>· {best.flight}</span> : null}
           </span>
         ) : null}
       </div>
       <div className="return-bars" role="list">
-        {options.map((o, i) => {
+        {options.slice(0, compact ? 6 : 10).map((o, i) => {
           const d = parseDate(`${o.date}T12:00:00`);
           const cheapest = prices[i] === min;
           return (
-            <div key={i} className={`return-bar ${cheapest ? "best" : ""}`} role="listitem" title={[d?.toLocaleDateString(undefined, { weekday: "long" }), o.flight].filter(Boolean).join(" · ")}>
-              {/* The price rides on its own bar, so a date reads as one figure from its price to its base. */}
+            <div
+              key={i}
+              className={`return-bar ${cheapest ? "best" : ""}`}
+              role="listitem"
+              title={[d?.toLocaleDateString(undefined, { weekday: "long" }), o.flight].filter(Boolean).join(" · ")}
+            >
               <span className="bar-track">
                 <span className="bar-col">
                   <span className="return-price">{o.price}</span>
-                  <span className="bar" style={{ height: `${10 + (max > min ? ((prices[i]! - min) / (max - min)) * 42 : 0)}px` }} />
+                  <span className="bar" style={{ height: `${10 + (max > min ? ((prices[i]! - min) / (max - min)) * maxBar : 0)}px` }} />
                 </span>
               </span>
               <span className="return-date">{d ? `${d.getMonth() + 1}/${d.getDate()}` : o.date}</span>

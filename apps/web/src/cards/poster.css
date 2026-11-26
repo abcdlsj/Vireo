@@ -189,6 +189,27 @@
   width: 100%;
 }
 
+.poster-grain {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.35;
+  background-image: radial-gradient(rgba(0, 0, 0, 0.08) 0.6px, transparent 0.6px);
+  background-size: 6px 6px;
+}
+
+.poster-canvas[data-theme="dark"] .poster-grain {
+  opacity: 0.25;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.14) 0.6px, transparent 0.6px);
+}
+
+/* Interactive reply inputs and hover actions don't belong in a shared poster. */
+.poster-card-shell .c-answer-wrap,
+.poster-card-shell .c-answer,
+.poster-card-shell .vcard-actions {
+  display: none;
+}
+
 .poster-card-shell .vcard {
   width: 100%;
   box-shadow:
@@ -250,6 +271,21 @@
 .poster-canvas.ratio-xhs .leg-price {
   grid-column: 3;
   grid-row: 1;
+}
+
+.poster-canvas.ratio-xhs .options.cols {
+  display: flex;
+  flex-direction: column;
+}
+
+.poster-canvas.ratio-xhs .options.cols li {
+  flex-direction: row;
+  align-items: center;
+}
+
+.poster-canvas.ratio-xhs .options.cols .option-value {
+  border-top: none;
+  padding-top: 0;
 }
 
 /* Six curated designer backdrops */

@@ -55,9 +55,8 @@ const BOARD: Record<string, { size?: CardSize | ((card: Card) => CardSize); heig
 };
 
 /** The three kinds on the first screen; every other kind is a file loaded the first time it is drawn. */
-const FIRST_SCREEN = ["./kinds/thread.tsx", "./kinds/card.tsx", "./kinds/fallback.tsx"];
-const EAGER = import.meta.glob<{ default: CardKindView }>(FIRST_SCREEN, { eager: true });
-const ON_DEMAND = import.meta.glob<{ default: CardKindView }>(["./kinds/*.tsx", ...FIRST_SCREEN.map((p) => `!${p}`)]);
+const EAGER = import.meta.glob<{ default: CardKindView }>(["./kinds/thread.tsx", "./kinds/card.tsx", "./kinds/fallback.tsx"], { eager: true });
+const ON_DEMAND = import.meta.glob<{ default: CardKindView }>(["./kinds/*.tsx", "!./kinds/thread.tsx", "!./kinds/card.tsx", "!./kinds/fallback.tsx"]);
 
 const KINDS = new Map(Object.values(EAGER).map((m) => [m.default.kind, m.default]));
 const LAZY = new Map<string, CardKindView>();

@@ -5,7 +5,11 @@ import { Avatar, Frame } from "../Frame";
 import { defineCard } from "../registry";
 import { field, parseDate } from "../util";
 
-/** Editorial correspondence card: letter masthead + incoming quote + Vireo's sage-tinted stationery draft. */
+/**
+ * Editorial correspondence card: unified full-width sender + subject masthead,
+ * then balanced two-column reading panes (incoming message on the left,
+ * Vireo's sage-tinted reply stationery aligned on the right).
+ */
 export function EmailBody({
   from,
   address,
@@ -26,26 +30,30 @@ export function EmailBody({
   const at = parseDate(received);
   return (
     <div className={`mail ${draft ? "with-draft" : ""}`}>
-      <div className="mail-in">
+      <div className="mail-head">
         <div className="mail-from">
-          <Avatar name={from} size={38} />
+          <Avatar name={from} size={36} />
           <div>
             <span className="mail-name">{from}</span>
             <span className="c-row-text">{[address, at ? relTime(at.getTime()) : ""].filter(Boolean).join(" · ")}</span>
           </div>
         </div>
         <span className="mail-subject">{subject}</span>
-        <p className="mail-body">{body}</p>
       </div>
-      {draft ? (
-        <div className="mail-draft">
-          <span className="stub-label mail-draft-head">
-            <SparkIcon />
-            {draftLabel}
-          </span>
-          <p className="mail-body">{draft}</p>
+      <div className="mail-panes">
+        <div className="mail-in">
+          <p className="mail-body">{body}</p>
         </div>
-      ) : null}
+        {draft ? (
+          <div className="mail-draft">
+            <span className="stub-label mail-draft-head">
+              <SparkIcon />
+              {draftLabel}
+            </span>
+            <p className="mail-body">{draft}</p>
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -54,7 +62,7 @@ export default defineCard({
   kind: "email",
   size: "l",
   render: ({ card, expanded }) => (
-    <Frame card={card} expanded={expanded} className="email-card">
+    <Frame card={card} expanded={expanded} label={null} className="email-card">
       <EmailBody
         from={field(card, "from", "")}
         address={field(card, "address", "")}

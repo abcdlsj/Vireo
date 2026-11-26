@@ -12,15 +12,25 @@ export function MemoryPage() {
   const [episodes, setEpisodes] = useState<Episode[]>([]);
   const [procedures, setProcedures] = useState<Procedure[]>([]);
   const [adding, setAdding] = useState("");
+  const [addingBusy, setAddingBusy] = useState(false);
+  const [error, setError] = useState("");
 
   const load = useCallback(async () => {
     const params = new URLSearchParams();
     if (query) params.set("query", query);
     if (history) params.set("history", "1");
-    const r = await api.get<{ facts: Fact[]; episodes: Episode[] }>(`/api/memory?${params}`);
-    setFacts(r.facts);
-    setEpisodes(r.episodes);
-    setProcedures((await api.get<{ procedures: Procedure[] }>("/api/procedures")).procedures);
+    try {
+      const [r, p] = await Promise.all([
+        api.get<{ facts: Fact[]; episodes: Episode[] }>(`/api/memory?${params}`),
+        api.get<{ procedures: Procedure[] }>("/api/procedures"),
+      ]);
+      setFacts(r.facts);
+      setEpisodes(r.episodes);
+      setProcedures(p.procedures);
+      setError("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
   }, [query, history]);
 
   useEffect(() => {
@@ -53,34 +63,50 @@ export function MemoryPage() {
         <p className="muted">
           What Vireo knows about you, shared across all threads. Newer facts replace older ones; every fact links to where it came from. Correct or delete anything.
         </p>
-        <div className="toolbar">
-          <input type="search" placeholder="Search memory…" value={query} onChange={(e) => setQuery(e.target.value)} data-testid="memory-search" />
-          <label className="check">
-            <input type="checkbox" checked={history} onChange={(e) => setHistory(e.target.checked)} /> Show replaced and expired
-          </label>
+        <div className="memory-controls">
+          <div className="toolbar">
+            <input type="search" placeholder="Search memory…" value={query} onChange={(e) => setQuery(e.target.value)} data-testid="memory-search" />
+            <label className="check">
+              <input type="checkbox" checked={history} onChange={(e) => setHistory(e.target.checked)} /> Show replaced and expired
+            </label>
+          </div>
+          <form
+            className="add-fact"
+            onSubmit={(e) => {
+              e.preventDefault();
+              const statement = adding.trim();
+              if (!statement || addingBusy) return;
+              setAddingBusy(true);
+              setError("");
+              void api
+                .post("/api/memory/facts", { statement })
+                .then(() => {
+                  setAdding("");
+                  return load();
+                })
+                .catch((err) => setError(err instanceof Error ? err.message : String(err)))
+                .finally(() => setAddingBusy(false));
+            }}
+          >
+            <input placeholder="Tell Vireo something to remember…" value={adding} onChange={(e) => setAdding(e.target.value)} disabled={addingBusy} />
+            <button className="btn small primary" disabled={addingBusy || !adding.trim()}>
+              {addingBusy ? "Adding…" : "Remember"}
+            </button>
+          </form>
         </div>
-        <form
-          className="add-fact"
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (!adding.trim()) return;
-            void api.post("/api/memory/facts", { statement: adding.trim() }).then(() => {
-              setAdding("");
-              void load();
-            });
-          }}
-        >
-          <input placeholder="Tell Vireo something to remember…" value={adding} onChange={(e) => setAdding(e.target.value)} />
-          <button className="btn small">Add</button>
-        </form>
+        {error ? <p className="error small" role="alert">{error}</p> : null}
 
         {facts.length === 0 ? <p className="empty">{query ? "Nothing matches." : "Nothing remembered yet. Mention preferences, people and decisions in any thread."}</p> : null}
         {[...groups.entries()].map(([entity, list]) => (
           <section key={entity} className="fact-group">
-            <h3>{entity === "Owner" ? "You" : entity}</h3>
-            {list.map((f) => (
-              <FactRow key={f.id} f={f} onChange={load} />
-            ))}
+            <h3>
+              {entity === "Owner" ? "You" : entity} <span className="count">{list.length}</span>
+            </h3>
+            <div className="fact-grid">
+              {list.map((f) => (
+                <FactRow key={f.id} f={f} onChange={load} />
+              ))}
+            </div>
           </section>
         ))}
 
@@ -139,6 +165,7 @@ export function MemoryPage() {
 function FactRow({ f, onChange }: { f: Fact; onChange: () => void }) {
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(f.statement);
+  const [busy, setBusy] = useState(false);
   return (
     <div className={`fact ${f.current ? "" : "stale"}`} data-testid="fact" data-current={f.current ? "1" : "0"}>
       {editing ? (
@@ -146,15 +173,22 @@ function FactRow({ f, onChange }: { f: Fact; onChange: () => void }) {
           className="fact-edit"
           onSubmit={(e) => {
             e.preventDefault();
-            void api.patch(`/api/memory/facts/${f.id}`, { statement: value }).then(() => {
-              setEditing(false);
-              onChange();
-            });
+            if (busy || !value.trim()) return;
+            setBusy(true);
+            void api
+              .patch(`/api/memory/facts/${f.id}`, { statement: value.trim() })
+              .then(() => {
+                setEditing(false);
+                onChange();
+              })
+              .finally(() => setBusy(false));
           }}
         >
-          <input value={value} onChange={(e) => setValue(e.target.value)} autoFocus data-testid="fact-input" />
-          <button className="btn small primary">Save</button>
-          <button type="button" className="btn small ghost" onClick={() => setEditing(false)}>
+          <input value={value} onChange={(e) => setValue(e.target.value)} autoFocus disabled={busy} data-testid="fact-input" />
+          <button className="btn small primary" disabled={busy || !value.trim()}>
+            Save
+          </button>
+          <button type="button" className="btn small ghost" disabled={busy} onClick={() => setEditing(false)}>
             Cancel
           </button>
         </form>
@@ -174,11 +208,30 @@ function FactRow({ f, onChange }: { f: Fact; onChange: () => void }) {
             )}
             <span className="fact-actions">
               {f.current ? (
-                <button className="link" onClick={() => setEditing(true)} data-testid="fact-edit">
+                <button
+                  className="link"
+                  disabled={busy}
+                  onClick={() => {
+                    setValue(f.statement);
+                    setEditing(true);
+                  }}
+                  data-testid="fact-edit"
+                >
                   Correct
                 </button>
               ) : null}
-              <button className="link danger" onClick={() => void api.del(`/api/memory/facts/${f.id}`).then(onChange)} data-testid="fact-delete">
+              <button
+                className="link danger"
+                disabled={busy}
+                onClick={() => {
+                  setBusy(true);
+                  void api
+                    .del(`/api/memory/facts/${f.id}`)
+                    .then(onChange)
+                    .finally(() => setBusy(false));
+                }}
+                data-testid="fact-delete"
+              >
                 Delete
               </button>
             </span>

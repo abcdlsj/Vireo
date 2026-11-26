@@ -43,7 +43,7 @@ function large(blocks: Block[]): boolean {
   if (facts.length >= 3 && chars.reduce((a, b) => a + b, 0) > 14) return true;
   if (chars.some((n) => n > 9)) return true;
   if (blocks.some((b) => b.type === "chart" && b.style === "bars" && (b.values?.length ?? 0) > 10)) return true;
-  if (facts.length && blocks.some((b) => b.type === "rows")) return true;
+  if (facts.length && blocks.some((b) => b.type === "rows" || b.type === "chart")) return true;
   return weight(blocks) > 6;
 }
 
