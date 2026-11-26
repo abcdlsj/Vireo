@@ -10,8 +10,36 @@ const LONG_FIELDS = new Set(["body", "description", "steps", "text"]);
 export function ActionCard({ action, onChange }: { action: Action; onChange: () => void }) {
   const [editing, setEditing] = useState(false);
   const [args, setArgs] = useState<Record<string, unknown>>(action.args);
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+
+  const startEditing = () => {
+    setArgs(action.args);
+    const initial: Record<string, string> = {};
+    for (const [k, v] of Object.entries(action.args)) {
+      if (typeof v === "string" || typeof v === "number") initial[k] = String(v);
+    }
+    setDrafts(initial);
+    setError("");
+    setEditing(true);
+  };
+
+  const buildEditedArgs = (): Record<string, unknown> => {
+    const out: Record<string, unknown> = { ...args };
+    for (const [k, orig] of Object.entries(action.args)) {
+      if (!(k in drafts)) continue;
+      const raw = drafts[k]!;
+      if (typeof orig === "number") {
+        const parsed = Number(raw);
+        if (!Number.isFinite(parsed) || raw.trim() === "") throw new Error(`${k.replace(/_/g, " ")} must be a valid number.`);
+        out[k] = parsed;
+      } else {
+        out[k] = raw;
+      }
+    }
+    return out;
+  };
 
   const run = async (fn: () => Promise<unknown>) => {
     setBusy(true);
@@ -51,9 +79,9 @@ export function ActionCard({ action, onChange }: { action: Action; onChange: () 
               <dd>
                 {editing && (typeof v === "string" || typeof v === "number") ? (
                   LONG_FIELDS.has(k) ? (
-                    <textarea value={String(v)} rows={6} onChange={(e) => setArgs({ ...args, [k]: e.target.value })} data-testid={`edit-${k}`} />
+                    <textarea value={drafts[k] ?? String(v)} rows={6} onChange={(e) => setDrafts({ ...drafts, [k]: e.target.value })} data-testid={`edit-${k}`} />
                   ) : (
-                    <input value={String(v)} onChange={(e) => setArgs({ ...args, [k]: typeof v === "number" ? Number(e.target.value) : e.target.value })} data-testid={`edit-${k}`} />
+                    <input value={drafts[k] ?? String(v)} onChange={(e) => setDrafts({ ...drafts, [k]: e.target.value })} data-testid={`edit-${k}`} />
                   )
                 ) : Array.isArray(v) ? (
                   v.join(", ")
@@ -74,16 +102,30 @@ export function ActionCard({ action, onChange }: { action: Action; onChange: () 
           <button
             className="btn primary"
             disabled={busy}
-            onClick={() => void run(() => api.post(`/api/actions/${action.id}/confirm`, editing ? { args } : {}))}
+            onClick={() =>
+              void run(() => api.post(`/api/actions/${action.id}/confirm`, editing ? { args: buildEditedArgs() } : {}))
+            }
             data-testid="action-confirm"
           >
             {editing ? "Save & confirm" : "Confirm"}
           </button>
           {!editing ? (
-            <button className="btn" disabled={busy} onClick={() => setEditing(true)} data-testid="action-edit">
+            <button className="btn" disabled={busy} onClick={startEditing} data-testid="action-edit">
               Edit
             </button>
-          ) : null}
+          ) : (
+            <button
+              className="btn"
+              disabled={busy}
+              onClick={() => {
+                setEditing(false);
+                setError("");
+              }}
+              data-testid="action-edit-back"
+            >
+              Back
+            </button>
+          )}
           <button className="btn ghost" disabled={busy} onClick={() => void run(() => api.post(`/api/actions/${action.id}/cancel`))} data-testid="action-cancel">
             Cancel
           </button>

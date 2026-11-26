@@ -5,7 +5,7 @@
  */
 import DOMPurify from "dompurify";
 import { marked } from "marked";
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 
 marked.setOptions({ gfm: true, breaks: true });
 
@@ -22,7 +22,39 @@ const render = (text: string) => DOMPurify.sanitize(marked.parse(text, { async: 
 
 export function MarkdownBody({ text, className, lang }: { text: string; className: string; lang?: string }) {
   const html = useMemo(() => render(text), [text]);
-  return <div className={className} lang={lang} dangerouslySetInnerHTML={{ __html: html }} />;
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const root = ref.current;
+    if (!root) return;
+    for (const pre of root.querySelectorAll("pre")) {
+      if (pre.querySelector(".code-copy")) continue;
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "code-copy";
+      btn.textContent = "Copy";
+      btn.setAttribute("aria-label", "Copy code");
+      pre.appendChild(btn);
+    }
+    const onClick = (e: MouseEvent) => {
+      const btn = (e.target as Element | null)?.closest<HTMLButtonElement>(".code-copy");
+      if (!btn || !root.contains(btn)) return;
+      const code = btn.parentElement?.querySelector("code")?.textContent ?? btn.parentElement?.textContent ?? "";
+      if (!code || !navigator.clipboard) return;
+      void navigator.clipboard.writeText(code).then(() => {
+        btn.textContent = "Copied";
+        btn.classList.add("copied");
+        window.setTimeout(() => {
+          btn.textContent = "Copy";
+          btn.classList.remove("copied");
+        }, 1600);
+      });
+    };
+    root.addEventListener("click", onClick);
+    return () => root.removeEventListener("click", onClick);
+  }, [html]);
+
+  return <div ref={ref} className={className} lang={lang} dangerouslySetInnerHTML={{ __html: html }} />;
 }
 
 /**

@@ -5,10 +5,11 @@ import { CardSlot } from "../cards/CardSlot";
 import { BoardContext, type Board } from "../cards/Frame";
 import { Peek } from "../cards/Peek";
 import type { Card } from "@vireo/protocol";
-import { ArrowUpIcon, CheckIcon, ChevronRight, ListIcon, SearchIcon } from "../icons";
+import { ArrowUpIcon, AttachIcon, CheckIcon, ChevronRight, ListIcon, SearchIcon } from "../icons";
 import { clearShared, sharedText } from "../route";
 import { cacheGet, cacheSet } from "../local-cache";
 import { currentNode, nodes, nodeTint, peekNode, postNode, switchNode } from "../nodes";
+import { PendingFile } from "./Attachments";
 import { Eyes } from "./Eyes";
 import { NodeName, NodeSwitcher } from "./Nodes";
 
@@ -38,7 +39,7 @@ export function Home({ me, onSearch }: { me: Me | null; onSearch: () => void }) 
 
   useEffect(() => {
     void load();
-    return onEvent((e) => {
+    const off = onEvent((e) => {
       if (
         e.type === "card.updated" ||
         e.type === "thread.updated" ||
@@ -50,6 +51,10 @@ export function Home({ me, onSearch }: { me: Me | null; onSearch: () => void }) 
         timer.current = window.setTimeout(() => void load(), 150);
       }
     });
+    return () => {
+      off();
+      window.clearTimeout(timer.current);
+    };
   }, [load]);
 
   const phone = usePhone();
@@ -87,6 +92,10 @@ export function Home({ me, onSearch }: { me: Me | null; onSearch: () => void }) 
     );
   };
 
+  const scrollToSection = (key: (typeof SECTIONS)[number]["key"]) => {
+    document.querySelector(`[data-testid="board-${key}"]`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
   return (
     <div className="home" data-testid="home">
       <div className="home-inner">
@@ -113,10 +122,25 @@ export function Home({ me, onSearch }: { me: Me | null; onSearch: () => void }) 
             <div className="home-greet-meta">
               <span className="date">{new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}</span>
               {active.length > 0 ? (
-                <div className="home-pills" aria-hidden="true">
-                  {needs > 0 ? <span className="home-pill needs"><i />{needs} waiting</span> : null}
-                  {working > 0 ? <span className="home-pill working"><i />{working} active</span> : null}
-                  {watching > 0 ? <span className="home-pill watching"><i />{watching} watching</span> : null}
+                <div className="home-pills">
+                  {needs > 0 ? (
+                    <button type="button" className="home-pill needs" onClick={() => scrollToSection("needs")}>
+                      <i />
+                      {needs} waiting
+                    </button>
+                  ) : null}
+                  {working > 0 ? (
+                    <button type="button" className="home-pill working" onClick={() => scrollToSection("hand")}>
+                      <i />
+                      {working} active
+                    </button>
+                  ) : null}
+                  {watching > 0 ? (
+                    <button type="button" className="home-pill watching" onClick={() => scrollToSection("watching")}>
+                      <i />
+                      {watching} watching
+                    </button>
+                  ) : null}
                 </div>
               ) : null}
             </div>
@@ -381,8 +405,11 @@ function Setup({ me }: { me: Me }) {
 function Ask({ onStarted, setNote }: { onStarted: (threadId: string) => void; setNote: (s: string) => void }) {
   // Something shared from another app waits here for the owner to say what to do with it.
   const [text, setText] = useState(sharedText);
+  const [files, setFiles] = useState<File[]>([]);
+  const [dragging, setDragging] = useState(false);
   const [busy, setBusy] = useState(false);
   const box = useRef<HTMLTextAreaElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     const el = box.current;
     if (!el || !sharedText()) return;
@@ -390,14 +417,25 @@ function Ask({ onStarted, setNote }: { onStarted: (threadId: string) => void; se
     el.focus();
     el.setSelectionRange(0, 0);
   }, []);
+  const addFiles = (more: File[]) => {
+    if (!more.length) return;
+    setNote("");
+    setFiles((prev) => [...prev, ...more]);
+  };
   const submit = async (e?: FormEvent) => {
     e?.preventDefault();
     const t = text.trim();
-    if (!t || busy) return;
+    if ((!t && files.length === 0) || busy) return;
     setBusy(true);
     try {
-      const { thread } = await api.post<{ thread: Thread }>("/api/threads", { text: t });
+      const { thread } = await api.post<{ thread: Thread }>("/api/threads", { text: files.length ? undefined : t });
+      if (files.length) {
+        const up = await api.upload(thread.id, files);
+        await api.post(`/api/threads/${thread.id}/messages`, { text: t, fileIds: up.files.map((f) => f.id) });
+      }
       setText("");
+      setFiles([]);
+      if (box.current) box.current.style.height = "auto";
       clearShared();
       setNote("");
       onStarted(thread.id);
@@ -408,29 +446,73 @@ function Ask({ onStarted, setNote }: { onStarted: (threadId: string) => void; se
     }
   };
   return (
-    <form className="ask" onSubmit={(e) => void submit(e)}>
-      <textarea
-        ref={box}
-        aria-label="Ask Vireo"
-        placeholder="What should I take care of?"
-        rows={1}
-        value={text}
-        onChange={(e) => {
-          setText(e.target.value);
-          e.target.style.height = "auto";
-          e.target.style.height = `${e.target.scrollHeight}px`;
-        }}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+    <div
+      className={`ask-wrap ${dragging ? "dragging" : ""}`}
+      onDragOver={(e) => {
+        if (!e.dataTransfer.types.includes("Files")) return;
+        e.preventDefault();
+        setDragging(true);
+      }}
+      onDragLeave={(e) => !e.currentTarget.contains(e.relatedTarget as Node | null) && setDragging(false)}
+      onDrop={(e) => {
+        if (!e.dataTransfer.files.length) return;
+        e.preventDefault();
+        setDragging(false);
+        addFiles(Array.from(e.dataTransfer.files));
+        box.current?.focus();
+      }}
+    >
+      {files.length ? (
+        <div className="ask-files" data-testid="ask-files">
+          {files.map((f, i) => (
+            <PendingFile key={`${f.name}${i}`} file={f} onRemove={() => setFiles(files.filter((_, j) => j !== i))} />
+          ))}
+        </div>
+      ) : null}
+      <form className="ask" onSubmit={(e) => void submit(e)}>
+        <button type="button" className="ask-attach" onClick={() => fileRef.current?.click()} aria-label="Attach files" title="Attach or paste files">
+          <AttachIcon />
+        </button>
+        <input
+          ref={fileRef}
+          type="file"
+          multiple
+          hidden
+          onChange={(e) => {
+            addFiles(Array.from(e.target.files ?? []));
+            e.target.value = "";
+          }}
+        />
+        <textarea
+          ref={box}
+          aria-label="Ask Vireo"
+          placeholder="What should I take care of?"
+          rows={1}
+          value={text}
+          onChange={(e) => {
+            setText(e.target.value);
+            setNote("");
+            e.target.style.height = "auto";
+            e.target.style.height = `${e.target.scrollHeight}px`;
+          }}
+          onPaste={(e) => {
+            const pasted = Array.from(e.clipboardData.files);
+            if (!pasted.length) return;
             e.preventDefault();
-            void submit();
-          }
-        }}
-        data-testid="ask-input"
-      />
-      <button type="submit" aria-label="Send" disabled={busy || !text.trim()} data-testid="ask-send">
-        <ArrowUpIcon />
-      </button>
-    </form>
+            addFiles(pasted);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+              e.preventDefault();
+              void submit();
+            }
+          }}
+          data-testid="ask-input"
+        />
+        <button type="submit" className="ask-send" aria-label="Send" disabled={busy || (!text.trim() && files.length === 0)} data-testid="ask-send">
+          <ArrowUpIcon />
+        </button>
+      </form>
+    </div>
   );
 }

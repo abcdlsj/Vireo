@@ -44,14 +44,37 @@ export const api = {
 };
 
 export type BusEvent = NodeEvent;
+export type ConnectionState = "idle" | "live" | "reconnecting" | "rate_limited" | "offline";
 
 type Listener = (e: NodeEvent) => void;
+type ConnListener = (s: ConnectionState) => void;
 const listeners = new Set<Listener>();
+const connListeners = new Set<ConnListener>();
+let connState: ConnectionState = typeof navigator !== "undefined" && navigator.onLine === false ? "offline" : "idle";
 let stream: AbortController | undefined;
 let watched = false;
 let greeted = false;
 let touched = 0;
 let idle: ReturnType<typeof setTimeout> | undefined;
+
+function setConn(next: ConnectionState): void {
+  if (connState === next) return;
+  connState = next;
+  for (const l of connListeners) l(next);
+}
+
+/** Subscribes to live stream connection state so the UI can surface offline/reconnecting states. */
+export function onConnection(fn: ConnListener): () => void {
+  connListeners.add(fn);
+  fn(connState);
+  return () => connListeners.delete(fn);
+}
+
+/** Forces an immediate reconnect of the live event stream (e.g. from a Reconnect button). */
+export function reconnectEvents(): void {
+  stopStream();
+  touch();
+}
 
 /** A stream that lasted this long was healthy; anything shorter backs off. */
 const HEALTHY_MS = 30_000;
@@ -85,6 +108,14 @@ function watchPage(): void {
   document.addEventListener("visibilitychange", () => (document.visibilityState === "hidden" ? stopStream() : touch()));
   window.addEventListener("pagehide", stopStream);
   window.addEventListener("pageshow", touch);
+  window.addEventListener("offline", () => {
+    setConn("offline");
+    stopStream();
+  });
+  window.addEventListener("online", () => {
+    setConn("reconnecting");
+    touch();
+  });
   for (const type of ["pointerdown", "keydown", "wheel", "touchstart", "focus"])
     window.addEventListener(type, touch, { passive: true, capture: true });
 }
@@ -132,7 +163,13 @@ function emit(e: NodeEvent): void {
 
 async function follow(signal: AbortSignal): Promise<void> {
   let wait = 1000;
+  let failures = 0;
   while (!signal.aborted) {
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      setConn("offline");
+      await new Promise((r) => setTimeout(r, 2000));
+      continue;
+    }
     const began = Date.now();
     let hold = 0;
     try {
@@ -143,10 +180,13 @@ async function follow(signal: AbortSignal): Promise<void> {
         // The cloud is stepping live updates down for the day; wait as long as it asks.
         const after = Number(res.headers.get("retry-after"));
         hold = Math.min(Math.max(Number.isFinite(after) && after > 0 ? after * 1000 : 60_000, 5000), 120_000);
+        setConn("rate_limited");
         emit({ type: "thread.updated", threadId: "*" });
       } else if (res.ok && res.body) {
+        failures = 0;
         await readEvents(res.body, (event, data) => {
           if (event === "ready") {
+            setConn("live");
             // Everything open loads itself as the stream starts; only a gap may have missed something.
             if (greeted) emit({ type: "thread.updated", threadId: "*" });
             greeted = true;
@@ -154,16 +194,24 @@ async function follow(signal: AbortSignal): Promise<void> {
           }
           else if (event === "message") emit(JSON.parse(data) as NodeEvent);
         });
+      } else {
+        failures++;
       }
     } catch {
       // Dropped or unreachable: try again below.
+      failures++;
     }
     if (signal.aborted) return;
     if (hold > 0) {
       await new Promise((r) => setTimeout(r, hold));
       continue;
     }
-    if (Date.now() - began > HEALTHY_MS) wait = 1000;
+    if (Date.now() - began > HEALTHY_MS) {
+      wait = 1000;
+      failures = 0;
+    }
+    if (typeof navigator !== "undefined" && navigator.onLine === false) setConn("offline");
+    else if (failures >= 2) setConn("reconnecting");
     await new Promise((r) => setTimeout(r, wait));
     wait = Math.min(wait * 2, 15_000);
   }

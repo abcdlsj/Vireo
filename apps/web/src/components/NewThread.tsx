@@ -34,7 +34,7 @@ export function NewThread() {
           Temporary — keep this conversation out of memory
         </label>
       </div>
-      <Composer onSend={send} autoFocus placeholder="e.g. Find a free hour with anna@example.com next week" />
+      <Composer onSend={send} autoFocus draftKey="new" placeholder="e.g. Find a free hour with anna@example.com next week" />
     </div>
   );
 }

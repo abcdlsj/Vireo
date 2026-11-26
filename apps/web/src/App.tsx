@@ -1,6 +1,6 @@
 import type { NodeSummary, User } from "@vireo/protocol";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
-import { api, ApiError, closeEvents, onEvent, type Me, type Thread } from "./api";
+import { api, ApiError, closeEvents, onConnection, onEvent, reconnectEvents, type ConnectionState, type Me, type Thread } from "./api";
 import { cloud, SIGNED_OUT, signedIn } from "./cloud";
 import { NodeSwitcher } from "./components/Nodes";
 import { ApproveNode, CloudUnreachable, NoNodes, SignIn, Unreachable } from "./components/SignIn";
@@ -95,9 +95,12 @@ function Shell({ user }: { user: User | null }) {
   const [me, setMe] = useState<Me | null>(null);
   const [jump, setJump] = useState(false);
   const [dark, setDark] = useState(() => resolvedTheme() === "dark");
+  const [conn, setConn] = useState<ConnectionState>("idle");
   const timer = useRef<number | undefined>(undefined);
   const sidebar = useRef<HTMLElement>(null);
   useGlide(sidebar, { hover: ".nav-item, .thread-row", active: ".nav-item.active, .thread-row.active", clip: ".thread-list" });
+
+  useEffect(() => onConnection(setConn), []);
 
   useEffect(() => {
     const mo = new MutationObserver(() => setDark(document.documentElement.dataset.theme === "dark"));
@@ -248,6 +251,23 @@ function Shell({ user }: { user: User | null }) {
         </nav>
       </aside>
       <main className="main">
+        {conn === "offline" || conn === "reconnecting" || conn === "rate_limited" ? (
+          <div className={`conn-banner ${conn}`} role="status" data-testid="conn-banner">
+            <span className="conn-dot" aria-hidden="true" />
+            <span>
+              {conn === "offline"
+                ? "You're offline. Updates will resume once back online."
+                : conn === "rate_limited"
+                  ? "Live updates are slowed down for today's relay budget."
+                  : "Reconnecting to your node…"}
+            </span>
+            {conn !== "offline" ? (
+              <button type="button" className="conn-retry" onClick={reconnectEvents}>
+                Reconnect
+              </button>
+            ) : null}
+          </div>
+        ) : null}
         <ErrorBoundary key={route.name === "thread" ? `thread/${route.id}` : route.name}>
         {route.name === "home" ? (
           <Home me={me} onSearch={() => setJump(true)} />

@@ -80,12 +80,14 @@ function CardShareModal({ card, onClose }: { card: Card; onClose: () => void }) 
       setBusy(mode);
       setNote("");
       try {
-        const blob = await renderNodeToPng(el, 2);
         if (mode === "copy" && navigator.clipboard && typeof ClipboardItem !== "undefined") {
-          await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+          // Pass the Promise<Blob> straight into ClipboardItem so Safari preserves the user gesture across async rendering.
+          const pngPromise = renderNodeToPng(el, 2);
+          await navigator.clipboard.write([new ClipboardItem({ "image/png": pngPromise })]);
           setCopied(true);
           window.setTimeout(() => setCopied(false), 1800);
         } else {
+          const blob = await renderNodeToPng(el, 2);
           const url = URL.createObjectURL(blob);
           const a = document.createElement("a");
           const slug = (card.title || card.kind).toLowerCase().replace(/[^a-z0-9\u4e00-\u9fff]+/gi, "-").replace(/^-|-$/g, "").slice(0, 40) || "vireo-card";
@@ -263,34 +265,59 @@ async function renderNodeToPng(node: HTMLElement, scale = 2): Promise<Blob> {
 
   const xml = new XMLSerializer().serializeToString(clone);
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w * scale}" height="${h * scale}" viewBox="0 0 ${w} ${h}"><foreignObject width="100%" height="100%">${xml}</foreignObject></svg>`;
+  const svgBlob = new Blob([svg], { type: "image/svg+xml;charset=utf-8" });
+  const svgUrl = URL.createObjectURL(svgBlob);
   const img = new Image();
-  const svgUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
-  await new Promise<void>((resolve, reject) => {
-    img.onload = () => resolve();
-    img.onerror = reject;
-    img.src = svgUrl;
-  });
+  try {
+    await new Promise<void>((resolve, reject) => {
+      img.onload = () => resolve();
+      img.onerror = reject;
+      img.src = svgUrl;
+    });
 
-  const canvas = document.createElement("canvas");
-  canvas.width = w * scale;
-  canvas.height = h * scale;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) throw new Error("Canvas unavailable");
-  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    const canvas = document.createElement("canvas");
+    canvas.width = w * scale;
+    canvas.height = h * scale;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("Canvas unavailable");
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
-  return await new Promise<Blob>((resolve, reject) => {
-    canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("Export failed"))), "image/png");
-  });
+    return await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("Export failed"))), "image/png");
+    });
+  } finally {
+    URL.revokeObjectURL(svgUrl);
+  }
 }
+
+/** Visual CSS properties needed to faithfully snapshot a card without bloating SVG size with 350+ defaults per node. */
+const EXPORT_PROPS = [
+  "display", "position", "inset", "top", "right", "bottom", "left", "z-index",
+  "box-sizing", "width", "min-width", "max-width", "height", "min-height", "max-height",
+  "margin", "padding", "overflow", "overflow-x", "overflow-y",
+  "flex", "flex-direction", "flex-wrap", "flex-grow", "flex-shrink", "flex-basis",
+  "align-items", "align-self", "justify-content", "justify-items", "place-items",
+  "grid-template-columns", "grid-template-rows", "grid-column", "grid-row", "gap", "row-gap", "column-gap",
+  "background", "background-color", "background-image", "background-size", "background-position",
+  "color", "opacity", "border", "border-top", "border-right", "border-bottom", "border-left", "border-radius",
+  "box-shadow", "outline", "transform", "clip-path", "object-fit", "vertical-align",
+  "font-family", "font-size", "font-weight", "font-style", "font-variant-numeric", "line-height",
+  "letter-spacing", "text-align", "text-transform", "text-decoration", "white-space", "word-break", "overflow-wrap",
+  "list-style", "border-collapse", "border-spacing",
+] as const;
+
+const SVG_PROPS = ["display", "width", "height", "color", "fill", "stroke", "stroke-width", "stroke-linecap", "stroke-linejoin", "stroke-dasharray", "stroke-opacity", "opacity", "flex-shrink"] as const;
 
 function inlineComputedStyles(src: Element, dst: Element): void {
   const cs = getComputedStyle(src);
+  const isSvg = src.namespaceURI === "http://www.w3.org/2000/svg";
   const target = dst as HTMLElement | SVGElement;
   if (target.style) {
+    const props = isSvg ? SVG_PROPS : EXPORT_PROPS;
     let css = "";
-    for (let i = 0; i < cs.length; i++) {
-      const prop = cs[i]!;
-      css += `${prop}:${cs.getPropertyValue(prop)};`;
+    for (const prop of props) {
+      const val = cs.getPropertyValue(prop);
+      if (val) css += `${prop}:${val};`;
     }
     target.setAttribute("style", css);
   }

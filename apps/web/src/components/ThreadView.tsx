@@ -15,7 +15,7 @@ import { openCardShare } from "../cards/CardShare";
 import { cachedThread, fetchThread, forgetThread, rememberThread } from "../thread-cache";
 import { Status } from "../cards/Frame";
 import type { Card } from "@vireo/protocol";
-import { AlertIcon, ArrowUpRightIcon, BellIcon, CheckIcon, ChevronLeft, ChevronRight, ClockIcon, MemoryIcon, PanelIcon, SharePosterIcon, StatusIcon } from "../icons";
+import { AlertIcon, ArrowUpRightIcon, BellIcon, CheckIcon, ChevronDown, ChevronLeft, ChevronRight, ClockIcon, CopyIcon, MemoryIcon, PanelIcon, SharePosterIcon, StatusIcon } from "../icons";
 
 type Item =
   | { kind: "user"; m: Extract<Message, { role: "user" }> }
@@ -159,6 +159,7 @@ export function ThreadView({ id, onArchiveChange }: { id: string; onArchiveChang
   const [browserOpen, setBrowserOpen] = useState(false);
   // What the owner just sent, shown before the node has it.
   const [sending, setSending] = useState<{ text: string; files: string[]; after: number } | null>(null);
+  const [away, setAway] = useState(false);
   const scroller = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
   const reloadTimer = useRef<number | undefined>(undefined);
@@ -311,6 +312,7 @@ export function ThreadView({ id, onArchiveChange }: { id: string; onArchiveChang
     return () => {
       off();
       cancelAnimationFrame(frame);
+      window.clearTimeout(reloadTimer.current);
     };
   }, [id, load]);
 
@@ -443,7 +445,9 @@ export function ThreadView({ id, onArchiveChange }: { id: string; onArchiveChang
             ref={scroller}
             onScroll={(e) => {
               const el = e.currentTarget;
-              stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+              const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
+              stick.current = dist < 80;
+              setAway(dist > 220);
             }}
           >
             <div className="conversation-inner">
@@ -521,8 +525,25 @@ export function ThreadView({ id, onArchiveChange }: { id: string; onArchiveChang
               ) : null}
             </div>
           </div>
+          {away ? (
+            <button
+              type="button"
+              className={`jump-latest ${t.running || live ? "live" : ""}`}
+              onClick={() => {
+                stick.current = true;
+                setAway(false);
+                scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: "smooth" });
+              }}
+              aria-label="Jump to latest"
+              data-testid="jump-latest"
+            >
+              <ChevronDown />
+              <span>{t.running || live ? "Following live" : "Latest"}</span>
+            </button>
+          ) : null}
           <Composer
             onSend={send}
+            draftKey={t.id}
             running={t.running}
             onStop={() => void api.post(`/api/threads/${t.id}/stop`)}
             placeholder={t.state === "done" ? "Message to reopen this thread" : isOverview ? "Ask Vireo anything" : "Message Vireo"}
@@ -684,14 +705,7 @@ function ItemView({
       );
     }
     case "assistant":
-      return (
-        <div className="msg assistant" data-testid="msg-assistant">
-          <Markdown text={item.m.text} />
-          <span className="meta" title={dateTime(item.m.createdAt)}>
-            {shortTime(item.m.createdAt)}
-          </span>
-        </div>
-      );
+      return <AssistantMessage m={item.m} />;
     case "steps":
       return <Steps steps={item.steps} />;
     case "notice": {
@@ -743,6 +757,31 @@ function ItemView({
 }
 
 type Learned = { id: string; statement: string; forgotten?: boolean };
+
+function AssistantMessage({ m }: { m: Extract<Message, { role: "assistant" }> }) {
+  const [copied, setCopied] = useState(false);
+  const copy = () => {
+    if (!navigator.clipboard) return;
+    void navigator.clipboard.writeText(m.text).then(() => {
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1600);
+    });
+  };
+  return (
+    <div className="msg assistant" data-testid="msg-assistant">
+      <Markdown text={m.text} />
+      <div className="msg-foot">
+        <span className="meta" title={dateTime(m.createdAt)}>
+          {shortTime(m.createdAt)}
+        </span>
+        <button type="button" className={`msg-copy ${copied ? "copied" : ""}`} onClick={copy} aria-label={copied ? "Copied" : "Copy message"} title={copied ? "Copied" : "Copy"}>
+          {copied ? <CheckIcon /> : <CopyIcon />}
+          <span>{copied ? "Copied" : "Copy"}</span>
+        </button>
+      </div>
+    </div>
+  );
+}
 
 /** What Vireo now remembers from this thread, each fact one tap from being taken back. */
 function Remembered({ facts, onChange }: { facts: Learned[]; onChange: () => void }) {

@@ -2,6 +2,27 @@ import { useEffect, useRef, useState } from "react";
 import { ArrowUpIcon, AttachIcon, StopIcon } from "../icons";
 import { PendingFile } from "./Attachments";
 
+const DRAFT_PREFIX = "vireo.draft.";
+
+function readDraft(key?: string): string {
+  if (!key) return "";
+  try {
+    return sessionStorage.getItem(DRAFT_PREFIX + key) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function writeDraft(key: string | undefined, value: string): void {
+  if (!key) return;
+  try {
+    if (value) sessionStorage.setItem(DRAFT_PREFIX + key, value);
+    else sessionStorage.removeItem(DRAFT_PREFIX + key);
+  } catch {
+    // Storage blocked or full: draft lives in memory only.
+  }
+}
+
 export function Composer({
   onSend,
   placeholder,
@@ -9,6 +30,7 @@ export function Composer({
   disabled,
   onStop,
   running,
+  draftKey,
 }: {
   onSend: (text: string, files: File[]) => Promise<void> | void;
   placeholder?: string;
@@ -16,13 +38,24 @@ export function Composer({
   disabled?: boolean;
   onStop?: () => void;
   running?: boolean;
+  draftKey?: string;
 }) {
-  const [text, setText] = useState("");
+  const [text, setText] = useState(() => readDraft(draftKey));
   const [files, setFiles] = useState<File[]>([]);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
   const [dragging, setDragging] = useState(false);
   const ref = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    setText(readDraft(draftKey));
+    setError("");
+  }, [draftKey]);
+
+  useEffect(() => {
+    writeDraft(draftKey, text);
+  }, [draftKey, text]);
 
   useEffect(() => {
     const el = ref.current;
@@ -35,23 +68,29 @@ export function Composer({
     const t = text.trim();
     if ((!t && files.length === 0) || busy) return;
     setBusy(true);
+    setError("");
     // Cleared at once, as the message shows as sent; it comes back if sending fails.
     const sent = files;
     setText("");
     setFiles([]);
+    writeDraft(draftKey, "");
     try {
       await onSend(t, sent);
     } catch (err) {
       setText((now) => now || t);
       setFiles((now) => (now.length ? now : sent));
-      throw err;
+      setError(err instanceof Error ? err.message : "Couldn't send that. Try again.");
     } finally {
       setBusy(false);
       ref.current?.focus();
     }
   };
 
-  const add = (more: File[]) => more.length && setFiles((prev) => [...prev, ...more]);
+  const add = (more: File[]) => {
+    if (!more.length) return;
+    setError("");
+    setFiles((prev) => [...prev, ...more]);
+  };
 
   return (
     // Files can also be dropped onto the composer or pasted into it.
@@ -71,6 +110,11 @@ export function Composer({
         ref.current?.focus();
       }}
     >
+      {error ? (
+        <div className="composer-error" role="alert" data-testid="composer-error">
+          {error}
+        </div>
+      ) : null}
       {files.length ? (
         <div className="composer-files" data-testid="composer-files">
           {files.map((f, i) => (
@@ -100,7 +144,10 @@ export function Composer({
           autoFocus={autoFocus}
           disabled={disabled}
           data-testid="composer-input"
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => {
+            setText(e.target.value);
+            if (error) setError("");
+          }}
           onPaste={(e) => {
             const pasted = Array.from(e.clipboardData.files);
             if (!pasted.length) return;

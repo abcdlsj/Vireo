@@ -38,73 +38,87 @@ function closable(card: Card): boolean {
  * item. A list says how many it left out in the `.c-more` right after it.
  * Whatever still does not fit fades out at the bottom.
  */
-function useFit(expanded: boolean) {
+function useFit(expanded: boolean, version: string) {
   const ref = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     const body = ref.current;
     if (expanded || !body) return;
     const slot = body.parentElement!.parentElement;
     const grid = slot?.parentElement;
+    let fitting = false;
     const fit = () => {
-      const texts = [...body.querySelectorAll<HTMLElement>(".fit")];
-      const lists = [...body.querySelectorAll<HTMLElement>(".fit-list")];
-      const lines = (t: HTMLElement) => Number(t.style.getPropertyValue("--lines"));
-      const shown = (l: HTMLElement) => [...l.children].filter((li) => !(li as HTMLElement).hidden) as HTMLElement[];
-      const full = () => {
-        for (const t of texts) t.style.setProperty("--lines", t.dataset.lines ?? "3");
-      };
-      full();
-      for (const l of lists) for (const li of l.children) (li as HTMLElement).hidden = false;
-      body.classList.remove("cut");
-      const over = () => body.scrollHeight > body.clientHeight + 1;
-      const text = (floor: number) => {
-        while (over()) {
-          const t = texts.filter((x) => lines(x) > floor).sort((a, b) => lines(b) - lines(a))[0];
-          if (!t) return false;
-          t.style.setProperty("--lines", String(lines(t) - 1));
-        }
-        return true;
-      };
-      const list = (floor: number) => {
-        while (over()) {
-          const l = lists.find((x) => shown(x).length > floor);
-          if (!l) return false;
-          shown(l).at(-1)!.hidden = true;
-        }
-        return true;
-      };
-      if (slot?.dataset.heights && grid) {
-        const single = getComputedStyle(grid).gridTemplateColumns.split(" ").length === 1;
-        // Where the board is one column, a large card can't be wider, so it may be taller.
-        const spans = slot.dataset.heights.split(",").map(Number).concat(single && slot.classList.contains("size-l") ? [5] : []);
-        const card = body.parentElement!;
-        const natural = () => {
-          card.style.height = "auto";
-          const h = card.getBoundingClientRect().height;
-          card.style.height = "";
-          return h;
+      if (fitting) return;
+      fitting = true;
+      try {
+        const texts = [...body.querySelectorAll<HTMLElement>(".fit")];
+        const lists = [...body.querySelectorAll<HTMLElement>(".fit-list")];
+        const lines = (t: HTMLElement) => Number(t.style.getPropertyValue("--lines"));
+        const shown = (l: HTMLElement) => [...l.children].filter((li) => !(li as HTMLElement).hidden) as HTMLElement[];
+        const full = () => {
+          for (const t of texts) t.style.setProperty("--lines", t.dataset.lines ?? "3");
         };
-        for (const span of spans) {
-          slot.style.gridRowEnd = `span ${span}`;
-          full();
-          text(2);
-          if (natural() <= slot.getBoundingClientRect().height + 1) break;
+        full();
+        for (const l of lists) for (const li of l.children) (li as HTMLElement).hidden = false;
+        body.classList.remove("cut");
+        const over = () => body.scrollHeight > body.clientHeight + 1;
+        const text = (floor: number) => {
+          while (over()) {
+            const t = texts.filter((x) => lines(x) > floor).sort((a, b) => lines(b) - lines(a))[0];
+            if (!t) return false;
+            t.style.setProperty("--lines", String(lines(t) - 1));
+          }
+          return true;
+        };
+        const list = (floor: number) => {
+          while (over()) {
+            const l = lists.find((x) => shown(x).length > floor);
+            if (!l) return false;
+            shown(l).at(-1)!.hidden = true;
+          }
+          return true;
+        };
+        if (slot?.dataset.heights && grid) {
+          const single = getComputedStyle(grid).gridTemplateColumns.split(" ").length === 1;
+          // Where the board is one column, a large card can't be wider, so it may be taller.
+          const spans = slot.dataset.heights.split(",").map(Number).concat(single && slot.classList.contains("size-l") ? [5] : []);
+          const card = body.parentElement!;
+          const natural = () => {
+            card.style.height = "auto";
+            const h = card.getBoundingClientRect().height;
+            card.style.height = "";
+            return h;
+          };
+          for (const span of spans) {
+            slot.style.gridRowEnd = `span ${span}`;
+            full();
+            text(2);
+            if (natural() <= slot.getBoundingClientRect().height + 1) break;
+          }
         }
-      }
-      if (!(text(2) || list(2) || text(1) || list(1))) body.classList.add("cut");
-      for (const l of lists) {
-        const more = l.nextElementSibling as HTMLElement | null;
-        if (!more?.classList.contains("c-more")) continue;
-        const n = Number(l.dataset.more ?? 0) + l.children.length - shown(l).length;
-        more.textContent = `${n} more`;
-        more.hidden = n === 0;
+        if (!(text(2) || list(2) || text(1) || list(1))) body.classList.add("cut");
+        for (const l of lists) {
+          const more = l.nextElementSibling as HTMLElement | null;
+          if (!more?.classList.contains("c-more")) continue;
+          const n = Number(l.dataset.more ?? 0) + l.children.length - shown(l).length;
+          more.textContent = `${n} more`;
+          more.hidden = n === 0;
+        }
+      } finally {
+        fitting = false;
       }
     };
     fit();
-    const ro = new ResizeObserver(fit);
+    let frame = 0;
+    const ro = new ResizeObserver(() => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(fit);
+    });
     ro.observe(body);
-    return () => ro.disconnect();
-  });
+    return () => {
+      cancelAnimationFrame(frame);
+      ro.disconnect();
+    };
+  }, [expanded, version]);
   return ref;
 }
 
@@ -160,7 +174,7 @@ export function Frame({
 }) {
   const board = useContext(BoardContext);
   const flash = useJustUpdated(card);
-  const body = useFit(expanded);
+  const body = useFit(expanded, `${card.id}:${card.updatedAt}:${card.status}:${card.running ? 1 : 0}:${card.title}`);
   const [leaving, setLeaving] = useState(false);
   const interactive = !expanded;
   const open = () => (board ? board.peek(card) : go(`thread/${card.threadId}`));
@@ -329,17 +343,21 @@ export function Answer({ threadId, refresh }: { threadId: string; refresh: () =>
   const [text, setText] = useState("");
   const [sent, setSent] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     const t = text.trim();
     if (!t || busy) return;
     setBusy(true);
+    setError("");
     try {
       await api.post(`/api/threads/${threadId}/messages`, { text: t });
       setText("");
       setSent(true);
       // Let the words leave the box before the card reloads under them.
       window.setTimeout(refresh, 700);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't send that. Try again.");
     } finally {
       setBusy(false);
     }
@@ -353,19 +371,28 @@ export function Answer({ threadId, refresh }: { threadId: string; refresh: () =>
     );
   }
   return (
-    <form className="c-answer" onSubmit={(e) => void submit(e)} onClick={(e) => e.stopPropagation()}>
-      <input
-        aria-label="Answer Vireo"
-        placeholder="Answer Vireo…"
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        disabled={busy}
-        data-testid="card-answer-input"
-      />
-      <button type="submit" aria-label="Send" disabled={busy || !text.trim()} data-testid="card-answer-send">
-        <ArrowUpIcon />
-      </button>
-    </form>
+    <div className="c-answer-wrap" onClick={(e) => e.stopPropagation()}>
+      <form className="c-answer" onSubmit={(e) => void submit(e)}>
+        <input
+          aria-label="Answer Vireo"
+          placeholder="Answer Vireo…"
+          value={text}
+          onChange={(e) => {
+            setText(e.target.value);
+            if (error) setError("");
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && e.nativeEvent.isComposing) e.preventDefault();
+          }}
+          disabled={busy}
+          data-testid="card-answer-input"
+        />
+        <button type="submit" aria-label="Send" disabled={busy || !text.trim()} data-testid="card-answer-send">
+          <ArrowUpIcon />
+        </button>
+      </form>
+      {error ? <span className="vcard-error" role="alert">{error}</span> : null}
+    </div>
   );
 }
 
