@@ -70,6 +70,12 @@ function cliApp(): App {
   process.env.VIREO_SCHEDULER = "off";
   const env: Record<string, string> = { VIREO_DATA_DIR: tempDir(), VIREO_FAKE_GOOGLE: "1" };
   const app = createApp(loadConfig(env));
+  // Only the stand-in is here. A real Claude Code, Codex or pi installed on the
+  // machine running the tests would otherwise be found and asked its version and
+  // models on every settings save, which on a busy machine takes longer than the
+  // test is allowed to.
+  const absent = join(tempDir(), "not-installed");
+  app.db.setKv("llm.settings", { cliPaths: { claude: absent, codex: absent, pi: absent } });
   apps.push(app);
   return app;
 }
@@ -130,14 +136,16 @@ describe("a CLI as the model", () => {
 
   it("finds a CLI at the path the owner gives, with its version", async () => {
     const { path } = fakeClaude();
-    const list = await detectClis({ claude: path, codex: join(tempDir(), "nope") });
+    const nope = join(tempDir(), "nope");
+    const list = await detectClis({ claude: path, codex: nope, pi: nope });
     const claude = list.find((c) => c.id === "claude")!;
     expect(claude).toMatchObject({ found: true, path, version: "9.9.9" });
     expect(claude.models).toContain("haiku");
     expect(list.find((c) => c.id === "codex")!.found).toBe(false);
   });
 
-  it("runs Vireo's agents on the CLI: handoffs, streaming, usage, and its own tools off", async () => {
+  // These two run a real child process, which is slow when the suite has the machine's cores busy.
+  it("runs Vireo's agents on the CLI: handoffs, streaming, usage, and its own tools off", { timeout: 120_000 }, async () => {
     const { path, log } = fakeClaude();
     const app = cliApp();
     const st = await app.models.save({ provider: "cli", cli: "claude", cliPath: path, cliMain: "opus" });
@@ -162,7 +170,7 @@ describe("a CLI as the model", () => {
     expect(usage[0]).toMatchObject({ provider: "claude cli", input_tokens: 13 });
   });
 
-  it("uses a CLI by itself when no endpoint is set up, and the endpoint once there is one", async () => {
+  it("uses a CLI by itself when no endpoint is set up, and the endpoint once there is one", { timeout: 120_000 }, async () => {
     const { path } = fakeClaude();
     const app = cliApp();
     let st = await app.models.save({ cli: "claude", cliPath: path });
