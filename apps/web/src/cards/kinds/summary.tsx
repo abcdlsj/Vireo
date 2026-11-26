@@ -1,9 +1,8 @@
 import { Avatar, Frame } from "../Frame";
 import { defineCard } from "../registry";
-import { field } from "../util";
-import { isHttp } from "../util";
+import { field, isHttp } from "../util";
 
-/** The outcome of a batch: a few numbers, then the items that matter. */
+/** Executive digest briefing: KPI tile strip followed by crisp hairline highlight rows. */
 export default defineCard({
   kind: "summary",
   render: ({ card, expanded }) => {
@@ -12,9 +11,11 @@ export default defineCard({
     const items = field<{ title?: string; text?: string; url?: string }[]>(card, "items", []);
     const shown = items.slice(0, expanded ? 50 : 3);
     return (
-      <Frame card={card} expanded={expanded}>
-        <h3 className="c-title big">{card.title}</h3>
-        {subtitle ? <p className="c-sub">{subtitle}</p> : null}
+      <Frame card={card} expanded={expanded} className="summary-card">
+        <div className="g-head">
+          <h3 className="c-title big">{card.title}</h3>
+          {subtitle ? <p className="c-sub">{subtitle}</p> : null}
+        </div>
         {stats.length ? (
           <div className="stats">
             {stats.slice(0, 4).map((s, i) => (
@@ -29,7 +30,7 @@ export default defineCard({
           <ul className="c-rows">
             {shown.map((it, i) => (
               <li key={i}>
-                <Avatar name={it.title ?? "?"} size={28} />
+                <Avatar name={it.title ?? "?"} size={30} />
                 <div>
                   <span className="c-row-title">
                     {isHttp(it.url) ? (

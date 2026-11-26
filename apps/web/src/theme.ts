@@ -14,8 +14,13 @@ function apply(): void {
   const choice = themeChoice();
   const theme = choice === "system" ? (media.matches ? "dark" : "light") : choice;
   document.documentElement.dataset.theme = theme;
-  const color = theme === "dark" ? "#191919" : "#ffffff";
+  const color = theme === "dark" ? "#141413" : "#faf9f6";
   for (const m of document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]')) m.content = color;
+}
+
+export function resolvedTheme(): "light" | "dark" {
+  const choice = themeChoice();
+  return choice === "system" ? (media.matches ? "dark" : "light") : choice;
 }
 
 export function setThemeChoice(choice: ThemeChoice): void {

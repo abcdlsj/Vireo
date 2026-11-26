@@ -2,20 +2,22 @@ import { Avatar, Frame } from "../Frame";
 import { defineCard } from "../registry";
 import { field } from "../util";
 
-/** Someone the owner deals with, and what Vireo remembers about them. */
+/** Editorial contact dossier: soft tinted masthead with ringed monogram avatar and remembered facts. */
 export default defineCard({
   kind: "person",
   render: ({ card, expanded }) => {
     const name = field(card, "name", card.title);
     const facts = field<string[]>(card, "facts", []);
+    const role = field(card, "role", "");
     const email = field(card, "email", "");
     return (
-      <Frame card={card} expanded={expanded}>
+      <Frame card={card} expanded={expanded} className="person-card">
         <div className="person">
-          <Avatar name={name} size={64} />
-          <div>
+          <Avatar name={name} size={58} />
+          <div className="person-meta">
             <h3 className="c-title">{name}</h3>
-            <p className="c-sub">{[field(card, "role", ""), email].filter(Boolean).join(" · ")}</p>
+            {role ? <p className="person-role">{role}</p> : null}
+            {email ? <p className="person-email">{email}</p> : null}
           </div>
         </div>
         {facts.length ? (

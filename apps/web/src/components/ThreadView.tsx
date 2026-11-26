@@ -11,10 +11,11 @@ import { ProcedureCard } from "./ProcedureCard";
 import { BrowserAsk } from "./BrowserAsk";
 import { BrowserView, SHEET_QUERY, SidePanel } from "./SidePanel";
 import { CardSlot } from "../cards/CardSlot";
+import { openCardShare } from "../cards/CardShare";
 import { cachedThread, fetchThread, forgetThread, rememberThread } from "../thread-cache";
 import { Status } from "../cards/Frame";
 import type { Card } from "@vireo/protocol";
-import { AlertIcon, ArrowUpRightIcon, BellIcon, CheckIcon, ChevronLeft, ChevronRight, ClockIcon, MemoryIcon, PanelIcon, StatusIcon } from "../icons";
+import { AlertIcon, ArrowUpRightIcon, BellIcon, CheckIcon, ChevronLeft, ChevronRight, ClockIcon, MemoryIcon, PanelIcon, SharePosterIcon, StatusIcon } from "../icons";
 
 type Item =
   | { kind: "user"; m: Extract<Message, { role: "user" }> }
@@ -595,6 +596,12 @@ const History = memo(function History({
         ) : "card" in it ? (
           <div key={`card${it.card.id}`} className="thread-cards" data-testid="thread-cards" data-card-id={it.card.id}>
             <CardSlot card={it.card} expanded refresh={onChange} />
+            <div className="thread-card-bar">
+              <button type="button" className="thread-card-share" onClick={() => openCardShare(it.card)} title="Share card as poster">
+                <SharePosterIcon />
+                Share poster
+              </button>
+            </div>
           </div>
         ) : (
           <ItemView

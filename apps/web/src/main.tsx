@@ -5,6 +5,7 @@ import "@fontsource-variable/inter/opsz.css";
 import "@fontsource-variable/manrope/wght.css";
 import "./styles.css";
 import "./cards/cards.css";
+import "./cards/poster.css";
 import "./shell.css";
 import { takeSignIn } from "./cloud";
 import { initTheme } from "./theme";

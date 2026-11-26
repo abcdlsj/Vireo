@@ -3,7 +3,7 @@ import { Frame } from "../Frame";
 import { defineCard } from "../registry";
 import { field } from "../util";
 
-/** A file with a folded corner and the facts read out of it. */
+/** Tactile dossier card: color-coded dog-eared sheet icon and structured specification ledger. */
 export default defineCard({
   kind: "file",
   render: ({ card, expanded }) => {
@@ -12,7 +12,7 @@ export default defineCard({
     const fields = field<{ label?: string; value?: string }[]>(card, "fields", []);
     const ext = (name.match(/\.(\w{2,4})$/)?.[1] ?? "file").toUpperCase();
     return (
-      <Frame card={card} expanded={expanded}>
+      <Frame card={card} expanded={expanded} className="file-card">
         <div className="file-head">
           <span className={`sheet ext-${ext.toLowerCase()}`}>{ext}</span>
           <div>

@@ -1,11 +1,11 @@
 import type { ReactNode } from "react";
 import { relTime } from "../../format";
+import { SparkIcon } from "../../icons";
 import { Avatar, Frame } from "../Frame";
 import { defineCard } from "../registry";
-import { field } from "../util";
-import { parseDate } from "../util";
+import { field, parseDate } from "../util";
 
-/** A letter on the left, Vireo's reply on the right. Proposals to send an email reuse it. */
+/** Editorial correspondence card: letter masthead + incoming quote + Vireo's sage-tinted stationery draft. */
 export function EmailBody({
   from,
   address,
@@ -39,7 +39,10 @@ export function EmailBody({
       </div>
       {draft ? (
         <div className="mail-draft">
-          <span className="stub-label">{draftLabel}</span>
+          <span className="stub-label mail-draft-head">
+            <SparkIcon />
+            {draftLabel}
+          </span>
           <p className="mail-body">{draft}</p>
         </div>
       ) : null}
@@ -51,7 +54,7 @@ export default defineCard({
   kind: "email",
   size: "l",
   render: ({ card, expanded }) => (
-    <Frame card={card} expanded={expanded}>
+    <Frame card={card} expanded={expanded} className="email-card">
       <EmailBody
         from={field(card, "from", "")}
         address={field(card, "address", "")}

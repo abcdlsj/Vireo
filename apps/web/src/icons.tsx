@@ -220,3 +220,45 @@ export const ListIcon = () => (
     <path d="M2.5 4h.01M2.5 8h.01M2.5 12h.01" strokeWidth="1.8" />
   </Icon>
 );
+
+export const SharePosterIcon = () => (
+  <Icon size={14}>
+    <rect x="2.2" y="2.6" width="11.6" height="10.8" rx="2.2" />
+    <path d="M5.2 10.6 7.5 8.1l1.8 1.8 1.5-1.6 1.8 2.3" />
+    <circle cx="5.8" cy="5.8" r="0.9" fill="currentColor" stroke="none" />
+  </Icon>
+);
+
+export const CopyIcon = () => (
+  <Icon size={14}>
+    <rect x="5.2" y="5.2" width="8.2" height="8.2" rx="1.6" />
+    <path d="M10.8 5.2V3.6a1.4 1.4 0 0 0-1.4-1.4H3.6a1.4 1.4 0 0 0-1.4 1.4v5.8a1.4 1.4 0 0 0 1.4 1.4h1.6" />
+  </Icon>
+);
+
+export const SunIcon = () => (
+  <Icon>
+    <circle cx="8" cy="8" r="2.8" />
+    <path d="M8 1.8v1.4M8 12.8v1.4M1.8 8h1.4M12.8 8h1.4M3.6 3.6l1 1M11.4 11.4l1 1M3.6 12.4l1-1M11.4 4.6l1-1" />
+  </Icon>
+);
+
+export const MoonIcon = () => (
+  <Icon>
+    <path d="M13 9.4A5.2 5.2 0 0 1 6.6 3a5.4 5.4 0 1 0 6.4 6.4z" />
+  </Icon>
+);
+
+export const MapPinIcon = () => (
+  <Icon size={13}>
+    <path d="M8 13.8s4.2-3.6 4.2-7a4.2 4.2 0 1 0-8.4 0c0 3.4 4.2 7 4.2 7z" />
+    <circle cx="8" cy="6.8" r="1.4" />
+  </Icon>
+);
+
+export const DocIcon = () => (
+  <Icon size={14}>
+    <path d="M4 2.4h5.4L12.6 5.6v8H4z" />
+    <path d="M9.2 2.4v3.4h3.4M6 8.2h4M6 10.6h2.6" />
+  </Icon>
+);

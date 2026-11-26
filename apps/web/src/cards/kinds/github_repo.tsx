@@ -1,10 +1,9 @@
 import { Frame } from "../Frame";
 import { defineCard } from "../registry";
-import { field } from "../util";
-import { isHttp } from "../util";
+import { field, isHttp } from "../util";
 import { GitHubMark } from "./github_pr";
 
-/** A repository's pulse: commits per day as bars, a few numbers, the newest event. */
+/** A repository's pulse: 28-day commit skyline bars, crisp metric tiles, and newest event. */
 export default defineCard({
   kind: "github_repo",
   render: ({ card, expanded }) => {
@@ -18,7 +17,7 @@ export default defineCard({
       <Frame
         card={card}
         expanded={expanded}
-        className="gh"
+        className="gh gh-repo-card"
         label={
           <span className="gh-repo">
             <GitHubMark />
@@ -36,7 +35,7 @@ export default defineCard({
         {activity.length ? (
           <div className="bars" aria-label="Commits per day">
             {activity.slice(-28).map((n, i) => (
-              <span key={i} style={{ height: `${Math.max(6, (n / max) * 100)}%` }} className={n ? "" : "zero"} />
+              <span key={i} style={{ height: `${Math.max(8, (n / max) * 100)}%` }} className={n ? "" : "zero"} />
             ))}
           </div>
         ) : null}
@@ -50,7 +49,7 @@ export default defineCard({
             ))}
           </div>
         ) : null}
-        {latest ? <p className="c-sub clamp">{latest}</p> : null}
+        {latest ? <p className="c-sub clamp gh-latest">{latest}</p> : null}
       </Frame>
     );
   },

@@ -1,11 +1,11 @@
 import type { ReactNode } from "react";
+import { MapPinIcon } from "../../icons";
 import { Avatar, Frame } from "../Frame";
 import { defineCard } from "../registry";
 import type { Card } from "@vireo/protocol";
-import { field } from "../util";
-import { clock, monthShort, parseDate, span, weekday } from "../util";
+import { clock, field, monthShort, parseDate, span, weekday } from "../util";
 
-/** A tear-off calendar page beside the time, people and place. Proposals for invites reuse it. */
+/** A sculpted tear-off desk calendar page beside the time, people and place. Proposals for invites reuse it. */
 export function EventBody({
   card,
   title,
@@ -26,18 +26,34 @@ export function EventBody({
   const s = parseDate(start);
   const e = parseDate(end);
   const people = attendees ?? [];
+  const dur = s && e ? span(s, e) : "";
   return (
     <div className="tearoff-wrap">
       <div className={`tearoff ${card.status}`}>
-        <span className="tearoff-month">{s ? `${weekday(s)} · ${monthShort(s)}` : ""}</span>
-        <span className="tearoff-day">{s ? s.getDate() : "?"}</span>
+        <div className="tearoff-top">
+          <span className="tearoff-rings" aria-hidden="true">
+            <i />
+            <i />
+          </span>
+          <span className="tearoff-month">{s ? monthShort(s) : ""}</span>
+        </div>
+        <div className="tearoff-body">
+          <span className="tearoff-day">{s ? s.getDate() : "?"}</span>
+          <span className="tearoff-wk">{s ? weekday(s) : ""}</span>
+        </div>
       </div>
       <div className="event-main">
         <div className="event-time">
           <span className="event-clock">{s ? clock(s) : String(start ?? "")}</span>
-          <span className="event-title">{title}</span>
+          {dur ? <span className="event-dur">{dur}</span> : null}
         </div>
-        <p className="c-sub">{[s && e ? span(s, e) : "", location].filter(Boolean).join(" · ")}</p>
+        <h3 className="event-title">{title}</h3>
+        {location ? (
+          <p className="event-loc">
+            <MapPinIcon />
+            <span>{location}</span>
+          </p>
+        ) : null}
         {people.length ? (
           <div className="people">
             <span className="c-stack">
@@ -58,7 +74,7 @@ export default defineCard({
   kind: "event",
   size: "l",
   render: ({ card, expanded }) => (
-    <Frame card={card} expanded={expanded} flush>
+    <Frame card={card} expanded={expanded} flush className="event-card">
       <EventBody
         card={card}
         title={card.title}

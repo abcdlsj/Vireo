@@ -1,9 +1,10 @@
-import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type FormEvent, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useId, useLayoutEffect, useRef, useState, type FormEvent, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import { api } from "../api";
 import { relTime } from "../format";
-import { ArrowUpIcon, ArrowUpRightIcon, CheckIcon } from "../icons";
+import { ArrowUpIcon, ArrowUpRightIcon, CheckIcon, SharePosterIcon } from "../icons";
 import { go } from "../route";
 import { Eyes, nowLine } from "../components/Eyes";
+import { openCardShare } from "./CardShare";
 import { pressButton } from "./registry";
 import { field } from "./util";
 import type { Card, CardButton } from "@vireo/protocol";
@@ -200,6 +201,18 @@ export function Frame({
     ) : null);
   const actions = interactive ? (
     <span className="vcard-actions">
+      <button
+        className="vcard-act"
+        onClick={(e) => {
+          e.stopPropagation();
+          openCardShare(card);
+        }}
+        title="Share as poster"
+        aria-label="Share as poster"
+        data-testid="card-share-btn"
+      >
+        <SharePosterIcon />
+      </button>
       {board && closable(card) ? (
         <button className="vcard-act" onClick={() => void markDone()} title="Mark done" aria-label="Mark done" data-testid="card-done">
           <CheckIcon />
@@ -409,10 +422,11 @@ export function Buttons({ card, buttons }: { card: Card; buttons: CardButton[] }
 }
 
 /**
- * A small line chart of recent values, oldest first, with a soft wash under
- * the line. Without a width it fills its container and follows its size.
+ * A smooth, publication-grade line chart of recent values, oldest first,
+ * with a soft vertical gradient fill and a luminous ringed endpoint beacon.
  */
 export function Sparkline({ values, width, height = 28 }: { values: number[]; width?: number; height?: number }) {
+  const gradId = useId();
   const box = useRef<HTMLSpanElement>(null);
   const [measured, setMeasured] = useState(0);
   useLayoutEffect(() => {
@@ -428,19 +442,28 @@ export function Sparkline({ values, width, height = 28 }: { values: number[]; wi
   const min = Math.min(...nums);
   const max = Math.max(...nums);
   const span = max - min || 1;
-  /*
-   * The line starts on the card's own left edge and keeps room for the last
-   * dot at the right, so a chart sits in the same column as the text above it.
-   */
-  const padL = 0;
-  const padR = 9;
-  const pts = nums.map((v, i) => [padL + (i / (nums.length - 1)) * (w - padL - padR), height - padR - ((v - min) / span) * (height - padR * 2)] as const);
+  const padL = 2;
+  const padR = 10;
+  const padY = 7;
+  const pts = nums.map(
+    (v, i) => [padL + (i / (nums.length - 1)) * (w - padL - padR), height - padY - ((v - min) / span) * (height - padY * 2)] as const,
+  );
+  const first = pts[0]!;
   const last = pts[pts.length - 1]!;
-  const line = pts.map((p) => p.join(",")).join(" ");
+  const path = smoothPath(pts);
+  const area = `${path} L ${last[0].toFixed(1)},${height - 1} L ${first[0].toFixed(1)},${height - 1} Z`;
   const svg = w > 0 && (
     <svg className="sparkline" width={w} height={height} viewBox={`0 0 ${w} ${height}`} role="img" aria-label={`Recent values from ${nums[0]} to ${nums[nums.length - 1]}`}>
-      <polygon points={`${pts[0]![0]},${height - 1} ${line} ${last[0]},${height - 1}`} fill="currentColor" opacity="0.08" />
-      <polyline points={line} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <defs>
+        <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="currentColor" stopOpacity="0.22" />
+          <stop offset="100%" stopColor="currentColor" stopOpacity="0.01" />
+        </linearGradient>
+      </defs>
+      <line x1={padL} y1={height - 1.5} x2={w - padR} y2={height - 1.5} stroke="currentColor" strokeOpacity="0.1" strokeDasharray="2 3" />
+      <path d={area} fill={`url(#${gradId})`} />
+      <path d={path} fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx={last[0]} cy={last[1]} r="6.5" fill="currentColor" opacity="0.16" />
       <circle cx={last[0]} cy={last[1]} r="3.5" fill="currentColor" stroke="var(--c-paper)" strokeWidth="2" />
     </svg>
   );
@@ -452,7 +475,25 @@ export function Sparkline({ values, width, height = 28 }: { values: number[]; wi
   );
 }
 
-const AVATAR_TONES = ["blue", "plum", "amber", "sage"];
+/** Catmull-Rom to cubic Bezier curve through points for silky sparklines. */
+function smoothPath(pts: readonly (readonly [number, number])[]): string {
+  if (pts.length < 2) return "";
+  let d = `M ${pts[0]![0].toFixed(1)},${pts[0]![1].toFixed(1)}`;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[Math.max(0, i - 1)]!;
+    const p1 = pts[i]!;
+    const p2 = pts[i + 1]!;
+    const p3 = pts[Math.min(pts.length - 1, i + 2)]!;
+    const c1x = p1[0] + (p2[0] - p0[0]) / 6;
+    const c1y = p1[1] + (p2[1] - p0[1]) / 6;
+    const c2x = p2[0] - (p3[0] - p1[0]) / 6;
+    const c2y = p2[1] - (p3[1] - p1[1]) / 6;
+    d += ` C ${c1x.toFixed(1)},${c1y.toFixed(1)} ${c2x.toFixed(1)},${c2y.toFixed(1)} ${p2[0].toFixed(1)},${p2[1].toFixed(1)}`;
+  }
+  return d;
+}
+
+const AVATAR_TONES = ["blue", "plum", "amber", "sage", "terra", "slate"];
 
 export function Avatar({ name, size = 30 }: { name: string; size?: number }) {
   const initial = (name.trim()[0] ?? "?").toUpperCase();

@@ -1,10 +1,9 @@
 import { relTime } from "../../format";
 import { Frame, Sparkline } from "../Frame";
 import { defineCard } from "../registry";
-import { field } from "../util";
-import { parseDate } from "../util";
+import { field, parseDate } from "../util";
 
-/** Something Vireo keeps checking: the value now, how it moved, or which stage it is at. */
+/** Editorial telemetry & price/status tracker: monumental display figure, silky gradient sparkline, or milestone bar. */
 export default defineCard({
   kind: "watch",
   render: ({ card, expanded }) => {
@@ -14,7 +13,6 @@ export default defineCard({
     const steps = field<string[]>(card, "steps", []);
     const current = Math.max(0, Math.min(steps.length - 1, field(card, "current", 0)));
     const checked = parseDate(card.data.checked_at);
-    // A figure is set like a headline; a phrase ("Out for delivery") keeps the size a headline needs to fit.
     const phrase = value.length > 10;
     return (
       <Frame card={card} expanded={expanded} className="watch">
@@ -25,7 +23,7 @@ export default defineCard({
         </div>
         {trend.length > 1 ? (
           <div className="watch-trend accent-ink">
-            <Sparkline values={trend} height={expanded ? 96 : 64} />
+            <Sparkline values={trend} height={expanded ? 104 : 68} />
           </div>
         ) : null}
         {steps.length ? (
@@ -44,7 +42,12 @@ export default defineCard({
             </div>
           </div>
         ) : null}
-        {checked ? <p className="c-foot-note">Checked {relTime(checked.getTime())}</p> : null}
+        {checked ? (
+          <p className="c-foot-note watch-checked">
+            <span className="watch-live-dot" aria-hidden="true" />
+            Checked {relTime(checked.getTime())}
+          </p>
+        ) : null}
       </Frame>
     );
   },

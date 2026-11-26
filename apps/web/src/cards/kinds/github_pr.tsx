@@ -1,11 +1,10 @@
 import { Frame } from "../Frame";
 import { defineCard } from "../registry";
-import { field } from "../util";
-import { isHttp } from "../util";
+import { field, isHttp } from "../util";
 
 const STATE_LABEL: Record<string, string> = { open: "Open", draft: "Draft", merged: "Merged", closed: "Closed" };
 
-/** A pull request: number, state, the size of the change and how its checks stand. */
+/** Linear-grade pull request card: monospace repo pill, jewel state badge, proportional diff bar, CI status pill. */
 export default defineCard({
   kind: "github_pr",
   render: ({ card, expanded }) => {
@@ -24,7 +23,7 @@ export default defineCard({
       <Frame
         card={card}
         expanded={expanded}
-        className="gh"
+        className="gh gh-pr"
         label={
           <span className="gh-repo">
             <GitHubMark />
@@ -38,14 +37,28 @@ export default defineCard({
           </span>
         }
       >
-        <span className={`gh-state ${state}`}>{STATE_LABEL[state] ?? state}</span>
+        <div className="gh-top-row">
+          <span className={`gh-state ${state}`}>
+            <i className="gh-state-dot" aria-hidden="true" />
+            {STATE_LABEL[state] ?? state}
+          </span>
+          {total ? (
+            <span className={`gh-checks ${passed === total ? "ok" : "failing"}`} aria-label={`${passed} of ${total} checks passed`}>
+              <span className="gh-checks-dot" aria-hidden="true" />
+              <b>
+                {passed}/{total}
+              </b>
+              {passed === total ? "checks" : `${total - passed} failing`}
+            </span>
+          ) : null}
+        </div>
         <h3 className="c-title">{card.title}</h3>
         {add >= 0 || del >= 0 ? (
           <div className="gh-change">
             <p className="gh-diff">
               {add >= 0 ? <span className="plus">+{add}</span> : null}
               {del >= 0 ? <span className="minus">−{del}</span> : null}
-              {files >= 0 ? <span>{files} files</span> : null}
+              {files >= 0 ? <span className="gh-files">{files} files</span> : null}
             </p>
             {add + del > 0 ? (
               <span className="gh-diffbar" aria-hidden="true">
@@ -54,15 +67,6 @@ export default defineCard({
               </span>
             ) : null}
           </div>
-        ) : null}
-        {total ? (
-          <p className={`gh-checks ${passed === total ? "ok" : "failing"}`} aria-label={`${passed} of ${total} checks passed`}>
-            <span className="gh-checks-dot" aria-hidden="true" />
-            <b>
-              {passed}/{total}
-            </b>
-            {passed === total ? "checks passed" : `checks · ${total - passed} failing`}
-          </p>
         ) : null}
         {review ? <p className="c-sub gh-review">{review}</p> : null}
       </Frame>

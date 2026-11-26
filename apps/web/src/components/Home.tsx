@@ -60,6 +60,7 @@ export function Home({ me, onSearch }: { me: Me | null; onSearch: () => void }) 
   const done = (cards ?? []).filter((c) => c.status === "done");
   const needs = active.filter((c) => c.status === "needs_you").length;
   const working = active.filter((c) => c.running || c.status === "working").length;
+  const watching = active.filter((c) => c.status === "watching" && !c.running).length;
   const headline =
     needs > 0
       ? `${NUMBERS[needs] ?? needs} ${needs === 1 ? "thing needs" : "things need"} you`
@@ -109,7 +110,16 @@ export function Home({ me, onSearch }: { me: Me | null; onSearch: () => void }) 
 
         <div className="home-hero">
           <div className="home-greet">
-            <span className="date">{new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}</span>
+            <div className="home-greet-meta">
+              <span className="date">{new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}</span>
+              {active.length > 0 ? (
+                <div className="home-pills" aria-hidden="true">
+                  {needs > 0 ? <span className="home-pill needs"><i />{needs} waiting</span> : null}
+                  {working > 0 ? <span className="home-pill working"><i />{working} active</span> : null}
+                  {watching > 0 ? <span className="home-pill watching"><i />{watching} watching</span> : null}
+                </div>
+              ) : null}
+            </div>
             <h1 data-testid="home-headline">{headline}</h1>
           </div>
           <Ask

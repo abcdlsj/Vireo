@@ -1,7 +1,6 @@
 import { Frame } from "../Frame";
 import { defineCard } from "../registry";
-import { field } from "../util";
-import { isHttp } from "../util";
+import { field, isHttp } from "../util";
 
 interface Option {
   title?: string;
@@ -11,7 +10,7 @@ interface Option {
   url?: string;
 }
 
-/** Options side by side; the picked one (with a badge) leads. */
+/** Curated decision matrix: numbered rows, the recommended pick elevated with a botanical highlight. */
 export default defineCard({
   kind: "compare",
   size: "l",
@@ -20,12 +19,15 @@ export default defineCard({
     const subtitle = field(card, "subtitle", "");
     const note = field(card, "note", "");
     return (
-      <Frame card={card} expanded={expanded}>
-        <h3 className="c-title">{card.title}</h3>
-        {subtitle && (expanded || options.length < 3) ? <p className="c-sub">{subtitle}</p> : null}
+      <Frame card={card} expanded={expanded} className="compare-card">
+        <div className="g-head">
+          <h3 className="c-title">{card.title}</h3>
+          {subtitle && (expanded || options.length < 3) ? <p className="c-sub">{subtitle}</p> : null}
+        </div>
         <ol className="options">
           {options.slice(0, expanded ? 12 : 3).map((o, i) => (
             <li key={i} className={o.badge ? "picked" : ""}>
+              <span className="option-rank">{String(i + 1).padStart(2, "0")}</span>
               <div className="option-text">
                 <span className="option-title">
                   {isHttp(o.url) ? (

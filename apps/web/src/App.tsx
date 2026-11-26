@@ -11,10 +11,12 @@ import { Home, usePhone } from "./components/Home";
 import { NewThread } from "./components/NewThread";
 import { ThreadList } from "./components/ThreadList";
 import { ThreadView } from "./components/ThreadView";
-import { HomeIcon, MemoryIcon, PlusIcon, SearchIcon, SettingsIcon } from "./icons";
+import { HomeIcon, MemoryIcon, MoonIcon, PlusIcon, SearchIcon, SettingsIcon, SunIcon } from "./icons";
+import { CardShareHost } from "./cards/CardShare";
 import { QuickJump } from "./components/QuickJump";
 import { go, useRoute } from "./route";
 import { useGlide } from "./glide";
+import { resolvedTheme, setThemeChoice } from "./theme";
 
 // Pages opened now and then load when first opened, so starting the app downloads less.
 const SettingsPage = lazy(() => import("./components/SettingsPage").then((m) => ({ default: m.SettingsPage })));
@@ -92,9 +94,22 @@ function Shell({ user }: { user: User | null }) {
   const [threads, setThreads] = useState<Thread[]>(() => cacheGet<Thread[]>(`threads.${nodeId}`) ?? []);
   const [me, setMe] = useState<Me | null>(null);
   const [jump, setJump] = useState(false);
+  const [dark, setDark] = useState(() => resolvedTheme() === "dark");
   const timer = useRef<number | undefined>(undefined);
   const sidebar = useRef<HTMLElement>(null);
   useGlide(sidebar, { hover: ".nav-item, .thread-row", active: ".nav-item.active, .thread-row.active", clip: ".thread-list" });
+
+  useEffect(() => {
+    const mo = new MutationObserver(() => setDark(document.documentElement.dataset.theme === "dark"));
+    mo.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+    return () => mo.disconnect();
+  }, []);
+
+  const toggleTheme = () => {
+    const next = dark ? "light" : "dark";
+    setThemeChoice(next);
+    setDark(next === "dark");
+  };
 
   const loadThreads = useCallback(async () => {
     try {
@@ -213,11 +228,23 @@ function Shell({ user }: { user: User | null }) {
             <MemoryIcon />
             <span>Memory</span>
           </a>
-          <a href="#settings" className={`nav-item ${route.name === "settings" ? "active" : ""}`}>
-            <SettingsIcon />
-            <span>Settings</span>
-            {me && !me.models.ready ? <span className="dot warn" title="No model configured" /> : null}
-          </a>
+          <div className="sidebar-foot-row">
+            <a href="#settings" className={`nav-item ${route.name === "settings" ? "active" : ""}`}>
+              <SettingsIcon />
+              <span>Settings</span>
+              {me && !me.models.ready ? <span className="dot warn" title="No model configured" /> : null}
+            </a>
+            <button
+              type="button"
+              className="icon-btn theme-btn"
+              onClick={toggleTheme}
+              aria-label={dark ? "Switch to light theme" : "Switch to dark theme"}
+              title={dark ? "Light theme" : "Dark theme"}
+              data-testid="theme-toggle"
+            >
+              {dark ? <SunIcon /> : <MoonIcon />}
+            </button>
+          </div>
         </nav>
       </aside>
       <main className="main">
@@ -242,6 +269,7 @@ function Shell({ user }: { user: User | null }) {
         </ErrorBoundary>
       </main>
       {jump ? <QuickJump threads={threads} onClose={() => setJump(false)} /> : null}
+      <CardShareHost />
     </div>
   );
 }

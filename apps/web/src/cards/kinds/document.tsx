@@ -1,10 +1,11 @@
 import { fileUrl } from "../../api";
+import { DocIcon } from "../../icons";
 import { Markdown } from "../../markdown";
 import { Frame } from "../Frame";
 import { defineCard } from "../registry";
 import { field } from "../util";
 
-/** Something written to keep: a page of paper with the text fading out. */
+/** Something written to keep: a published manuscript page with editorial stationery polish. */
 export default defineCard({
   kind: "document",
   render: ({ card, expanded }) => {
@@ -15,6 +16,12 @@ export default defineCard({
         card={card}
         expanded={expanded}
         className="doc"
+        label={
+          <span className="doc-kicker">
+            <DocIcon />
+            Document
+          </span>
+        }
         buttons={
           fileId && !card.buttons.length ? (
             <div className="vcard-buttons">

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { api, type Thread } from "../api";
 import type { Card } from "@vireo/protocol";
 import { relTime } from "../format";
-import { ArrowUpIcon, HomeIcon, MemoryIcon, SettingsIcon } from "../icons";
+import { ArrowUpIcon, HomeIcon, MemoryIcon, SearchIcon, SettingsIcon } from "../icons";
 import { go } from "../route";
 import { type Attention, Eyes, nowLine } from "./Eyes";
 import { useGlide } from "../glide";
@@ -128,27 +128,31 @@ export function QuickJump({ threads, onClose }: { threads: Thread[]; onClose: ()
   return (
     <div className="qj" data-testid="quick-jump" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="qj-box" ref={box} role="dialog" aria-modal="true" aria-label="Jump to">
-        <input
-          ref={input}
-          className="qj-input"
-          placeholder="Jump to a matter, or ask something new"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Escape") onClose();
-            else if (e.key === "ArrowDown") {
-              e.preventDefault();
-              setIndex((i) => Math.min(items.length - 1, i + 1));
-            } else if (e.key === "ArrowUp") {
-              e.preventDefault();
-              setIndex((i) => Math.max(0, i - 1));
-            } else if (e.key === "Enter" && !e.nativeEvent.isComposing) {
-              e.preventDefault();
-              void pick(items[index]);
-            }
-          }}
-          data-testid="quick-jump-input"
-        />
+        <div className="qj-input-wrap">
+          <SearchIcon />
+          <input
+            ref={input}
+            className="qj-input"
+            placeholder="Jump to a matter, or ask something new"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") onClose();
+              else if (e.key === "ArrowDown") {
+                e.preventDefault();
+                setIndex((i) => Math.min(items.length - 1, i + 1));
+              } else if (e.key === "ArrowUp") {
+                e.preventDefault();
+                setIndex((i) => Math.max(0, i - 1));
+              } else if (e.key === "Enter" && !e.nativeEvent.isComposing) {
+                e.preventDefault();
+                void pick(items[index]);
+              }
+            }}
+            data-testid="quick-jump-input"
+          />
+          <kbd className="qj-esc">Esc</kbd>
+        </div>
         {items.length ? (
           <ul className="qj-list" ref={list} role="listbox">
             {items.map((item, i) => (

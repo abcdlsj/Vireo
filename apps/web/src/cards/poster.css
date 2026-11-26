@@ -1,0 +1,512 @@
+/*
+ * Poster Studio: frames any Vireo card for Xiaohongshu (3:4), X (16:9),
+ * Square (1:1), or natural poster export.
+ */
+.poster-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(12, 14, 12, 0.56);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  animation: c-fade 0.16s ease both;
+}
+
+.poster-overlay.clean {
+  background: rgba(10, 11, 10, 0.88);
+  padding: 32px;
+}
+
+.poster-studio {
+  width: min(1080px, 100%);
+  max-height: calc(100dvh - 40px);
+  display: flex;
+  flex-direction: column;
+  background: var(--c-main);
+  color: var(--c-ink);
+  border-radius: 26px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 0 0 1px var(--c-line),
+    0 34px 90px -20px rgba(0, 0, 0, 0.55);
+  overflow: hidden;
+  animation: spring-open 0.34s var(--spring, ease) both;
+}
+
+.poster-overlay.clean .poster-studio {
+  width: auto;
+  max-width: calc(100vw - 64px);
+  background: transparent;
+  box-shadow: none;
+  border-radius: 0;
+  overflow: visible;
+}
+
+.poster-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 18px 16px 24px;
+  border-bottom: 1px solid var(--c-hairline);
+  background: var(--c-paper);
+}
+
+.poster-head-title {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.poster-head-eyebrow {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--c-accent);
+}
+
+.poster-head-title h2 {
+  margin: 0;
+  font-family: var(--c-display);
+  font-size: 16px;
+  line-height: 22px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.poster-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.poster-head-actions .cbtn {
+  gap: 6px;
+}
+
+.poster-exit-clean {
+  position: fixed;
+  top: 20px;
+  right: 24px;
+  z-index: 90;
+  height: 34px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(20, 22, 20, 0.72);
+  backdrop-filter: blur(10px);
+  color: #f4f4ef;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.poster-workspace {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 276px;
+}
+
+.poster-overlay.clean .poster-workspace {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.poster-stage-wrap {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  display: grid;
+  place-items: center;
+  padding: 32px;
+  background:
+    radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--c-ink) 7%, transparent) 1px, transparent 0) 0 0 / 18px 18px,
+    var(--c-canvas);
+}
+
+.poster-overlay.clean .poster-stage-wrap {
+  padding: 0;
+  background: transparent;
+  overflow: visible;
+}
+
+/* The exportable poster canvas itself */
+.poster-canvas {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  padding: 44px 44px 34px;
+  border-radius: 28px;
+  box-shadow: 0 28px 70px -22px rgba(0, 0, 0, 0.34);
+  overflow: hidden;
+  box-sizing: border-box;
+  transition: width 0.24s ease, min-height 0.24s ease;
+}
+
+.poster-canvas.ratio-auto.compact-card {
+  width: 500px;
+}
+
+.poster-canvas.ratio-auto.wide-card {
+  width: 680px;
+}
+
+.poster-canvas.ratio-xhs {
+  width: 480px;
+  min-height: 640px;
+  padding: 52px 36px 36px;
+}
+
+.poster-canvas.ratio-x {
+  width: 720px;
+  min-height: 405px;
+  padding: 42px 54px 30px;
+}
+
+.poster-canvas.ratio-square {
+  width: 560px;
+  min-height: 560px;
+  padding: 48px 42px 34px;
+}
+
+.poster-card-shell {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+}
+
+.poster-card-shell .vcard {
+  width: 100%;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.85),
+    0 0 0 1px rgba(20, 20, 14, 0.08),
+    0 24px 56px -18px rgba(15, 20, 16, 0.24);
+}
+
+.poster-canvas[data-theme="dark"] .poster-card-shell .vcard {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 0 0 1px rgba(255, 255, 255, 0.1),
+    0 28px 60px -16px rgba(0, 0, 0, 0.65);
+}
+
+/* Match pass notch cutout color roughly to backdrop mood inside poster */
+.poster-canvas .pass-stub::before,
+.poster-canvas .pass-stub::after {
+  box-shadow: none;
+}
+
+/* Portrait XHS 3:4 adapts wide horizontal cards (like Flight) into crisp vertical Apple-Wallet passes */
+.poster-canvas.ratio-xhs .vcard.pass > .vcard-body {
+  flex-direction: column;
+}
+
+.poster-canvas.ratio-xhs .pass-code {
+  font-size: 38px;
+  line-height: 38px;
+}
+
+.poster-canvas.ratio-xhs .pass-stub {
+  width: auto;
+  border-left: none;
+  border-top: 2px dashed var(--c-line);
+  border-radius: 0 0 var(--c-radius) var(--c-radius);
+  padding: 20px 26px 24px;
+}
+
+.poster-canvas.ratio-xhs .pass-stub::before,
+.poster-canvas.ratio-xhs .pass-stub::after {
+  display: none;
+}
+
+.poster-canvas.ratio-xhs .leg {
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  row-gap: 4px;
+}
+
+.poster-canvas.ratio-xhs .leg-route {
+  grid-column: 2 / span 2;
+  grid-row: 2;
+}
+
+.poster-canvas.ratio-xhs .leg-flight {
+  display: none;
+}
+
+.poster-canvas.ratio-xhs .leg-price {
+  grid-column: 3;
+  grid-row: 1;
+}
+
+/* Six curated designer backdrops */
+.poster-canvas.bg-botanical {
+  --c-notch: #dce9e0;
+  background:
+    radial-gradient(90% 80% at 15% 10%, rgba(255, 255, 255, 0.72) 0%, transparent 55%),
+    radial-gradient(85% 75% at 90% 90%, rgba(31, 98, 66, 0.2) 0%, transparent 62%),
+    linear-gradient(145deg, #e7f0ea 0%, #d4e4da 52%, #edf3ee 100%);
+  color: #1d3528;
+}
+
+.poster-canvas.bg-alabaster {
+  --c-notch: #f1ede3;
+  background:
+    radial-gradient(95% 80% at 10% 0%, rgba(255, 255, 255, 0.85) 0%, transparent 60%),
+    radial-gradient(80% 80% at 100% 100%, rgba(196, 178, 144, 0.24) 0%, transparent 65%),
+    linear-gradient(145deg, #f8f6f0 0%, #ede8dc 100%);
+  color: #3b372e;
+}
+
+.poster-canvas.bg-sunset {
+  --c-notch: #f7e4d8;
+  background:
+    radial-gradient(90% 80% at 12% 12%, rgba(255, 250, 244, 0.78) 0%, transparent 58%),
+    radial-gradient(90% 80% at 92% 88%, rgba(217, 119, 6, 0.18) 0%, transparent 62%),
+    linear-gradient(145deg, #fcede0 0%, #f4ded3 55%, #efe5dc 100%);
+  color: #5a3419;
+}
+
+.poster-canvas.bg-mist {
+  --c-notch: #e4ecf4;
+  background:
+    radial-gradient(90% 80% at 10% 10%, rgba(255, 255, 255, 0.82) 0%, transparent 55%),
+    radial-gradient(85% 80% at 90% 95%, rgba(59, 130, 246, 0.14) 0%, transparent 60%),
+    linear-gradient(145deg, #edf2f8 0%, #dde6f0 100%);
+  color: #25364c;
+}
+
+.poster-canvas.bg-obsidian {
+  --c-notch: #121513;
+  background:
+    radial-gradient(95% 75% at 100% 0%, rgba(111, 212, 153, 0.2) 0%, transparent 58%),
+    radial-gradient(80% 70% at 0% 100%, rgba(245, 165, 66, 0.12) 0%, transparent 60%),
+    linear-gradient(155deg, #1d201e 0%, #101211 58%, #0a0b0a 100%);
+  color: rgba(244, 244, 239, 0.82);
+}
+
+.poster-canvas.bg-forest {
+  --c-notch: #12291d;
+  background:
+    radial-gradient(95% 80% at 100% 0%, rgba(111, 212, 153, 0.28) 0%, transparent 58%),
+    radial-gradient(90% 80% at 0% 100%, rgba(31, 98, 66, 0.35) 0%, transparent 62%),
+    linear-gradient(155deg, #1b3d2b 0%, #0f2419 55%, #09150f 100%);
+  color: rgba(226, 244, 233, 0.86);
+}
+
+.poster-colophon {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 4px;
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0.78;
+}
+
+.poster-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--c-display);
+  letter-spacing: -0.01em;
+}
+
+.poster-brand img {
+  border-radius: 4px;
+}
+
+.poster-meta {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 500;
+  opacity: 0.82;
+}
+
+/* Controls sidebar */
+.poster-controls {
+  padding: 20px 20px 24px;
+  border-left: 1px solid var(--c-hairline);
+  background: var(--c-paper);
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  overflow-y: auto;
+}
+
+.poster-ctrl-group {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.poster-ctrl-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--c-ink-3);
+}
+
+.poster-pills {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.poster-pill {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  padding: 9px 11px;
+  border-radius: 12px;
+  border: 1px solid var(--c-hairline);
+  background: var(--c-soft);
+  color: var(--c-ink);
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.14s ease, background 0.14s ease;
+}
+
+.poster-pill b {
+  font-size: 12.5px;
+  font-weight: 650;
+}
+
+.poster-pill span {
+  font-size: 11px;
+  color: var(--c-ink-3);
+}
+
+.poster-pill.on {
+  background: var(--c-accent-soft);
+  border-color: var(--c-accent);
+  color: var(--c-accent);
+}
+
+.poster-pill.on span {
+  color: var(--c-accent);
+  opacity: 0.85;
+}
+
+.poster-swatches {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.poster-swatch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 9px;
+  border-radius: 11px;
+  border: 1px solid var(--c-hairline);
+  background: var(--c-soft);
+  color: var(--c-ink);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.poster-swatch.on {
+  border-color: var(--c-accent);
+  background: var(--c-accent-soft);
+  color: var(--c-accent);
+  font-weight: 600;
+}
+
+.swatch-dot {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12);
+}
+
+.poster-seg {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 3px;
+  padding: 3px;
+  border-radius: 12px;
+  background: var(--c-soft);
+}
+
+.poster-seg button {
+  height: 30px;
+  border: none;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--c-ink-2);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.poster-seg button.on {
+  background: var(--c-paper);
+  color: var(--c-ink);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+.poster-toggle {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--c-ink-2);
+  cursor: pointer;
+}
+
+.poster-toggle input {
+  width: auto;
+}
+
+.poster-note {
+  margin: 0;
+  font-size: 12px;
+  color: var(--c-ink-3);
+  line-height: 1.45;
+}
+
+@media (max-width: 900px) {
+  .poster-workspace {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto;
+  }
+
+  .poster-controls {
+    border-left: none;
+    border-top: 1px solid var(--c-hairline);
+    max-height: 38vh;
+  }
+
+  .poster-canvas {
+    width: 100% !important;
+    min-height: 0 !important;
+    padding: 24px 18px 20px !important;
+  }
+}

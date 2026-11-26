@@ -2,9 +2,10 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from "react"
 import { cachedThread, fetchThread, rememberThread } from "../thread-cache";
 import { api, onEvent, type ThreadDetail } from "../api";
 import { relTime } from "../format";
-import { ArrowUpIcon, ArrowUpRightIcon, CheckIcon, CloseIcon } from "../icons";
+import { ArrowUpIcon, ArrowUpRightIcon, CheckIcon, CloseIcon, SharePosterIcon } from "../icons";
 import { attentionOf, Eyes, nowLine } from "../components/Eyes";
 import { Markdown } from "../markdown";
+import { openCardShare } from "./CardShare";
 import { cardView } from "./registry";
 import type { Card } from "@vireo/protocol";
 
@@ -83,6 +84,15 @@ export function Peek({ card, onClose, refresh }: { card: Card; onClose: () => vo
             </span>
           </span>
           <span className="grow" />
+          <button
+            className="peek-btn"
+            onClick={() => openCardShare({ ...card, running })}
+            title="Share as poster"
+            data-testid="peek-share"
+          >
+            <SharePosterIcon />
+            Poster
+          </button>
           {canClose ? (
             <button
               className="peek-btn"
